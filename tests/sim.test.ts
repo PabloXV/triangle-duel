@@ -39,7 +39,7 @@ describe("sim", () => {
     const b = new Sim(FLAT_STAGE, params(), ONE_STOCK);
     run(a, 600, script);
     run(b, 600, script);
-    expect(a.physicsSnapshot()).toEqual(b.physicsSnapshot());
+    expect(a.save()).toEqual(b.save());
     expect(a.view()).toEqual(b.view());
   });
 

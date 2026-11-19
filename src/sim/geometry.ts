@@ -95,6 +95,15 @@ export function rotate(v: Vec2, angle: number): Vec2 {
   return { x: v.x * c - v.y * s, y: v.x * s + v.y * c };
 }
 
+/** Height of a platform's walkable top surface. */
+export function platformTop(p: Platform): number {
+  return p.center.y + p.halfHeight;
+}
+
+export function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
 /**
  * Distance from point p to the platform rectangle (0 if inside). Used by both
  * the grounded check and the KO check, so the two rules measure the same way.
