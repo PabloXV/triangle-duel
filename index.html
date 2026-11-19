@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Triangle Duel</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #14121c; overflow: hidden; }
+      /* Game on the left, param panel in its own column so it never covers the stage. */
+      #app { display: flex; height: 100vh; }
+      canvas { display: block; flex: 1; min-width: 0; height: 100%; }
+      #panel { flex: none; height: 100%; overflow-y: auto; }
+      #panel .lil-gui.root { position: static; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+      <div id="panel"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

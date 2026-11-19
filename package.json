@@ -1,0 +1,27 @@
+{
+  "name": "triangle-duel",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "probe:foot": "tsx scripts/probe-foot.ts",
+    "probe:recovery": "tsx scripts/probe-recovery.ts",
+    "probe:release": "tsx scripts/probe-release.ts",
+    "bots": "tsx scripts/bot-arena.ts"
+  },
+  "dependencies": {
+    "@dimforge/rapier2d-deterministic-compat": "^0.21.0",
+    "lil-gui": "^0.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}
