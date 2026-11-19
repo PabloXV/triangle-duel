@@ -71,11 +71,12 @@ export const DEFAULT_MATCH: MatchOptions = {
   ghostTicks: 120,
 };
 
-/** Game-rule state per fighter that Rapier doesn't know about. */
-interface FighterRules {
-  shape: FighterShape;
-  body: RAPIER.RigidBody;
-  collider: RAPIER.Collider;
+/**
+ * Per-fighter game-rule state that Rapier doesn't know about. Plain data only
+ * (no Rapier objects), so saving it is a deep copy and no field can be
+ * forgotten by save/restore.
+ */
+export interface FighterState {
   chargeTicks: number; // ticks of charge built up
   charging: boolean; // auto mode: planted on the ground, building a charge
   chargeWasHeld: boolean; // last tick's charge button, to detect release
@@ -85,7 +86,15 @@ interface FighterRules {
   stocks: number; // lives left, including the current one. 0 = eliminated
   respawnTimer: number; // while dead: ticks until respawn
   ghostTimer: number; // ticks of post-respawn ghosting left
-  spawn: Vec2; // this fighter's spawn point (foot)
+}
+
+/** A fighter: its fixed setup, its live Rapier objects, and its rule state. */
+interface FighterRules {
+  shape: FighterShape;
+  spawn: Vec2; // spawn point (foot)
+  body: RAPIER.RigidBody; // re-fetched by handle after restore()
+  collider: RAPIER.Collider;
+  state: FighterState;
 }
 
 /** Read-only snapshot of a fighter, for rendering and debugging. */
@@ -106,6 +115,17 @@ export interface FighterView {
   stocks: number;
   eliminated: boolean; // out of stocks and removed from the stage
   ghost: boolean; // just respawned: passes through fighters, immune to touch-KOs
+}
+
+/** A complete, resumable snapshot of a match in progress. See Sim.save(). */
+export interface SimState {
+  physics: Uint8Array; // Rapier world snapshot
+  fighters: FighterState[];
+  oneWaySolid: boolean[][];
+  gripActive: boolean[];
+  tick: number;
+  result: MatchResult;
+  events: SimEvent[];
 }
 
 export type MatchResult = { over: false } | { over: true; winner: number | null; tick: number };
@@ -176,18 +196,20 @@ export class Sim {
       this.fighterByBody.set(body.handle, i);
       this.fighters.push({
         shape,
+        spawn,
         body,
         collider,
-        chargeTicks: 0,
-        charging: false,
-        chargeWasHeld: false,
-        ticksSinceGrounded: 0,
-        jumpCooldown: 0,
-        ko: null,
-        stocks: this.match.stocks,
-        respawnTimer: 0,
-        ghostTimer: 0,
-        spawn,
+        state: {
+          chargeTicks: 0,
+          charging: false,
+          chargeWasHeld: false,
+          ticksSinceGrounded: 0,
+          jumpCooldown: 0,
+          ko: null,
+          stocks: this.match.stocks,
+          respawnTimer: 0,
+          ghostTimer: 0,
+        },
       });
     }
     this.oneWaySolid = this.fighters.map(() => stage.platforms.map(() => false));
@@ -228,7 +250,7 @@ export class Sim {
 
     for (let i = 0; i < this.fighters.length; i++) {
       const f = this.fighters[i];
-      if (f.ko) {
+      if (f.state.ko) {
         this.updateDead(f);
         continue; // dead fighters ignore input
       }
@@ -260,11 +282,11 @@ export class Sim {
    * within tolerance, and without this one jump could trigger twice.
    */
   private updateGrounded(f: FighterRules, i: number) {
-    if (f.jumpCooldown > 0) f.jumpCooldown--;
+    if (f.state.jumpCooldown > 0) f.state.jumpCooldown--;
     const foot = this.worldVertices(f)[f.shape.footIndex];
     const nearSurface = this.distanceToSolid(foot, i) <= this.params.footTolerance;
-    const grounded = nearSurface && f.jumpCooldown === 0;
-    f.ticksSinceGrounded = grounded ? 0 : f.ticksSinceGrounded + 1;
+    const grounded = nearSurface && f.state.jumpCooldown === 0;
+    f.state.ticksSinceGrounded = grounded ? 0 : f.state.ticksSinceGrounded + 1;
   }
 
   /**
@@ -281,7 +303,7 @@ export class Sim {
    */
   private applyRotation(f: FighterRules, input: Input) {
     const p = this.params;
-    const grounded = f.ticksSinceGrounded === 0;
+    const grounded = f.state.ticksSinceGrounded === 0;
     let scale = 1;
     if (!grounded) scale = p.airRotation ? p.airRotationScale : 0;
     const maxTorque = p.rotateTorque * scale;
@@ -316,31 +338,31 @@ export class Sim {
   private applyJump(f: FighterRules, input: Input) {
     const p = this.params;
     const cap = Math.max(1, p.jumpChargeTicks);
-    const canJump = f.ticksSinceGrounded <= p.coyoteTicks;
-    const chargedSpeed = () => p.jumpMinSpeed + (p.jumpMaxSpeed - p.jumpMinSpeed) * (f.chargeTicks / cap);
+    const canJump = f.state.ticksSinceGrounded <= p.coyoteTicks;
+    const chargedSpeed = () => p.jumpMinSpeed + (p.jumpMaxSpeed - p.jumpMinSpeed) * (f.state.chargeTicks / cap);
 
     if (p.jumpMode === "manual") {
       if (input.charge) {
-        f.chargeTicks = Math.min(f.chargeTicks + 1, cap);
-      } else if (f.chargeWasHeld) {
+        f.state.chargeTicks = Math.min(f.state.chargeTicks + 1, cap);
+      } else if (f.state.chargeWasHeld) {
         if (canJump) this.launch(f, chargedSpeed());
-        f.chargeTicks = 0;
+        f.state.chargeTicks = 0;
       }
-    } else if (f.charging) {
+    } else if (f.state.charging) {
       if (!canJump) {
-        f.charging = false; // lost footing: charge is gone
-        f.chargeTicks = 0;
+        f.state.charging = false; // lost footing: charge is gone
+        f.state.chargeTicks = 0;
       } else if (!input.charge) {
         this.launch(f, chargedSpeed()); // released
-      } else if (++f.chargeTicks >= cap) {
+      } else if (++f.state.chargeTicks >= cap) {
         this.launch(f, chargedSpeed()); // hit the cap
       }
-    } else if (f.ticksSinceGrounded === 0) {
+    } else if (f.state.ticksSinceGrounded === 0) {
       // Just landed (or still standing) and not yet charging.
-      if (input.charge) f.charging = true;
+      if (input.charge) f.state.charging = true;
       else this.launch(f, p.hopSpeed);
     }
-    f.chargeWasHeld = input.charge;
+    f.state.chargeWasHeld = input.charge;
   }
 
   /**
@@ -357,10 +379,10 @@ export class Sim {
     const along = v.x * up.x + v.y * up.y;
     const boost = Math.max(0, speed - along);
     f.body.setLinvel({ x: v.x + up.x * boost, y: v.y + up.y * boost }, true);
-    f.ticksSinceGrounded = p.coyoteTicks + 1; // no second jump off coyote time
-    f.jumpCooldown = p.jumpCooldownTicks; // airborne for a moment, no grip pulling us back
-    f.charging = false;
-    f.chargeTicks = 0;
+    f.state.ticksSinceGrounded = p.coyoteTicks + 1; // no second jump off coyote time
+    f.state.jumpCooldown = p.jumpCooldownTicks; // airborne for a moment, no grip pulling us back
+    f.state.charging = false;
+    f.state.chargeTicks = 0;
   }
 
   /**
@@ -375,10 +397,10 @@ export class Sim {
    */
   private applyGrip(f: FighterRules, i: number): boolean {
     const p = this.params;
-    if (p.gripStrength <= 0 || f.jumpCooldown > 0) return false;
+    if (p.gripStrength <= 0 || f.state.jumpCooldown > 0) return false;
     // Only hold a foot that was planted a moment ago. Without this, grip also
     // yanks you down out of a low hop as you descend through gripRange.
-    if (f.ticksSinceGrounded > p.coyoteTicks) return false;
+    if (f.state.ticksSinceGrounded > p.coyoteTicks) return false;
     const foot = this.worldVertices(f)[f.shape.footIndex];
     const nearTop = this.stage.platforms.some((plat, pi) => {
       if (plat.oneWay && !this.oneWaySolid[i][pi]) return false;
@@ -398,11 +420,11 @@ export class Sim {
     // Uses this tick's one-way solidity (decided before world.step), so a
     // fighter passing up through a wing can't be KO'd by brushing it.
     this.fighters.forEach((f, i) => {
-      if (f.ko) return;
+      if (f.state.ko) return;
       const verts = this.worldVertices(f);
       // Ghosts (just respawned) can't be KO'd by touching, only by falling off.
       const touched =
-        f.ghostTimer === 0 &&
+        f.state.ghostTimer === 0 &&
         verts.some((v, idx) => idx !== f.shape.footIndex && this.distanceToSolid(v, i) <= p.koTolerance);
       const c = f.body.translation();
       const fell = c.x < bz.minX || c.x > bz.maxX || c.y < bz.minY || c.y > bz.maxY;
@@ -410,7 +432,7 @@ export class Sim {
       else if (fell) this.knockOut(f, "fell");
     });
     if (!this.result.over) {
-      const remaining = this.fighters.flatMap((f, i) => (f.stocks > 0 ? [i] : []));
+      const remaining = this.fighters.flatMap((f, i) => (f.state.stocks > 0 ? [i] : []));
       // Last fighters losing their last stocks on the same tick = draw (winner null).
       if (remaining.length <= 1) {
         this.result = { over: true, winner: remaining[0] ?? null, tick: this.tick };
@@ -423,14 +445,14 @@ export class Sim {
   // ---- stocks & respawning ------------------------------------------------
 
   private knockOut(f: FighterRules, reason: KoReason) {
-    f.ko = reason;
-    f.stocks--;
+    f.state.ko = reason;
+    f.state.stocks--;
     const fighter = this.fighters.indexOf(f);
-    this.events.push({ type: "ko", fighter, reason, stocksLeft: f.stocks, final: false });
-    f.respawnTimer = this.match.respawnDelayTicks;
-    f.ghostTimer = 0;
-    f.charging = false;
-    f.chargeTicks = 0;
+    this.events.push({ type: "ko", fighter, reason, stocksLeft: f.state.stocks, final: false });
+    f.state.respawnTimer = this.match.respawnDelayTicks;
+    f.state.ghostTimer = 0;
+    f.state.charging = false;
+    f.state.chargeTicks = 0;
   }
 
   /**
@@ -439,8 +461,8 @@ export class Sim {
    * removed from the stage for good.
    */
   private updateDead(f: FighterRules) {
-    if (f.respawnTimer > 0 && --f.respawnTimer > 0) return;
-    if (f.stocks > 0) this.respawn(f);
+    if (f.state.respawnTimer > 0 && --f.state.respawnTimer > 0) return;
+    if (f.state.stocks > 0) this.respawn(f);
     else if (f.body.isEnabled()) f.body.setEnabled(false); // eliminated
   }
 
@@ -451,11 +473,11 @@ export class Sim {
     f.body.setRotation(0, true);
     f.body.setLinvel({ x: 0, y: 0 }, true);
     f.body.setAngvel(0, true);
-    f.ko = null;
-    f.ghostTimer = this.match.ghostTicks;
-    f.ticksSinceGrounded = this.params.coyoteTicks + 1; // airborne, no coyote jump
-    f.jumpCooldown = 0;
-    f.chargeWasHeld = false;
+    f.state.ko = null;
+    f.state.ghostTimer = this.match.ghostTicks;
+    f.state.ticksSinceGrounded = this.params.coyoteTicks + 1; // airborne, no coyote jump
+    f.state.jumpCooldown = 0;
+    f.state.chargeWasHeld = false;
   }
 
   /**
@@ -464,8 +486,8 @@ export class Sim {
    * two bodies apart violently.
    */
   private updateGhost(f: FighterRules, i: number) {
-    if (f.ghostTimer === 0) return;
-    if (f.ghostTimer > 1 || !this.overlapsAnyFighter(i)) f.ghostTimer--;
+    if (f.state.ghostTimer === 0) return;
+    if (f.state.ghostTimer > 1 || !this.overlapsAnyFighter(i)) f.state.ghostTimer--;
   }
 
   /** Rough overlap test: bounding circles around the centroids. */
@@ -474,7 +496,7 @@ export class Sim {
     const a = this.fighters[i];
     const pa = a.body.translation();
     return this.fighters.some((b, j) => {
-      if (j === i || b.ko) return false;
+      if (j === i || b.state.ko) return false;
       const pb = b.body.translation();
       const dx = pa.x - pb.x;
       const dy = pa.y - pb.y;
@@ -486,7 +508,7 @@ export class Sim {
   /** Dead bodies and post-respawn ghosts don't collide with other fighters. */
   private passesThroughFighters(i: number): boolean {
     const f = this.fighters[i];
-    return f.ko !== null || f.ghostTimer > 0;
+    return f.state.ko !== null || f.state.ghostTimer > 0;
   }
 
   /**
@@ -570,14 +592,14 @@ export class Sim {
         vy: f.body.linvel().y,
         vertices: this.worldVertices(f),
         footIndex: f.shape.footIndex,
-        grounded: f.ticksSinceGrounded === 0,
-        canJump: f.ticksSinceGrounded <= p.coyoteTicks,
+        grounded: f.state.ticksSinceGrounded === 0,
+        canJump: f.state.ticksSinceGrounded <= p.coyoteTicks,
         gripActive: this.gripActive[i] ?? false,
-        charge: p.jumpChargeTicks > 0 ? f.chargeTicks / p.jumpChargeTicks : 0,
-        ko: f.ko,
-        stocks: f.stocks,
-        eliminated: f.stocks === 0 && !f.body.isEnabled(),
-        ghost: f.ghostTimer > 0,
+        charge: p.jumpChargeTicks > 0 ? f.state.chargeTicks / p.jumpChargeTicks : 0,
+        ko: f.state.ko,
+        stocks: f.state.stocks,
+        eliminated: f.state.stocks === 0 && !f.body.isEnabled(),
+        ghost: f.state.ghostTimer > 0,
       };
     });
   }
@@ -585,6 +607,52 @@ export class Sim {
   /** Physics snapshot bytes. Used by the determinism test; later, by rollback. */
   physicsSnapshot(): Uint8Array {
     return this.world.takeSnapshot();
+  }
+
+  /**
+   * Everything needed to resume this match exactly from this tick: Rapier's
+   * world plus our rule state. The returned object is a deep copy; later steps
+   * don't change it. Used for rollback (save every tick, restore on a
+   * misprediction) and for replays.
+   *
+   * Not included: stage, match options and params. Those are match setup, the
+   * same on every client for the whole match. (Tweaking params mid-match from
+   * the panel is a local-only convenience and makes saved states stale.)
+   */
+  save(): SimState {
+    return {
+      physics: this.world.takeSnapshot(),
+      fighters: structuredClone(this.fighters.map((f) => f.state)),
+      oneWaySolid: structuredClone(this.oneWaySolid),
+      gripActive: [...this.gripActive],
+      tick: this.tick,
+      result: structuredClone(this.result),
+      events: structuredClone(this.events),
+    };
+  }
+
+  /** Rewind (or jump) to a state from save(). The state object isn't modified. */
+  restore(s: SimState) {
+    // Rapier restores into a brand-new World; rebind our objects by handle
+    // (handles survive snapshots).
+    const bodyHandles = this.fighters.map((f) => f.body.handle);
+    const colliderHandles = this.fighters.map((f) => f.collider.handle);
+    const platformHandles = this.platformColliders.map((c) => c.handle);
+    this.world.free();
+    this.world = RAPIER.World.restoreSnapshot(s.physics);
+    this.world.timestep = DT;
+    this.fighters.forEach((f, i) => {
+      f.body = this.world.getRigidBody(bodyHandles[i]);
+      f.collider = this.world.getCollider(colliderHandles[i]);
+    });
+    this.platformColliders = platformHandles.map((h) => this.world.getCollider(h));
+
+    this.fighters.forEach((f, i) => (f.state = structuredClone(s.fighters[i])));
+    this.oneWaySolid = structuredClone(s.oneWaySolid);
+    this.gripActive = [...s.gripActive];
+    this.tick = s.tick;
+    this.result = structuredClone(s.result);
+    this.events = structuredClone(s.events);
   }
 
   free() {

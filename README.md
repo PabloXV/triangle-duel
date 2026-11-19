@@ -178,6 +178,18 @@ byte for byte. Caveat: our own JS math must also be deterministic across
 browsers for netcode. `Math.sin`/`cos` aren't guaranteed to be, so they're
 routed through `src/sim/detmath.ts` to be replaced before netcode.
 
+### Save / restore (for rollback)
+
+`sim.save()` returns a deep-copied `SimState` (Rapier snapshot + our rule
+state); `sim.restore(state)` rewinds to it. Per-fighter rule state lives in a
+plain-data `FighterState` so a new field can't be forgotten by save/restore.
+`tests/state.test.ts` checks the property rollback depends on: save, restore
+(into a fresh sim, or in place after mispredicted inputs), continue, and the
+result is bit-identical to never stopping. It includes a landing-on-a-wing
+case, because one-way solidity depends on the previous tick's value.
+Measured cost (4 players): step 33 µs, save 11 µs, restore 47 µs, so a
+worst-case 8-tick rollback is ~0.4 ms of a 16.7 ms frame.
+
 ## Bot (`src/bots/heuristic.ts`)
 
 A hand-written decision list, run every tick: recover if leaning dangerously,
