@@ -12,6 +12,7 @@ export interface RenderOptions {
   humans: boolean[]; // per fighter: keyboard-controlled? (for the controls hint)
   totalStocks: number; // stocks each player started with
   replay: boolean; // showing the final-KO replay: letterbox, no banner yet
+  status?: string; // shown at the top center (e.g. "REPLAY")
 }
 
 const CONTROL_HINTS = ["P1: ←/→ rotate, ↓ charge", "P2: A/D rotate, S charge"];
@@ -226,6 +227,13 @@ export class Renderer {
     const hints = CONTROL_HINTS.filter((_, i) => opts.humans[i]);
     ctx.fillText([...hints, "R restart"].join("   ·   "), w / 2, h - 28);
     this.drawStocks(fighters, opts.totalStocks, w / 2, h - 64);
+
+    if (opts.status) {
+      ctx.font = "bold 15px ui-monospace, monospace";
+      ctx.fillStyle = opts.status.includes("DESYNC") ? "#ff6b6b" : "#fffc";
+      ctx.textAlign = "center";
+      ctx.fillText(opts.status, w / 2, 14);
+    }
 
     if (result.over && !opts.replay) {
       ctx.font = "bold 48px system-ui, sans-serif";

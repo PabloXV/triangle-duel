@@ -43,6 +43,9 @@ export interface UiState {
 export interface PanelActions {
   restart(): void;
   controllersChanged(): void;
+  watchLast(): void;
+  downloadLast(): void;
+  loadFile(): void;
 }
 
 export function buildPanel(params: Params, ui: UiState, actions: PanelActions) {
@@ -88,6 +91,9 @@ export function buildPanel(params: Params, ui: UiState, actions: PanelActions) {
   const misc = gui.addFolder("Misc");
   misc.add(ui, "debug").name("debug overlay");
   misc.add(actions, "restart").name("restart match (R)");
+  misc.add(actions, "watchLast").name("watch last match");
+  misc.add(actions, "downloadLast").name("download last match");
+  misc.add(actions, "loadFile").name("load match file…");
   misc
     .add(
       {

@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { FinalKoReplay, type Frame } from "../src/replay";
+import { FinalKoReplay, type Frame } from "../src/koReplay";
 import { WINGS_STAGE } from "../src/sim/geometry";
 import { DEFAULT_PARAMS, type Params } from "../src/sim/params";
 import { NO_INPUT, Sim, initPhysics, type FighterView, type SimEvent } from "../src/sim/sim";

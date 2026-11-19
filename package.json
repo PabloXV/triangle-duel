@@ -11,7 +11,8 @@
     "probe:foot": "tsx scripts/probe-foot.ts",
     "probe:recovery": "tsx scripts/probe-recovery.ts",
     "probe:release": "tsx scripts/probe-release.ts",
-    "bots": "tsx scripts/bot-arena.ts"
+    "bots": "tsx scripts/bot-arena.ts",
+    "verify": "tsx scripts/verify-recording.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-deterministic-compat": "^0.21.0",

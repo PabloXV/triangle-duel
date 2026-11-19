@@ -631,6 +631,25 @@ export class Sim {
     };
   }
 
+  /**
+   * A short fingerprint of the full match state (FNV-1a, 32-bit, as 8 hex
+   * chars). Two sims with the same hash are, for all practical purposes, in
+   * the same state. Used to detect desyncs (replays now, online clients later).
+   * JSON.stringify of numbers is exactly specified, so this is engine-independent.
+   */
+  hash(): string {
+    const s = this.save();
+    const rules = JSON.stringify([s.fighters, s.oneWaySolid, s.tick, s.result]);
+    let h = 0x811c9dc5;
+    const mix = (byte: number) => {
+      h ^= byte;
+      h = Math.imul(h, 0x01000193) >>> 0;
+    };
+    for (const b of s.physics) mix(b);
+    for (let i = 0; i < rules.length; i++) mix(rules.charCodeAt(i) & 0xff);
+    return h.toString(16).padStart(8, "0");
+  }
+
   /** Rewind (or jump) to a state from save(). The state object isn't modified. */
   restore(s: SimState) {
     // Rapier restores into a brand-new World; rebind our objects by handle

@@ -9,6 +9,7 @@ npm run dev        # play at the printed URL
 npm test           # sim tests (Node, headless)
 npm run probe:*    # diagnostic experiments, see scripts/
 npm run bots       # headless bot matches with win/loss stats (--experiments for more)
+npm run verify -- f.json  # check a downloaded match recording replays exactly
 ```
 
 Controls: P1 `←`/`→` rotate, `↓` charge. P2 (if human) `A`/`D` rotate, `S` charge.
@@ -32,7 +33,7 @@ src/input.ts  keyboard → Input { turn, charge }
 src/render.ts canvas renderer; reads sim state, never writes it
 src/panel.ts  lil-gui param panel
 src/camera.ts follow cam (pan/zoom to fit fighters) + screen shake
-src/replay.ts final-KO instant replay (plays back recorded frames)
+src/koReplay.ts final-KO instant replay (plays back recorded frames)
 src/main.ts   fixed-timestep loop gluing the above together
 tests/        sim behavior tests
 scripts/      probes that measured the foot/rotation behavior
@@ -163,7 +164,7 @@ toggles each.
   `impact`s (Rapier contact force) and `ko`s. Force maps to shake on a curve
   measured from bot matches (median contact ~39 N; top 1% > 126 N), and
   strength goes with trauma², so ordinary bumps barely register.
-- **Final-KO replay** (`src/replay.ts`): when the match-ending KO lands, the
+- **Final-KO replay** (`src/koReplay.ts`): when the match-ending KO lands, the
   sim pauses and the last few seconds replay from just before the decisive
   moment (the loser's last collision, else their last moment on the ground),
   in slow motion and letterboxed. It's a replay rather than slowing time at the
@@ -180,6 +181,16 @@ ported from fdlibm using only exact operations (bit-identical in every engine,
 scans `src/sim/` for engine-dependent or nondeterministic operations
 (`Math.sin`, `Math.random`, `Date.now`, `**`, ...), so that rule is enforced
 rather than remembered.
+
+### Recordings (replays)
+
+`src/sim/recording.ts`: a recording is match setup (stage, match options,
+params, plus any mid-match panel tweaks) and every tick's inputs, one character
+per player per tick (a 1-minute 2-player match is ~4 KB). A state fingerprint
+(`Sim.hash()`) is stored every second, so playback reports the first tick that
+diverges, not just "the ending differs". The panel's Misc section can watch,
+download, and load matches; `npm run verify -- file.json` replays one in Node.
+A match recorded in Chrome verified exactly in Node.
 
 ### Save / restore (for rollback)
 
