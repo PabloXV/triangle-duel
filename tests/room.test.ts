@@ -37,8 +37,8 @@ describe("room: joining", () => {
     room.connect("b");
     const out = room.receive("b", hello("Bo"));
     expect(ofType(out, "roster")[0].players).toEqual([
-      { slot: 0, name: "Ana", host: true },
-      { slot: 1, name: "Bo", host: false },
+      { slot: 0, name: "Ana", host: true, bot: false },
+      { slot: 1, name: "Bo", host: false, bot: false },
     ]);
   });
 
@@ -87,7 +87,7 @@ describe("room: starting", () => {
     expect(room.receive("b", send({ type: "start", setup: setup(2) }))[0].msg).toEqual({ type: "error", message: "only the host can start" });
     expect(room.receive("a", send({ type: "start", setup: setup(3) }))[0].msg).toMatchObject({ type: "error" });
     const solo = roomWith(1).room;
-    expect(solo.receive("a", send({ type: "start", setup: setup(1) }))[0].msg).toEqual({ type: "error", message: "need at least 2 players" });
+    expect(solo.receive("a", send({ type: "start", setup: setup(1) }))[0].msg).toEqual({ type: "error", message: "need at least 2 players (add a bot?)" });
   });
 
   it("tells each player which fighter they are", () => {
@@ -96,8 +96,8 @@ describe("room: starting", () => {
     const out = room.receive("a", send({ type: "start", setup: setup(2) }));
     const starts = out.filter((o) => o.msg.type === "start");
     expect(starts.map((o) => [o.to, o.msg])).toEqual([
-      ["a", { type: "start", setup: setup(2), fighters: [0, 2], you: 0 }],
-      ["c", { type: "start", setup: setup(2), fighters: [0, 2], you: 1 }],
+      ["a", { type: "start", setup: setup(2), fighters: [0, 2], you: 0, drive: [0] }],
+      ["c", { type: "start", setup: setup(2), fighters: [0, 2], you: 1, drive: [1] }],
     ]);
   });
 });
@@ -185,5 +185,82 @@ describe("room: desync detection", () => {
     room.advance();
     expect(room.receive("a", hash(500, "aaaaaaaa"))[0].msg).toMatchObject({ type: "error" });
     expect(room.receive("a", hash(1, "not-hex!"))[0].msg).toEqual({ type: "error", message: "malformed message" });
+  });
+});
+
+describe("room: bots", () => {
+  const addBot = send({ type: "addBot" });
+  const removeBot = send({ type: "removeBot" });
+
+  it("the host can add bot seats, which show in the roster", () => {
+    const { room } = roomWith(1);
+    const out = room.receive("a", addBot);
+    expect(ofType(out, "roster")[0].players).toEqual([
+      { slot: 0, name: "a", host: true, bot: false },
+      { slot: 1, name: "bot 1", host: false, bot: true },
+    ]);
+  });
+
+  it("only the host, only in the lobby, and only while there's room", () => {
+    const { room } = roomWith(2);
+    expect(room.receive("b", addBot)[0].msg).toEqual({ type: "error", message: "only the host can add bots" });
+    room.receive("a", addBot);
+    room.receive("a", addBot); // 4 seats now
+    expect(room.receive("a", addBot)[0].msg).toEqual({ type: "error", message: "room is full (4 players)" });
+    room.connect("e");
+    expect(room.receive("e", hello())[0].msg).toMatchObject({ type: "error", message: "room is full (4 players)" });
+    const { room: r2 } = started(2);
+    expect(r2.receive("a", addBot)[0].msg).toEqual({ type: "error", message: "can't change seats during a match" });
+  });
+
+  it("removing takes away the last bot", () => {
+    const { room } = roomWith(1);
+    room.receive("a", addBot);
+    room.receive("a", addBot);
+    const out = room.receive("a", removeBot);
+    expect(ofType(out, "roster")[0].players.map((p) => p.name)).toEqual(["a", "bot 1"]);
+    room.receive("a", removeBot);
+    expect(room.receive("a", removeBot)[0].msg).toEqual({ type: "error", message: "there are no bots" });
+  });
+
+  it("you can start against bots alone; the host drives them", () => {
+    const { room } = roomWith(1);
+    room.receive("a", addBot);
+    room.receive("a", addBot);
+    const out = room.receive("a", send({ type: "start", setup: setup(3) }));
+    expect(ofType(out, "start")).toEqual([{ type: "start", setup: setup(3), fighters: [0, 1, 2], you: 0, drive: [0, 1, 2] }]);
+  });
+
+  it("the host may send a bot's inputs; other players may not", () => {
+    const { room } = roomWith(2);
+    room.receive("a", addBot); // slot 2 → fighter 2
+    room.receive("a", send({ type: "start", setup: setup(3) }));
+    room.receive("a", send({ type: "input", tick: 0, input: "2", fighter: 2 }));
+    expect(room.receive("b", send({ type: "input", tick: 0, input: "0", fighter: 2 }))[0].msg).toEqual({
+      type: "error",
+      message: "you can't send inputs for fighter 2",
+    });
+    expect(room.receive("b", send({ type: "input", tick: 0, input: "0", fighter: 0 }))[0].msg).toMatchObject({ type: "error" });
+    expect(room.advance()[0].msg).toEqual({ type: "tick", t: 0, c: [[2, "2"]] });
+  });
+
+  it("if the host leaves mid-match, their bots go idle too", () => {
+    const { room } = roomWith(2);
+    room.receive("a", addBot);
+    room.receive("a", send({ type: "start", setup: setup(3) }));
+    room.receive("a", send({ type: "input", tick: 0, input: "5" }));
+    room.receive("a", send({ type: "input", tick: 0, input: "5", fighter: 2 }));
+    room.advance();
+    room.disconnect("a");
+    expect(room.advance()[0].msg).toEqual({ type: "tick", t: 1, c: [[0, "1"], [2, "1"]] });
+  });
+
+  it("bots go when everyone leaves", () => {
+    const { room } = roomWith(1);
+    room.receive("a", addBot);
+    room.disconnect("a");
+    room.connect("z");
+    const out = room.receive("z", hello("z"));
+    expect(ofType(out, "roster")[0].players.map((p) => p.name)).toEqual(["z"]);
   });
 });

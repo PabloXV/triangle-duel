@@ -156,9 +156,17 @@ function netStart() {
 
 // The relay started a match: play it as an OnlineSession, driven by its stream.
 // Online, you always use the arrow keys (P1's binding), whichever fighter you are.
-net.onStart = (setup, you) => {
+// If you host, your browser also drives the room's bots.
+net.onStart = (setup, you, drive) => {
+  matchNumber++;
   const names = Array.from({ length: setup.match.players }, (_, i) => net.nameOf(i));
-  begin(new OnlineSession(setup, you, names, new KeyboardSource(0), net, net.room, () => net.rttMs));
+  const sources = new Map<number, InputSource>([[you, new KeyboardSource(0)]]);
+  for (const f of drive) {
+    if (f === you) continue;
+    const bot = new HeuristicBot(f, { ...DEFAULT_BOT, reactionTicks: ui.botReaction, seed: matchNumber * 4 + f + 1 });
+    sources.set(f, new BotSource(bot, setup.params));
+  }
+  begin(new OnlineSession(setup, you, names, sources, net, net.room, () => net.rttMs));
 };
 net.onTick = (t, changes) => {
   if (session instanceof OnlineSession) session.receiveTick(t, changes);
@@ -223,6 +231,8 @@ buildPanel(params, ui, {
   netCreate: () => netJoin(randomRoomCode()),
   netJoin: () => netJoin(),
   netStart,
+  netAddBot: () => net.addBot(),
+  netRemoveBot: () => net.removeBot(),
   netLobby: () => net.backToLobby(),
   netLeave: () => net.leave(),
 });

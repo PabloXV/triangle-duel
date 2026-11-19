@@ -76,17 +76,33 @@ describe("online rollback: responsiveness", () => {
     const transport = { sendInput: (step: number, input: string) => sent.push([step, input]), sendHash: () => {} };
     const setup: MatchSetup = { stage: WINGS_STAGE, match: { ...DEFAULT_MATCH, players: 2 }, params: DEFAULT_PARAMS };
     // A slow connection (200 ms) and no official steps yet: lockstep would wait; rollback doesn't.
-    const s = new OnlineSession(setup, 1, ["A", "B"], local, transport, "TEST", () => 200);
-    for (let i = 0; i < 3; i++) {
-      s.frame();
-      s.step();
-    }
+    const s = new OnlineSession(setup, 1, ["A", "B"], new Map([[1, local]]), transport, "TEST", () => 200);
+    for (let i = 0; i < 3; i++) s.step();
     mine = { turn: -1, charge: true }; // press left + charge
-    s.frame();
     s.step();
     const left = encodeInput(mine);
     expect(s.lastStepInputs[1]).toBe(left); // already applied in the step just simulated...
     expect(sent.at(-1)).toEqual([s.sim.tick - 1, left]); // ...and sent to the relay for that same step
     expect(s.lastStepInputs[0]).toBe(encodeInput(NO_INPUT)); // the other player: predicted idle
+  });
+});
+
+describe("online rollback: room bots (driven by the host's browser)", () => {
+  it.each([
+    ["2 players + 1 bot", 1],
+    ["2 players + 2 bots", 2],
+  ])("%s: everyone's confirmed match ends bit-identical", (_, bots) => {
+    const { a, b, desyncs } = playOnline({ latency: [2, 4], jitter: 2, ticks: 1800, bots });
+    expect(desyncs).toEqual([]);
+    expect(a.sim.match.players).toBe(2 + bots);
+    expect(a.confirmedHash()).toBe(b.confirmedHash());
+    // The bots really played: their inputs (sent by A) changed during the match.
+    const rec = a.recording();
+    const n = rec.match.players;
+    for (let f = 2; f < n; f++) {
+      const botInputs = new Set(Array.from({ length: rec.ticks }, (_, t) => rec.inputs[t * n + f]));
+      expect(botInputs.size).toBeGreaterThan(2);
+    }
+    expect(b.recording().inputs).toBe(rec.inputs);
   });
 });

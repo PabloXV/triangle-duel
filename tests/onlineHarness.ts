@@ -24,6 +24,7 @@ export function playOnline(opts: {
   tamper?: (setup: MatchSetup) => MatchSetup; // corrupt client B's setup (desync test)
   rttMs?: (id: string) => number; // what each client believes its round trip is (default: the true one)
   sample?: (s: OnlineSession) => void; // called for each client after every step
+  bots?: number; // bot seats the host adds before starting (driven by client A, the host)
 }) {
   let now = 0;
   let seed = 12345;
@@ -56,7 +57,7 @@ export function playOnline(opts: {
   const route = (out: Outgoing[]) => {
     for (const o of out) {
       for (const id of o.to === "all" ? ids : [o.to]) {
-        if (o.msg.type === "start") startClient(id, o.msg.setup, o.msg.you);
+        if (o.msg.type === "start") startClient(id, o.msg.setup, o.msg.you, o.msg.drive);
         else send(`down-${id}`, opts.latency[ids.indexOf(id)], () => toClient(id, o.msg));
       }
     }
@@ -64,23 +65,26 @@ export function playOnline(opts: {
   const toRoom = (id: string, msg: object) =>
     send(`up-${id}`, opts.latency[ids.indexOf(id)], () => route(room.receive(id, JSON.stringify(msg))));
 
-  function startClient(id: string, setup: MatchSetup, you: number) {
+  function startClient(id: string, setup: MatchSetup, you: number, drive: number[]) {
     const mySetup = id === "b" && opts.tamper ? opts.tamper(setup) : setup;
-    const bot = new BotSource(new HeuristicBot(you, { ...DEFAULT_BOT, seed: 10 + you }), mySetup.params);
+    // Bots play every fighter this client drives (its own "human" one, plus room bots if host).
+    const sources = new Map(drive.map((f) => [f, new BotSource(new HeuristicBot(f, { ...DEFAULT_BOT, seed: 10 + f }), mySetup.params)]));
     const transport = {
-      sendInput: (step: number, input: string) => toRoom(id, { type: "input", tick: step, input }),
+      sendInput: (step: number, input: string, fighter: number) => toRoom(id, { type: "input", tick: step, input, fighter }),
       sendHash: (step: number, hash: string) => toRoom(id, { type: "hash", step, hash }),
     };
     const trueRtt = 2 * opts.latency[ids.indexOf(id)] * (1000 / 60);
     const rtt = () => (opts.rttMs ? opts.rttMs(id) : trueRtt);
-    sessions.set(id, new OnlineSession(mySetup, you, ["A", "B"], bot, transport, "TEST", rtt));
+    sessions.set(id, new OnlineSession(mySetup, you, ["A", "B", "bot 1", "bot 2"], sources, transport, "TEST", rtt));
   }
 
   for (const id of ids) {
     room.connect(id);
     route(room.receive(id, JSON.stringify({ type: "hello", version: PROTOCOL_VERSION, name: id })));
   }
-  const setup: MatchSetup = { stage: WINGS_STAGE, match: { ...DEFAULT_MATCH, players: 2, stocks: 2 }, params: DEFAULT_PARAMS };
+  for (let i = 0; i < (opts.bots ?? 0); i++) route(room.receive("a", JSON.stringify({ type: "addBot" })));
+  const players = 2 + (opts.bots ?? 0);
+  const setup: MatchSetup = { stage: WINGS_STAGE, match: { ...DEFAULT_MATCH, players, stocks: 2 }, params: DEFAULT_PARAMS };
   route(room.receive("a", JSON.stringify({ type: "start", setup })));
 
   // Each loop = 1/60 s: network delivers, the relay finalizes a step, each
@@ -89,7 +93,6 @@ export function playOnline(opts: {
     flush();
     route(room.advance());
     for (const s of sessions.values()) {
-      s.frame();
       s.step();
       opts.sample?.(s);
     }

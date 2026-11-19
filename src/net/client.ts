@@ -26,7 +26,7 @@ export class NetClient implements MatchTransport {
   inputs: string[] = [];
 
   /** Called when a match starts, and for every official step. */
-  onStart?: (setup: MatchSetup, you: number) => void;
+  onStart?: (setup: MatchSetup, you: number, drive: number[]) => void;
   onTick?: (t: number, changes: [number, string][]) => void;
   onDesync?: (step: number) => void;
   /** The host ended the match (back to the lobby). */
@@ -81,9 +81,18 @@ export class NetClient implements MatchTransport {
     this.send({ type: "lobby" });
   }
 
-  /** My input from step `tick` on. Only call when it changes. */
-  sendInput(tick: number, input: string) {
-    this.send({ type: "input", tick, input });
+  /** An input for `fighter` (mine, or a bot I drive) from step `tick` on. Only call when it changes. */
+  sendInput(tick: number, input: string, fighter: number) {
+    this.send({ type: "input", tick, input, fighter });
+  }
+
+  /** Host, in the lobby: add or remove a bot seat. */
+  addBot() {
+    this.send({ type: "addBot" });
+  }
+
+  removeBot() {
+    this.send({ type: "removeBot" });
   }
 
   /** My state fingerprint after step `step` (the relay compares everyone's). */
@@ -118,7 +127,7 @@ export class NetClient implements MatchTransport {
         this.lastStep = -1;
         this.inputs = m.fighters.map(() => "1");
         this.fighters = m.fighters;
-        this.onStart?.(m.setup, m.you);
+        this.onStart?.(m.setup, m.you, m.drive);
         break;
       case "tick":
         this.lastStep = m.t;

@@ -221,6 +221,15 @@ To try it: `npm run relay` and `npm run dev`, two tabs, panel → Online:
 create room in one, join with the code in the other, host starts. Online,
 everyone uses the arrow keys.
 
+**Bots online:** the host can add/remove bot seats in the lobby (Online →
+add bot). The host's browser runs them and sends their inputs through the
+relay like a player's (the relay only accepts bot inputs from the host); to
+everyone else a bot is just another remote player. Each bot thinks once per
+step; on a rollback the host reuses the decision it already sent. If the host
+disconnects mid-match, their bots go idle. Note: bots change input far more
+often than people (~17×/s), so non-host players see more rollbacks when
+playing against bots.
+
 ## Juice (camera, shake, final-KO replay)
 
 All presentation; none of it touches the sim. The panel's "Juice" section

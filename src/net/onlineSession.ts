@@ -26,7 +26,8 @@ import { HASH_EVERY, type MatchSetup } from "./protocol";
 
 /** What the session needs from the network. NetClient implements it. */
 export interface MatchTransport {
-  sendInput(step: number, input: string): void;
+  /** An input for `fighter` (mine, or a bot I drive) from `step` on. */
+  sendInput(step: number, input: string, fighter: number): void;
   sendHash(step: number, hash: string): void;
 }
 
@@ -61,14 +62,13 @@ export class OnlineSession implements Session {
   private newest = -1; // newest official step received
   /** Inputs actually used for each simulated step past `confirmed` (to detect mispredictions). */
   private used = new Map<number, string>();
-  /** My own input for each step I've simulated (what I sent the relay). */
-  private mine = new Map<number, string>();
+  /** What I decided for the fighters I drive, per step (what I sent the relay): step → fighter → input. */
+  private mine = new Map<number, Map<number, string>>();
   /** State at the start of each step past `confirmed` (for rewinding). */
   private snapshots = new Map<number, SimState>();
   /** Steps 0..confirmed-1 were simulated with official inputs and are final. */
   private confirmed = 0;
-  private localNow = IDLE; // my current input, sampled each frame
-  private lastSent = IDLE;
+  private lastSent = new Map<number, string>(); // per driven fighter
   private recorder: Recorder;
 
   /** Inputs (one char per fighter) of the newest simulated step. For tests and debugging. */
@@ -83,7 +83,8 @@ export class OnlineSession implements Session {
     setup: MatchSetup,
     readonly you: number,
     private names: string[],
-    private local: InputSource,
+    /** Who drives each of the fighters this browser controls: me (keyboard), plus bots if I host. */
+    private sources: Map<number, InputSource>,
     private transport: MatchTransport,
     private room = "",
     private rtt: () => number | null = () => null,
@@ -113,11 +114,6 @@ export class OnlineSession implements Session {
 
   // ---- per frame / per step ---------------------------------------------------
 
-  /** Once per rendered frame: sample my input (applied at the next present step). */
-  frame() {
-    if (!this.disconnected) this.localNow = encodeInput(this.local.next(this.sim.view(), this.sim));
-  }
-
   /**
    * Fold in new official steps (rewinding if a prediction was wrong), then
    * advance the present toward its target: about one round trip ahead of the
@@ -143,11 +139,19 @@ export class OnlineSession implements Session {
     const s = this.sim.tick;
     if (s - this.confirmed >= MAX_PREDICTION) return false; // connection trouble: stall, don't guess wildly
     if (!this.mine.has(s)) {
-      this.mine.set(s, this.localNow);
-      if (this.localNow !== this.lastSent) {
-        this.transport.sendInput(s, this.localNow); // for this very step
-        this.lastSent = this.localNow;
+      // First time at this step: ask each source once (bots think exactly once per
+      // step; on a rewind we reuse this decision), and send what changed.
+      const view = this.sim.view();
+      const decided = new Map<number, string>();
+      for (const [fighter, source] of this.sources) {
+        const input = this.disconnected ? IDLE : encodeInput(source.next(view, this.sim));
+        decided.set(fighter, input);
+        if (input !== (this.lastSent.get(fighter) ?? IDLE)) {
+          this.transport.sendInput(s, input, fighter); // for this very step
+          this.lastSent.set(fighter, input);
+        }
       }
+      this.mine.set(s, decided);
     }
     this.runStep(s);
     return true;
@@ -157,9 +161,12 @@ export class OnlineSession implements Session {
   private inputsFor(s: number): string {
     const known = this.official.get(s);
     if (known !== undefined) return known;
-    // Prediction: everyone keeps their latest official input, except me: I know mine.
+    // Prediction: everyone keeps their latest official input, except the fighters
+    // I drive: I know theirs.
     const inputs = this.lastOfficial.split("");
-    inputs[this.you] = this.mine.get(s) ?? this.lastSent;
+    for (const fighter of this.sources.keys()) {
+      inputs[fighter] = this.mine.get(s)?.get(fighter) ?? this.lastSent.get(fighter) ?? IDLE;
+    }
     return inputs.join("");
   }
 

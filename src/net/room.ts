@@ -28,13 +28,22 @@ export interface Outgoing {
 interface Conn {
   name: string;
   slot: number | null; // null until "hello"
-  fighter: number | null; // during a match: which fighter this connection drives
+  fighter: number | null; // during a match: this player's own fighter
+  drives: number[]; // during a match: fighters whose inputs this connection may send
+}
+
+/** A seat in the room: a connected player, or a bot (no connection; the host drives it). */
+interface Seat {
+  slot: number;
+  name: string;
+  conn: string | null; // null = bot
 }
 
 const IDLE = encodeInput(NO_INPUT);
 
 export class RoomCore {
   private conns = new Map<string, Conn>();
+  private bots = new Map<number, string>(); // slot → name
   phase: "lobby" | "match" = "lobby";
   private setup: MatchSetup | null = null;
   /** The next step to finalize. Steps before it are final and broadcast. */
@@ -54,7 +63,7 @@ export class RoomCore {
   }
 
   connect(id: string): Outgoing[] {
-    this.conns.set(id, { name: "player", slot: null, fighter: null });
+    this.conns.set(id, { name: "player", slot: null, fighter: null, drives: [] });
     return [];
   }
 
@@ -62,8 +71,8 @@ export class RoomCore {
     const c = this.conns.get(id);
     this.conns.delete(id);
     if (!c) return [];
-    // A fighter whose player left goes idle (later: a bot takes over).
-    if (this.phase === "match" && c.fighter !== null) this.schedule(c.fighter, this.nextStep, IDLE);
+    // Fighters this player drove (their own, and bots if they hosted) go idle.
+    if (this.phase === "match") for (const f of c.drives) this.schedule(f, this.nextStep, IDLE);
     if (this.conns.size === 0) this.reset();
     return c.slot === null ? [] : [this.roster()];
   }
@@ -89,28 +98,36 @@ export class RoomCore {
       case "start": {
         if (!this.isHost(id)) return [error(id, "only the host can start")];
         if (this.phase !== "lobby") return [error(id, "already in a match")];
-        const seated = this.seated();
-        if (seated.length < 2) return [error(id, "need at least 2 players")];
-        if (m.setup.match.players !== seated.length) return [error(id, `setup is for ${m.setup.match.players} players, ${seated.length} are here`)];
+        const seats = this.seats();
+        if (seats.length < 2) return [error(id, "need at least 2 players (add a bot?)")];
+        if (m.setup.match.players !== seats.length) return [error(id, `setup is for ${m.setup.match.players} players, ${seats.length} are here`)];
         this.setup = m.setup;
         this.phase = "match";
         this.nextStep = 0;
         this.pending.clear();
-        this.inputs = seated.map(() => IDLE);
+        this.inputs = seats.map(() => IDLE);
         this.hashes.clear();
         this.desyncReported = false;
-        const fighters = seated.map(([, conn]) => conn.slot!);
-        const out: Outgoing[] = seated.map(([connId, conn], i) => {
+        // Fighter i = the i-th seat by slot. The host drives every bot.
+        const fighters = seats.map((s) => s.slot);
+        const botFighters = seats.flatMap((s, i) => (s.conn === null ? [i] : []));
+        const out: Outgoing[] = [];
+        seats.forEach((s, i) => {
+          if (s.conn === null) return;
+          const conn = this.conns.get(s.conn)!;
           conn.fighter = i;
-          return { to: connId, msg: { type: "start", setup: this.setup!, fighters, you: i } };
+          conn.drives = s.conn === id ? [i, ...botFighters] : [i];
+          out.push({ to: s.conn, msg: { type: "start", setup: this.setup!, fighters, you: i, drive: conn.drives } });
         });
         return [...out, this.roster()];
       }
       case "input": {
         if (this.phase !== "match" || c.fighter === null) return [];
+        const fighter = m.fighter ?? c.fighter;
+        if (!c.drives.includes(fighter)) return [error(id, `you can't send inputs for fighter ${fighter}`)];
         if (m.tick > this.nextStep + MAX_INPUT_LEAD) return [error(id, "input scheduled too far ahead")];
         // Too late for its step? It takes effect at the next open step instead.
-        this.schedule(c.fighter, Math.max(m.tick, this.nextStep), m.input);
+        this.schedule(fighter, Math.max(m.tick, this.nextStep), m.input);
         return [];
       }
       case "hash": {
@@ -126,6 +143,22 @@ export class RoomCore {
           return [{ to: "all", msg: { type: "desync", step: m.step, hashes: [...reports] } }];
         }
         return [];
+      }
+      case "addBot": {
+        if (!this.isHost(id)) return [error(id, "only the host can add bots")];
+        if (this.phase !== "lobby") return [error(id, "can't change seats during a match")];
+        const slot = this.freeSlot();
+        if (slot === null) return [error(id, `room is full (${MAX_PLAYERS} players)`)];
+        this.bots.set(slot, `bot ${this.bots.size + 1}`);
+        return [this.roster()];
+      }
+      case "removeBot": {
+        if (!this.isHost(id)) return [error(id, "only the host can remove bots")];
+        if (this.phase !== "lobby") return [error(id, "can't change seats during a match")];
+        const last = Math.max(-1, ...this.bots.keys());
+        if (last < 0) return [error(id, "there are no bots")];
+        this.bots.delete(last);
+        return [this.roster()];
       }
       case "ping":
         return [{ to: id, msg: { type: "pong", id: m.id } }];
@@ -160,24 +193,31 @@ export class RoomCore {
     at.set(fighter, input); // latest wins within a step
   }
 
-  /** Joined connections, in slot order. */
-  private seated(): [string, Conn][] {
-    return [...this.conns].filter(([, c]) => c.slot !== null).sort(([, a], [, b]) => a.slot! - b.slot!);
+  /** Every seat (joined players and bots), in slot order. */
+  private seats(): Seat[] {
+    const players: Seat[] = [...this.conns].flatMap(([id, c]) => (c.slot === null ? [] : [{ slot: c.slot, name: c.name, conn: id }]));
+    const bots: Seat[] = [...this.bots].map(([slot, name]) => ({ slot, name, conn: null }));
+    return [...players, ...bots].sort((a, b) => a.slot - b.slot);
   }
 
-  /** The host is whoever holds the lowest slot, so hosting passes on automatically. */
+  /** The host is the player (not bot) in the lowest slot, so hosting passes on automatically. */
+  private hostId(): string | null {
+    return this.seats().find((s) => s.conn !== null)?.conn ?? null;
+  }
+
   private isHost(id: string): boolean {
-    return this.seated()[0]?.[0] === id;
+    return this.hostId() === id;
   }
 
   private freeSlot(): number | null {
-    const taken = new Set(this.seated().map(([, c]) => c.slot));
+    const taken = new Set(this.seats().map((s) => s.slot));
     for (let s = 0; s < MAX_PLAYERS; s++) if (!taken.has(s)) return s;
     return null;
   }
 
   private roster(): Outgoing {
-    const players: RosterEntry[] = this.seated().map(([, c], i) => ({ slot: c.slot!, name: c.name, host: i === 0 }));
+    const host = this.hostId();
+    const players: RosterEntry[] = this.seats().map((s) => ({ slot: s.slot, name: s.name, host: s.conn !== null && s.conn === host, bot: s.conn === null }));
     return { to: "all", msg: { type: "roster", phase: this.phase, players } };
   }
 
@@ -185,12 +225,17 @@ export class RoomCore {
     this.phase = "lobby";
     this.setup = null;
     this.pending.clear();
-    for (const c of this.conns.values()) c.fighter = null;
+    for (const c of this.conns.values()) {
+      c.fighter = null;
+      c.drives = [];
+    }
   }
 
+  /** Everyone left: start fresh (bots go too). */
   private reset() {
     this.toLobby();
     this.nextStep = 0;
+    this.bots.clear();
   }
 }
 

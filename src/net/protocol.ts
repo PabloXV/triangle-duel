@@ -17,7 +17,7 @@ import type { Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { MatchOptions } from "../sim/sim";
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const MAX_PLAYERS = 4;
 export const MAX_MESSAGE_BYTES = 64 * 1024;
 /** Clients report a state fingerprint every this many steps. */
@@ -39,6 +39,7 @@ export interface RosterEntry {
   slot: number;
   name: string;
   host: boolean;
+  bot: boolean; // a bot seat, driven by the host's browser
 }
 
 export type ClientMsg =
@@ -46,8 +47,11 @@ export type ClientMsg =
   | { type: "hello"; version: number; name: string }
   /** Host, in the lobby: start a match with everyone seated. */
   | { type: "start"; setup: MatchSetup }
-  /** During a match: my input (encodeInput char) from step `tick` on. */
-  | { type: "input"; tick: number; input: string }
+  /** During a match: an input (encodeInput char) from step `tick` on, for my fighter or (host) a bot's. */
+  | { type: "input"; tick: number; input: string; fighter?: number }
+  /** Host, in the lobby: add or remove a bot seat. */
+  | { type: "addBot" }
+  | { type: "removeBot" }
   /** During a match: my state fingerprint (Sim.hash) after step `step`, for desync detection. */
   | { type: "hash"; step: number; hash: string }
   /** Round-trip time measurement. */
@@ -60,8 +64,12 @@ export type ServerMsg =
   | { type: "welcome"; room: string; slot: number }
   /** Who's here, sent whenever it changes. */
   | { type: "roster"; phase: "lobby" | "match"; players: RosterEntry[] }
-  /** A match begins at step 0. `fighters[i]` = the lobby slot playing fighter i; `you` = your fighter index. */
-  | { type: "start"; setup: MatchSetup; fighters: number[]; you: number }
+  /**
+   * A match begins at step 0. `fighters[i]` = the lobby slot playing fighter i;
+   * `you` = your fighter; `drive` = fighters whose inputs you send (yours, plus
+   * the bots if you're the host).
+   */
+  | { type: "start"; setup: MatchSetup; fighters: number[]; you: number; drive: number[] }
   /** Step `t` is final. `c` = [fighter, input] pairs whose input changes at step t. */
   | { type: "tick"; t: number; c?: [number, string][] }
   | { type: "pong"; id: number }
@@ -97,8 +105,14 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       if (!isObj(s) || !isObj(s.stage) || !isObj(s.match) || !isObj(s.params) || !isInt(s.match.players)) return null;
       return { type: "start", setup: s as unknown as MatchSetup };
     }
-    case "input":
-      return isInt(m.tick) && m.tick >= 0 && isInputChar(m.input) ? { type: "input", tick: m.tick, input: m.input } : null;
+    case "input": {
+      if (!isInt(m.tick) || m.tick < 0 || !isInputChar(m.input)) return null;
+      if (m.fighter === undefined) return { type: "input", tick: m.tick, input: m.input };
+      return isInt(m.fighter) && m.fighter >= 0 ? { type: "input", tick: m.tick, input: m.input, fighter: m.fighter } : null;
+    }
+    case "addBot":
+    case "removeBot":
+      return { type: m.type };
     case "hash":
       return isInt(m.step) && m.step >= 0 && typeof m.hash === "string" && /^[0-9a-f]{8}$/.test(m.hash)
         ? { type: "hash", step: m.step, hash: m.hash }

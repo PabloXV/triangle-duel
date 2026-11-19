@@ -52,6 +52,8 @@ export interface PanelActions {
   netCreate(): void;
   netJoin(): void;
   netStart(): void;
+  netAddBot(): void;
+  netRemoveBot(): void;
   netLobby(): void;
   netLeave(): void;
 }
@@ -72,6 +74,8 @@ export function buildPanel(params: Params, ui: UiState, actions: PanelActions) {
   online.add(ui, "netRoom").name("room code").listen(); // shows the code after "create room"
   online.add(actions, "netCreate").name("create room");
   online.add(actions, "netJoin").name("join room");
+  online.add(actions, "netAddBot").name("add bot (host)");
+  online.add(actions, "netRemoveBot").name("remove bot (host)");
   online.add(actions, "netStart").name("start match (host)");
   online.add(actions, "netLobby").name("end match (host)");
   online.add(actions, "netLeave").name("leave room");
