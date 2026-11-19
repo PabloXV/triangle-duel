@@ -12,7 +12,8 @@
     "probe:recovery": "tsx scripts/probe-recovery.ts",
     "probe:release": "tsx scripts/probe-release.ts",
     "bots": "tsx scripts/bot-arena.ts",
-    "verify": "tsx scripts/verify-recording.ts"
+    "verify": "tsx scripts/verify-recording.ts",
+    "cross-browser": "npm run build && tsx scripts/cross-browser.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-deterministic-compat": "^0.21.0",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "playwright-core": "^1.65.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",

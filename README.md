@@ -10,6 +10,7 @@ npm test           # sim tests (Node, headless)
 npm run probe:*    # diagnostic experiments, see scripts/
 npm run bots       # headless bot matches with win/loss stats (--experiments for more)
 npm run verify -- f.json  # check a downloaded match recording replays exactly
+npm run cross-browser    # replay the fixture match in Node, Chrome, Firefox, WebKit and compare
 ```
 
 Controls: P1 `←`/`→` rotate, `↓` charge. P2 (if human) `A`/`D` rotate, `S` charge.
@@ -191,6 +192,17 @@ per player per tick (a 1-minute 2-player match is ~4 KB). A state fingerprint
 diverges, not just "the ending differs". The panel's Misc section can watch,
 download, and load matches; `npm run verify -- file.json` replays one in Node.
 A match recorded in Chrome verified exactly in Node.
+
+### Cross-engine check
+
+`npm run cross-browser` replays `tests/fixtures/match-4p.json` (a 4-bot match
+with a mid-match param change) in Node, Chrome (V8), Firefox (SpiderMonkey) and
+WebKit (JavaScriptCore) via `verify.html`, and compares final fingerprints.
+`tests/fixture.test.ts` locks the expected hash. Result (Nov 2026, macOS):
+all four engines identical. Note: on this Mac the engines' *native*
+`Math.sin`/`cos` also agreed, so the fdlibm port is insurance for other
+platforms (Windows/Linux/Android libms differ) rather than a fix for an
+observed mismatch. One-time setup: `npx playwright-core install firefox webkit`.
 
 ### Save / restore (for rollback)
 
