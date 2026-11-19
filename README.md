@@ -188,10 +188,23 @@ The logic is plain TypeScript in `src/net/room.ts` (tested in Node);
 `server/room-do.ts` only connects WebSockets and the clock to it.
 `npm run relay:smoke` runs the real local Workers runtime with two clients.
 
-**Status (C1):** lobby, room codes, start, and the official stream work end to
-end in the browser (panel → Online; run `npm run relay` alongside
-`npm run dev`). Playing the match online (an online Session simulating the
-stream, then rollback) is C2.
+**Playing online (lockstep):** `src/net/onlineSession.ts` runs your own full
+copy of the match, stepping it only with the relay's official inputs. Every
+client does the same, so every copy plays out identically; only inputs (and a
+fingerprint every second) cross the network. If two clients' fingerprints
+ever differ, the relay tells everyone the exact step (`DESYNC at step N`).
+Online matches are recordings like any other: watch or download them after.
+Trade-off: even your own input waits for the round trip (3 steps of lead +
+network delay, plus 1 step of jitter buffer). Rollback is next.
+
+`tests/online.test.ts` runs the real relay logic and two OnlineSessions in one
+process over a fake network (equal, lopsided and jittery latency) with bots
+playing: both copies must end bit-identical, and a client with a corrupted
+setup must be caught as a desync at the first fingerprint.
+
+To try it: `npm run relay` and `npm run dev`, two tabs, panel → Online:
+create room in one, join with the code in the other, host starts. Online,
+everyone uses the arrow keys.
 
 ## Juice (camera, shake, final-KO replay)
 

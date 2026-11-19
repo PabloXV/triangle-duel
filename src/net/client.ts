@@ -1,9 +1,10 @@
 // Browser side of the relay connection: one WebSocket to a room, the lobby
-// state, and the official tick stream. C2 will drive an online Session from
-// onTick; for now the game shows what arrives.
+// state, and the official tick stream. main.ts forwards ticks to the
+// OnlineSession, which uses this as its MatchTransport.
 
 import { decodeInput } from "../sim/inputCodec";
 import type { Input } from "../sim/types";
+import type { MatchTransport } from "./onlineSession";
 import { PROTOCOL_VERSION, type ClientMsg, type MatchSetup, type RosterEntry, type ServerMsg } from "./protocol";
 
 /** Where the relay lives. Dev default: `npm run relay` on this machine. */
@@ -11,7 +12,7 @@ export const RELAY_URL: string = import.meta.env.VITE_RELAY_URL ?? "ws://localho
 
 export type NetPhase = "offline" | "connecting" | "lobby" | "match";
 
-export class NetClient {
+export class NetClient implements MatchTransport {
   phase: NetPhase = "offline";
   room = "";
   slot: number | null = null;
@@ -27,6 +28,11 @@ export class NetClient {
   /** Called when a match starts, and for every official step. */
   onStart?: (setup: MatchSetup, you: number) => void;
   onTick?: (t: number, changes: [number, string][]) => void;
+  onDesync?: (step: number) => void;
+  /** The host ended the match (back to the lobby). */
+  onLobby?: () => void;
+  /** During a match: the lobby slot of each fighter. */
+  fighters: number[] = [];
 
   private ws: WebSocket | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
@@ -80,6 +86,16 @@ export class NetClient {
     this.send({ type: "input", tick, input });
   }
 
+  /** My state fingerprint after step `step` (the relay compares everyone's). */
+  sendHash(step: number, hash: string) {
+    this.send({ type: "hash", step, hash });
+  }
+
+  /** Display name of fighter `i` in the current match. */
+  nameOf(i: number): string {
+    return this.roster.find((p) => p.slot === this.fighters[i])?.name ?? `P${i + 1}`;
+  }
+
   /** The latest official input of fighter `i`. */
   inputOf(i: number): Input | null {
     const c = this.inputs[i];
@@ -101,6 +117,7 @@ export class NetClient {
         this.you = m.you;
         this.lastStep = -1;
         this.inputs = m.fighters.map(() => "1");
+        this.fighters = m.fighters;
         this.onStart?.(m.setup, m.you);
         break;
       case "tick":
@@ -112,6 +129,7 @@ export class NetClient {
         this.phase = "lobby";
         this.you = null;
         this.setup = null;
+        this.onLobby?.();
         break;
       case "pong": {
         const sent = this.pingSent.get(m.id);
@@ -119,6 +137,9 @@ export class NetClient {
         if (sent !== undefined) this.rttMs = performance.now() - sent;
         break;
       }
+      case "desync":
+        this.onDesync?.(m.step);
+        break;
       case "error":
         this.error = m.message;
         break;

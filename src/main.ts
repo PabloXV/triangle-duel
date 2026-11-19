@@ -4,15 +4,16 @@
 
 import { BotSource, DEFAULT_BOT, HeuristicBot } from "./bots/heuristic";
 import { CameraRig } from "./camera";
-import { BINDINGS, KeyboardSource, installKeyboard, readInput } from "./input";
+import { BINDINGS, KeyboardSource, installKeyboard } from "./input";
 import { FinalKoReplay, History } from "./koReplay";
 import { NetClient } from "./net/client";
+import { OnlineSession } from "./net/onlineSession";
 import { ROOM_CODE, randomRoomCode } from "./net/protocol";
 import { buildPanel, loadParams, type UiState } from "./panel";
 import { Renderer } from "./render";
 import { LiveSession, PlaybackSession, type InputSource, type Session } from "./session";
 import { WINGS_STAGE } from "./sim/geometry";
-import { encodeInput, type Recording } from "./sim/recording";
+import type { Recording } from "./sim/recording";
 import { DEFAULT_MATCH, DT, initPhysics, type FighterView, type SimEvent } from "./sim/sim";
 
 await initPhysics();
@@ -87,9 +88,13 @@ function watch(recording: Recording) {
   begin(new PlaybackSession(recording));
 }
 
-/** The current match if it has a recording (works mid-match), else the previous one. */
+/**
+ * "Last match" = the most recently ended one (e.g. the online match you just
+ * finished, not the local match that auto-started after it). Falls back to the
+ * current match if none has ended yet.
+ */
 function latestRecording(): Recording | null {
-  return session.recording() ?? lastRecording;
+  return lastRecording ?? session.recording();
 }
 
 function watchLast() {
@@ -124,12 +129,9 @@ function loadFile() {
   input.click();
 }
 
-// ---- online (C1: lobby + the official input stream; C2 will play the match) ----
+// ---- online ----------------------------------------------------------------
 
 const net = new NetClient();
-/** Schedule my inputs this many steps ahead of the relay's clock (~50 ms). */
-const INPUT_LEAD = 3;
-let lastSentInput = "";
 
 function netJoin(code = ui.netRoom.trim().toUpperCase()) {
   if (!ROOM_CODE.test(code)) {
@@ -149,18 +151,25 @@ function netStart() {
   net.start({ stage: WINGS_STAGE, match, params: structuredClone(params) });
 }
 
-net.onStart = () => (lastSentInput = "");
+// The relay started a match: play it as an OnlineSession, driven by its stream.
+// Online, you always use the arrow keys (P1's binding), whichever fighter you are.
+net.onStart = (setup, you) => {
+  const names = Array.from({ length: setup.match.players }, (_, i) => net.nameOf(i));
+  begin(new OnlineSession(setup, you, names, new KeyboardSource(0), net, net.room, () => net.rttMs));
+};
+net.onTick = (t, changes) => {
+  if (session instanceof OnlineSession) session.receiveTick(t, changes);
+};
+net.onDesync = (step) => {
+  if (session instanceof OnlineSession) session.receiveDesync(step);
+};
+net.onLobby = () => {
+  if (session instanceof OnlineSession) restart(); // host ended the match: back to local play
+};
 
-/** During an online match: send P1's keys (arrows) to the relay when they change. */
-function pumpNetInput() {
-  if (net.phase !== "match") return;
-  const code = encodeInput(readInput(0));
-  if (code === lastSentInput) return;
-  lastSentInput = code;
-  net.sendInput(net.lastStep + 1 + INPUT_LEAD, code);
-}
+const inOnlineMatch = () => session instanceof OnlineSession && !session.disconnected;
 
-const ARROWS = ["←", "", "→"];
+/** Status line while in a room but not in a match (the OnlineSession has its own). */
 function netStatusLine(): string | undefined {
   if (net.phase === "offline") return net.error ? `ONLINE — ${net.error}` : undefined;
   const ping = net.rttMs === null ? "" : ` · ping ${Math.round(net.rttMs)} ms`;
@@ -169,14 +178,7 @@ function netStatusLine(): string | undefined {
     const names = net.roster.map((p) => p.name + (p.host ? "*" : "") + (p.slot === net.slot ? " (you)" : "")).join(", ");
     return `ONLINE ${net.room} — lobby: ${names}${ping}`;
   }
-  const inputs = net.inputs
-    .map((_, i) => {
-      const inp = net.inputOf(i)!;
-      const keys = ARROWS[inp.turn + 1] + (inp.charge ? "↓" : "");
-      return `P${i + 1}${i === net.you ? "(you)" : ""} ${keys || "·"}`;
-    })
-    .join("  ");
-  return `ONLINE ${net.room} — step ${net.lastStep} — ${inputs}${ping}`;
+  return undefined;
 }
 
 // ---- presentation reacting to the sim ---------------------------------------
@@ -210,7 +212,7 @@ function startKoReplay() {
 
 restart();
 buildPanel(params, ui, {
-  restart,
+  restart: userRestart,
   controllersChanged,
   watchLast,
   downloadLast,
@@ -221,9 +223,23 @@ buildPanel(params, ui, {
   netLobby: () => net.backToLobby(),
   netLeave: () => net.leave(),
 });
+/** R / the panel button: restart local play. Not mid online match (the host ends it). */
+function userRestart() {
+  if (!inOnlineMatch()) restart();
+}
 installKeyboard((code) => {
-  if (code === "KeyR") restart();
+  if (code === "KeyR") userRestart();
 });
+
+const KEYS = ["←/→ rotate, ↓ charge", "A/D rotate, S charge"]; // by keyboard binding
+/** Control hints for the humans on this machine. Online, you always use the arrows. */
+function controlHints(players: number[]): string[] {
+  if (session instanceof OnlineSession) {
+    const end = session.disconnected ? "R to leave" : "host ends the match from the panel";
+    return [`you (P${session.you + 1}): ${KEYS[0]}`, end];
+  }
+  return [...players.filter((i) => session.isHuman(i)).map((i) => `P${i + 1}: ${KEYS[i]}`), "R restart"];
+}
 
 // Fixed timestep: the sim always advances in exact 1/60 s ticks regardless of
 // frame rate. Leftover time carries to the next frame; the renderer
@@ -241,7 +257,8 @@ function frame(now: number) {
   last = now;
   const dt = Math.min((now - lastFrame) / 1000, 0.1);
   lastFrame = now;
-  pumpNetInput();
+  if (session instanceof OnlineSession && net.phase === "offline") session.disconnected = true;
+  session.frame?.();
   const netLine = netStatusLine();
   ui.netStatus = net.error ?? net.phase;
   const sim = session.sim;
@@ -280,9 +297,18 @@ function frame(now: number) {
     replay: koReplay !== null,
     debug: ui.debug,
     labels: players.map((i) => session.describe(i)),
-    humans: players.map((i) => session.isHuman(i)),
+    controls: controlHints(players),
     totalStocks: sim.match.stocks,
     status: session.status() ?? netLine,
   });
 }
 requestAnimationFrame(frame);
+
+// Debug handle (browser console, and the two-tab online test): what's running now.
+Object.assign(window, {
+  triangleDuel: {
+    tick: () => session.sim.tick,
+    status: () => session.status(),
+    recording: () => session.recording(),
+  },
+});

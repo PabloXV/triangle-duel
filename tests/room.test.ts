@@ -158,3 +158,32 @@ describe("room: the official input stream", () => {
     expect(room.advance()[0].msg).toEqual({ type: "tick", t: 0 });
   });
 });
+
+describe("room: desync detection", () => {
+  const hash = (step: number, h: string) => send({ type: "hash", step, hash: h });
+
+  it("matching fingerprints: nothing to report", () => {
+    const { room } = started(2);
+    for (let i = 0; i < 61; i++) room.advance();
+    expect(room.receive("a", hash(60, "aaaaaaaa"))).toEqual([]);
+    expect(room.receive("b", hash(60, "aaaaaaaa"))).toEqual([]);
+  });
+
+  it("differing fingerprints: everyone is told, once, with each fighter's hash", () => {
+    const { room } = started(2);
+    for (let i = 0; i < 121; i++) room.advance();
+    room.receive("a", hash(60, "aaaaaaaa"));
+    expect(room.receive("b", hash(60, "bbbbbbbb"))).toEqual([
+      { to: "all", msg: { type: "desync", step: 60, hashes: [[0, "aaaaaaaa"], [1, "bbbbbbbb"]] } },
+    ]);
+    room.receive("a", hash(120, "cccccccc"));
+    expect(room.receive("b", hash(120, "dddddddd"))).toEqual([]); // already reported
+  });
+
+  it("rejects fingerprints for steps that aren't final yet, and malformed hashes", () => {
+    const { room } = started(2);
+    room.advance();
+    expect(room.receive("a", hash(500, "aaaaaaaa"))[0].msg).toMatchObject({ type: "error" });
+    expect(room.receive("a", hash(1, "not-hex!"))[0].msg).toEqual({ type: "error", message: "malformed message" });
+  });
+});

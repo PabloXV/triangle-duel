@@ -7,6 +7,7 @@
 import { encodeInput } from "../sim/inputCodec";
 import { NO_INPUT } from "../sim/types";
 import {
+  HASH_EVERY,
   MAX_INPUT_LEAD,
   MAX_PLAYERS,
   PROTOCOL_VERSION,
@@ -42,6 +43,9 @@ export class RoomCore {
   private inputs: string[] = [];
   /** Scheduled changes: step → fighter → input. */
   private pending = new Map<number, Map<number, string>>();
+  /** Reported fingerprints: step → fighter → hash. Only recent steps are kept. */
+  private hashes = new Map<number, Map<number, string>>();
+  private desyncReported = false;
 
   constructor(readonly code: string) {}
 
@@ -93,6 +97,8 @@ export class RoomCore {
         this.nextStep = 0;
         this.pending.clear();
         this.inputs = seated.map(() => IDLE);
+        this.hashes.clear();
+        this.desyncReported = false;
         const fighters = seated.map(([, conn]) => conn.slot!);
         const out: Outgoing[] = seated.map(([connId, conn], i) => {
           conn.fighter = i;
@@ -105,6 +111,20 @@ export class RoomCore {
         if (m.tick > this.nextStep + MAX_INPUT_LEAD) return [error(id, "input scheduled too far ahead")];
         // Too late for its step? It takes effect at the next open step instead.
         this.schedule(c.fighter, Math.max(m.tick, this.nextStep), m.input);
+        return [];
+      }
+      case "hash": {
+        if (this.phase !== "match" || c.fighter === null) return [];
+        if (m.step > this.nextStep) return [error(id, "fingerprint for a step that isn't final yet")];
+        let reports = this.hashes.get(m.step);
+        if (!reports) this.hashes.set(m.step, (reports = new Map()));
+        reports.set(c.fighter, m.hash);
+        for (const step of this.hashes.keys()) if (step < m.step - 10 * HASH_EVERY) this.hashes.delete(step);
+        // Any two clients disagreeing means their matches have diverged. Say so once.
+        if (new Set(reports.values()).size > 1 && !this.desyncReported) {
+          this.desyncReported = true;
+          return [{ to: "all", msg: { type: "desync", step: m.step, hashes: [...reports] } }];
+        }
         return [];
       }
       case "ping":

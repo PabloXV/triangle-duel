@@ -17,9 +17,11 @@ import type { Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { MatchOptions } from "../sim/sim";
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const MAX_PLAYERS = 4;
 export const MAX_MESSAGE_BYTES = 64 * 1024;
+/** Clients report a state fingerprint every this many steps. */
+export const HASH_EVERY = 60;
 /** How far ahead of the relay's clock a client may schedule an input (steps). */
 export const MAX_INPUT_LEAD = 120;
 /** Room codes: 4 letters, no easily-confused ones (I, L, O...). */
@@ -46,6 +48,8 @@ export type ClientMsg =
   | { type: "start"; setup: MatchSetup }
   /** During a match: my input (encodeInput char) from step `tick` on. */
   | { type: "input"; tick: number; input: string }
+  /** During a match: my state fingerprint (Sim.hash) after step `step`, for desync detection. */
+  | { type: "hash"; step: number; hash: string }
   /** Round-trip time measurement. */
   | { type: "ping"; id: number }
   /** Host: end the match, back to the lobby. */
@@ -62,6 +66,8 @@ export type ServerMsg =
   | { type: "tick"; t: number; c?: [number, string][] }
   | { type: "pong"; id: number }
   | { type: "lobby" }
+  /** Clients' fingerprints disagree: their matches have diverged. `hashes` = [fighter, hash]. */
+  | { type: "desync"; step: number; hashes: [number, string][] }
   | { type: "error"; message: string };
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -93,6 +99,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case "input":
       return isInt(m.tick) && m.tick >= 0 && isInputChar(m.input) ? { type: "input", tick: m.tick, input: m.input } : null;
+    case "hash":
+      return isInt(m.step) && m.step >= 0 && typeof m.hash === "string" && /^[0-9a-f]{8}$/.test(m.hash)
+        ? { type: "hash", step: m.step, hash: m.hash }
+        : null;
     case "ping":
       return isInt(m.id) ? { type: "ping", id: m.id } : null;
     case "lobby":

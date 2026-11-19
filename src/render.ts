@@ -9,13 +9,12 @@ const COLORS = ["#ff6b6b", "#4ecdc4", "#ffd93d", "#a78bfa"];
 export interface RenderOptions {
   debug: boolean;
   labels: string[]; // per fighter, for the debug overlay
-  humans: boolean[]; // per fighter: keyboard-controlled? (for the controls hint)
+  controls: string[]; // control hints for the bottom line, e.g. "P1: ←/→ rotate, ↓ charge"
   totalStocks: number; // stocks each player started with
   replay: boolean; // showing the final-KO replay: letterbox, no banner yet
   status?: string; // shown at the top center (e.g. "REPLAY")
 }
 
-const CONTROL_HINTS = ["P1: ←/→ rotate, ↓ charge", "P2: A/D rotate, S charge"];
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
@@ -224,8 +223,7 @@ export class Renderer {
 
     ctx.fillStyle = "#fff8";
     ctx.textAlign = "center";
-    const hints = CONTROL_HINTS.filter((_, i) => opts.humans[i]);
-    ctx.fillText([...hints, "R restart"].join("   ·   "), w / 2, h - 28);
+    ctx.fillText(opts.controls.join("   ·   "), w / 2, h - 28);
     this.drawStocks(fighters, opts.totalStocks, w / 2, h - 64);
 
     if (opts.status) {
