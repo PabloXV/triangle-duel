@@ -12,7 +12,8 @@
     "verify": "tsx scripts/verify-recording.ts",
     "cross-browser": "npm run build && tsx scripts/cross-browser.ts",
     "relay": "wrangler dev --port 8787",
-    "relay:smoke": "tsx scripts/relay-smoke.ts"
+    "relay:smoke": "tsx scripts/relay-smoke.ts",
+    "netsim": "tsx scripts/netsim.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-deterministic-compat": "^0.21.0",

@@ -188,19 +188,34 @@ The logic is plain TypeScript in `src/net/room.ts` (tested in Node);
 `server/room-do.ts` only connects WebSockets and the clock to it.
 `npm run relay:smoke` runs the real local Workers runtime with two clients.
 
-**Playing online (lockstep):** `src/net/onlineSession.ts` runs your own full
-copy of the match, stepping it only with the relay's official inputs. Every
-client does the same, so every copy plays out identically; only inputs (and a
-fingerprint every second) cross the network. If two clients' fingerprints
-ever differ, the relay tells everyone the exact step (`DESYNC at step N`).
-Online matches are recordings like any other: watch or download them after.
-Trade-off: even your own input waits for the round trip (3 steps of lead +
-network delay, plus 1 step of jitter buffer). Rollback is next.
+**Playing online (rollback):** `src/net/onlineSession.ts` runs your own full
+copy of the match on two timelines. *Confirmed* = steps the relay finalized
+(official inputs). *Present* = what's on screen, about one round trip + 2
+steps ahead: other players are predicted to keep their last input, and your
+own input applies immediately (and is sent for that same step). When official
+inputs differ from the prediction, the sim rewinds to that step (Sim.restore)
+and re-simulates to the present. Prediction is capped at 30 steps; past that
+it stalls instead of guessing. Recordings and desync fingerprints use only
+the confirmed timeline, so they mean the same on every client: if two
+clients ever differ, the relay tells everyone the exact step
+(`DESYNC at step N`). Online matches can be watched/downloaded after.
+
+Corrections are smoothed visually (`src/smoothing.ts`): after a rollback the
+drawn fighter glides to its corrected spot over ~80 ms instead of snapping.
+Presentation only, so it can't affect sync.
+
+`npm run netsim` measures rollback on simulated connections (bots playing).
+Typical: corrections of a fraction of a pixel to a few pixels, rare big ones
+(17–76 px; smoothing cuts the worst per-frame snap ~3×), and well under 1% CPU.
+Bots change input ~17×/s, several times more than people do, so real matches
+have proportionally fewer rollbacks.
 
 `tests/online.test.ts` runs the real relay logic and two OnlineSessions in one
-process over a fake network (equal, lopsided and jittery latency) with bots
-playing: both copies must end bit-identical, and a client with a corrupted
-setup must be caught as a desync at the first fingerprint.
+process over a fake network (`tests/onlineHarness.ts`; equal, lopsided,
+jittery and terrible latency) with bots playing: confirmed matches must end
+bit-identical, rollbacks must actually occur, late own inputs must be
+corrected, prediction must stay bounded, your own input must apply on the
+next step, and a client with a corrupted setup must be caught as a desync.
 
 To try it: `npm run relay` and `npm run dev`, two tabs, panel → Online:
 create room in one, join with the code in the other, host starts. Online,

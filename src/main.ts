@@ -11,6 +11,7 @@ import { OnlineSession } from "./net/onlineSession";
 import { ROOM_CODE, randomRoomCode } from "./net/protocol";
 import { buildPanel, loadParams, type UiState } from "./panel";
 import { Renderer } from "./render";
+import { CorrectionSmoother } from "./smoothing";
 import { LiveSession, PlaybackSession, type InputSource, type Session } from "./session";
 import { WINGS_STAGE } from "./sim/geometry";
 import type { Recording } from "./sim/recording";
@@ -36,6 +37,7 @@ const ui: UiState = {
 const renderer = new Renderer(document.getElementById("game") as HTMLCanvasElement);
 const camera = new CameraRig(WINGS_STAGE);
 const history = new History();
+const smoother = new CorrectionSmoother(); // glides rollback corrections (online only)
 
 let session: Session;
 let prev: FighterView[];
@@ -72,6 +74,7 @@ function begin(next: Session) {
   history.clear();
   koReplay = null;
   camera.reset();
+  smoother.reset();
 }
 
 /** Start a new live match (R). */
@@ -272,11 +275,20 @@ function frame(now: number) {
   } else {
     while (accumulator >= DT) {
       if (!session.step()) {
-        accumulator = 0; // nothing to do (finished playback): hold the last frame
+        accumulator = 0; // nothing to do (playback finished, or online and waiting for the relay)
         break;
       }
       prev = curr;
       curr = sim.view();
+      if (session instanceof OnlineSession) {
+        const c = session.takeCorrection();
+        if (c) {
+          // A rollback replaced the state we were drawing. Glide from the old picture
+          // (offset = before - after), and interpolate from the corrected state.
+          smoother.add(c.before, c.after);
+          prev = c.after;
+        }
+      }
       history.push({ views: curr, events: sim.events });
       accumulator -= DT;
       if (handleEvents(sim.events) && ui.finalKoReplay) {
@@ -286,8 +298,11 @@ function frame(now: number) {
     }
   }
 
-  // What to show: the KO replay's recorded frames, or the sim.
-  const shown = koReplay ? koReplay.current() : { prev, curr, alpha: accumulator / DT };
+  smoother.update(dt);
+  // What to show: the KO replay's recorded frames, or the sim (with rollback corrections smoothed).
+  const shown = koReplay
+    ? koReplay.current()
+    : { prev: smoother.apply(prev), curr: smoother.apply(curr), alpha: accumulator / DT };
   const inFrame = koReplay
     ? koReplay.focus.map((i) => shown.curr[i])
     : shown.curr.filter((f) => !f.ko && !f.eliminated);

@@ -66,8 +66,27 @@ export class Recorder {
     }
   }
 
+  /** Low-level: one step's inputs, already encoded (one char per player). */
+  addStep(encoded: string) {
+    this.inputs.push(encoded);
+  }
+
+  /** Low-level: the fingerprint of the state after `tick` steps. */
+  addChecksum(tick: number, hash: string) {
+    if (this.checksums.at(-1)?.tick !== tick) this.checksums.push({ tick, hash });
+  }
+
+  get ticks(): number {
+    return this.inputs.length;
+  }
+
   finish(sim: Sim): Recording {
-    if (this.checksums.at(-1)?.tick !== sim.tick) this.checksums.push({ tick: sim.tick, hash: sim.hash() });
+    this.addChecksum(sim.tick, sim.hash());
+    return this.build();
+  }
+
+  /** The recording so far. The last checksum should be for the current tick count. */
+  build(): Recording {
     return {
       format: RECORDING_FORMAT,
       stage: structuredClone(this.stage),
