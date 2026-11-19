@@ -15,7 +15,7 @@
 // Then a small controller turns "desired lean angle" into turn = -1/0/+1.
 // Tuned for the defaults (servo rotation + auto jump).
 
-import type { Platform, Stage } from "../sim/geometry";
+import { clamp, platformTop, type Platform, type Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { FighterView, Input } from "../sim/sim";
 
@@ -226,8 +226,6 @@ export class HeuristicBot {
 /** Extra height (m) to clear when jumping up onto a platform. */
 const CLIMB_CLEARANCE = 0.5;
 
-const platformTop = (p: Platform) => p.center.y + p.halfHeight;
-
 /** Is `a` standing on (or hopping just above) a platform clearly higher than `b`'s? */
 function isAbove(a: FighterView, b: FighterView, stage: Stage): boolean {
   const pa = platformUnder(a, stage);
@@ -302,7 +300,7 @@ function platformUnder(me: FighterView, stage: Stage): Platform | null {
   let best: Platform | null = null;
   for (const p of stage.platforms) {
     const over = Math.abs(me.x - p.center.x) <= p.halfWidth;
-    const below = p.center.y + p.halfHeight <= me.y;
+    const below = platformTop(p) <= me.y;
     if (over && below && (!best || p.center.y > best.center.y)) best = p;
   }
   if (best) return best;
@@ -311,10 +309,6 @@ function platformUnder(me: FighterView, stage: Stage): Platform | null {
     if (!nearest || Math.abs(p.center.x - me.x) < Math.abs(nearest.center.x - me.x)) nearest = p;
   }
   return nearest;
-}
-
-function clamp(v: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, v));
 }
 
 /** Tiny seeded PRNG, so a bot with the same seed makes the same choices. */

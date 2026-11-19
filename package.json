@@ -8,9 +8,6 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "probe:foot": "tsx scripts/probe-foot.ts",
-    "probe:recovery": "tsx scripts/probe-recovery.ts",
-    "probe:release": "tsx scripts/probe-release.ts",
     "bots": "tsx scripts/bot-arena.ts",
     "verify": "tsx scripts/verify-recording.ts",
     "cross-browser": "npm run build && tsx scripts/cross-browser.ts"

@@ -7,7 +7,6 @@ platform with a top vertex, or fall off, and you lose.
 npm install
 npm run dev        # play at the printed URL
 npm test           # sim tests (Node, headless)
-npm run probe:*    # diagnostic experiments, see scripts/
 npm run bots       # headless bot matches with win/loss stats (--experiments for more)
 npm run verify -- f.json  # check a downloaded match recording replays exactly
 npm run cross-browser    # replay the fixture match in Node, Chrome, Firefox, WebKit and compare
@@ -37,7 +36,7 @@ src/camera.ts follow cam (pan/zoom to fit fighters) + screen shake
 src/koReplay.ts final-KO instant replay (plays back recorded frames)
 src/main.ts   fixed-timestep loop gluing the above together
 tests/        sim behavior tests
-scripts/      probes that measured the foot/rotation behavior
+scripts/      bot arena, recording verify, cross-browser check, fixture generator
 ```
 
 **The one rule:** the only way to affect a match is `sim.step(inputs)`.
@@ -88,8 +87,9 @@ Both use a capped torque, so you can always be overpowered.
   A motor pushes toward it with force `servoStiffness × error`, capped at
   `rotateTorque`. Releasing brakes. At big leans gravity beats the cap.
 
-`npm run probe:release` shows the difference: in torque mode a 3-tick lean then
-release is always a KO; in servo mode you settle back near upright.
+The tests in `tests/sim.test.ts` ("rotation modes") pin the difference: in
+torque mode a 3-tick lean then release is always a KO; in servo mode you
+settle back near upright.
 
 ## The foot problem
 
@@ -97,8 +97,8 @@ release is always a KO; in servo mode you settle back near upright.
 
 **Cause:** torque spins the body around its center. The foot is below the
 center, so it swings sideways and up, and with enough torque it leaves the
-ground. `npm run probe:foot` reproduces it: with grip off and torque 15, the
-foot is airborne by tick 4.
+ground. Measured early on (probe scripts, since removed; see git history): with
+grip off and torque 15, the foot was airborne by tick 4.
 
 **What's implemented (all tunable, all can be switched off):**
 

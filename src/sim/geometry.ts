@@ -57,6 +57,8 @@ export interface Stage {
   camera: { center: Vec2; width: number; height: number };
 }
 
+/** A single 8 m platform. Used by tests: simple and stable, so mechanics tests
+ *  don't change when the real stage (WINGS_STAGE) gets redesigned. */
 export const FLAT_STAGE: Stage = {
   platforms: [{ center: { x: 0, y: -0.5 }, halfWidth: 4, halfHeight: 0.5 }],
   spawnLine: { minX: -4, maxX: 4, y: 0.001 },

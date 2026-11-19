@@ -1,7 +1,7 @@
 // Camera: smooth follow (pan + zoom to fit the action) and screen shake.
 // Presentation only; never feeds back into the sim.
 
-import type { Stage, Vec2 } from "./sim/geometry";
+import { clamp, type Stage, type Vec2 } from "./sim/geometry";
 import type { FighterView } from "./sim/sim";
 
 /** What the renderer needs to draw a frame. All in meters except tilt (radians). */
@@ -120,8 +120,4 @@ export class CameraRig {
     const cam = this.stage.camera;
     return { center: { ...cam.center }, width: Math.max(cam.width, cam.height * aspect) };
   }
-}
-
-function clamp(v: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, v));
 }
