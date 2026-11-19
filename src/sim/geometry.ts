@@ -116,3 +116,12 @@ export function distanceToPlatform(p: Vec2, plat: Platform): number {
   return Math.sqrt(dx * dx + dy * dy); // not Math.hypot: see detmath.ts
 }
 
+
+/** A single 10 m platform, no wings: tighter and more aggressive than Wings. */
+export const ISLAND_STAGE: Stage = {
+  platforms: [{ center: { x: 0, y: -0.5 }, halfWidth: 5, halfHeight: 0.5 }],
+  spawnLine: { minX: -5, maxX: 5, y: 0.001 },
+  respawnY: 3.5,
+  blastZone: { minX: -16, maxX: 16, minY: -8, maxY: 20 },
+  camera: { center: { x: 0, y: 2.5 }, width: 18, height: 10 },
+};

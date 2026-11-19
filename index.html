@@ -6,17 +6,21 @@
     <title>Triangle Duel</title>
     <style>
       html, body { margin: 0; height: 100%; background: #14121c; overflow: hidden; }
-      /* Game on the left, param panel in its own column so it never covers the stage. */
-      #app { display: flex; height: 100vh; }
-      canvas { display: block; flex: 1; min-width: 0; height: 100%; }
-      #panel { flex: none; height: 100%; overflow-y: auto; }
-      #panel .lil-gui.root { position: static; }
+      #app { position: relative; height: 100vh; }
+      canvas { display: block; width: 100%; height: 100%; }
+      /* Menus are layered over the game. */
+      #ui { position: absolute; inset: 0; }
+      /* Debug panel (` to toggle): overlays the right edge. */
+      #panel { position: absolute; top: 0; right: 0; max-height: 100%; overflow-y: auto; z-index: 10; }
+      #panel[hidden] { display: none; }
+      #panel .lil-root { position: static; }
     </style>
   </head>
   <body>
     <div id="app">
       <canvas id="game"></canvas>
-      <div id="panel"></div>
+      <div id="ui"></div>
+      <div id="panel" hidden></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

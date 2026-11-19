@@ -7,8 +7,10 @@ import type { FighterView, MatchResult } from "./sim/sim";
 const COLORS = ["#ff6b6b", "#4ecdc4", "#ffd93d", "#a78bfa"];
 
 export interface RenderOptions {
+  hud: boolean; // false = no in-game interface (e.g. the bot match behind the menus)
   debug: boolean;
   labels: string[]; // per fighter, for the debug overlay
+  names: string[]; // per fighter, for the stock row and the winner banner
   controls: string[]; // control hints for the bottom line, e.g. "P1: ←/→ rotate, ↓ charge"
   totalStocks: number; // stocks each player started with
   replay: boolean; // showing the final-KO replay: letterbox, no banner yet
@@ -169,9 +171,12 @@ export class Renderer {
   }
 
   /** Stock row: one small triangle per life, hollow once lost. Screen pixels. */
-  private drawStocks(fighters: FighterView[], totalStocks: number, cx: number, y: number) {
+  private drawStocks(fighters: FighterView[], names: string[], totalStocks: number, cx: number, y: number) {
     const ctx = this.ctx;
-    const slot = 46 + totalStocks * 16; // px per player
+    const label = (i: number) => (names[i] ?? `P${i + 1}`).slice(0, 10);
+    ctx.font = "bold 13px system-ui, sans-serif";
+    const labelW = Math.max(28, ...fighters.map((_, i) => ctx.measureText(label(i)).width + 8));
+    const slot = labelW + totalStocks * 16 + 18; // px per player
     fighters.forEach((f, i) => {
       const color = COLORS[i % COLORS.length];
       const x0 = cx - (fighters.length * slot) / 2 + i * slot;
@@ -179,11 +184,10 @@ export class Renderer {
       ctx.fillStyle = color;
       ctx.strokeStyle = color;
       ctx.lineWidth = 1;
-      ctx.font = "bold 13px ui-monospace, monospace";
       ctx.textAlign = "left";
-      ctx.fillText(`P${i + 1}`, x0, y);
+      ctx.fillText(label(i), x0, y);
       for (let s = 0; s < totalStocks; s++) {
-        const sx = x0 + 28 + s * 16;
+        const sx = x0 + labelW + s * 16;
         ctx.beginPath();
         ctx.moveTo(sx, y + 2);
         ctx.lineTo(sx + 11, y + 2);
@@ -221,10 +225,12 @@ export class Renderer {
       });
     }
 
-    ctx.fillStyle = "#fff8";
-    ctx.textAlign = "center";
-    ctx.fillText(opts.controls.join("   ·   "), w / 2, h - 28);
-    this.drawStocks(fighters, opts.totalStocks, w / 2, h - 64);
+    if (opts.hud) {
+      ctx.fillStyle = "#fff8";
+      ctx.textAlign = "center";
+      ctx.fillText(opts.controls.join("   ·   "), w / 2, h - 28);
+      this.drawStocks(fighters, opts.names, opts.totalStocks, w / 2, h - 64);
+    }
 
     if (opts.status) {
       ctx.font = "bold 15px ui-monospace, monospace";
@@ -233,13 +239,12 @@ export class Renderer {
       ctx.fillText(opts.status, w / 2, opts.debug ? 118 : 14); // below the debug overlay if shown
     }
 
-    if (result.over && !opts.replay) {
+    if (opts.hud && result.over && !opts.replay) {
+      ctx.textAlign = "center"; // (the stock row leaves it at "left")
       ctx.font = "bold 48px system-ui, sans-serif";
       ctx.fillStyle = result.winner === null ? "#fff" : COLORS[result.winner % COLORS.length];
-      ctx.fillText(result.winner === null ? "DRAW" : `P${result.winner + 1} WINS`, w / 2, h * 0.2);
-      ctx.font = "16px system-ui, sans-serif";
-      ctx.fillStyle = "#fffc";
-      ctx.fillText("press R to restart", w / 2, h * 0.2 + 60);
+      const winner = result.winner === null ? "" : (opts.names[result.winner] ?? `P${result.winner + 1}`);
+      ctx.fillText(result.winner === null ? "DRAW" : `${winner.toUpperCase()} WINS`, w / 2, h * 0.2);
     }
     ctx.restore();
   }

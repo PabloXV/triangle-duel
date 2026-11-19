@@ -1,8 +1,14 @@
-// Param panel (lil-gui). Edits the shared params object in place; the sim
-// re-reads it every tick. Values persist in localStorage between reloads.
+// The debug panel (lil-gui), a dev tool: press ` (backtick) to show it. Edits
+// the shared params object in place (the sim re-reads it every tick; values
+// persist in localStorage), presentation settings, and match recordings.
 
 import GUI, { type Controller } from "lil-gui";
+import type { Game } from "./game";
+import { DEFAULT_MATCH } from "./sim/types";
+import { ROOM_CODE, randomRoomCode } from "./net/protocol";
+import type { Recording } from "./sim/recording";
 import { DEFAULT_PARAMS, PARAM_GROUPS, PARAM_META, type Params } from "./sim/params";
+import { STAGES } from "./stages";
 
 const STORAGE_KEY = "triangle-duel.params.v1";
 
@@ -28,63 +34,43 @@ function saveParams(params: Params) {
   }
 }
 
-export interface UiState {
-  debug: boolean;
-  players: number; // 2–4. P3 and P4 are always bots.
-  stocks: number;
-  p1: "human" | "bot";
-  p2: "human" | "bot";
-  botReaction: number; // ticks; see BotConfig.reactionTicks
-  cameraFollow: boolean;
-  shakeScale: number;
-  finalKoReplay: boolean;
-  netName: string;
-  netRoom: string;
-  netStatus: string; // shown read-only in the panel
-}
+export function buildPanel(game: Game, container: HTMLElement) {
+  const params = game.params;
+  const gui = new GUI({ title: "Debug panel  (` to hide)", container });
 
-export interface PanelActions {
-  restart(): void;
-  controllersChanged(): void;
-  watchLast(): void;
-  downloadLast(): void;
-  loadFile(): void;
-  netCreate(): void;
-  netJoin(): void;
-  netStart(): void;
-  netAddBot(): void;
-  netRemoveBot(): void;
-  netLobby(): void;
-  netLeave(): void;
-}
-
-export function buildPanel(params: Params, ui: UiState, actions: PanelActions) {
-  const gui = new GUI({ title: "Params", container: document.getElementById("panel") ?? undefined });
-
-  const players = gui.addFolder("Match");
-  // Player count and stocks define the match, so changing them restarts it.
-  players.add(ui, "players", 2, 4, 1).name("players (restarts)").onFinishChange(actions.restart);
-  players.add(ui, "stocks", 1, 9, 1).name("stocks (restarts)").onFinishChange(actions.restart);
-  players.add(ui, "p1", ["human", "bot"]).name("P1 (arrows)").onChange(actions.controllersChanged);
-  players.add(ui, "p2", ["human", "bot"]).name("P2 (A/D/S)").onChange(actions.controllersChanged);
-  players.add(ui, "botReaction", 0, 40, 1).name("bot reaction (ticks)").onFinishChange(actions.controllersChanged);
-
-  const online = gui.addFolder("Online");
-  online.add(ui, "netName").name("your name");
-  online.add(ui, "netRoom").name("room code").listen(); // shows the code after "create room"
-  online.add(actions, "netCreate").name("create room");
-  online.add(actions, "netJoin").name("join room");
-  online.add(actions, "netAddBot").name("add bot (host)");
-  online.add(actions, "netRemoveBot").name("remove bot (host)");
-  online.add(actions, "netStart").name("start match (host)");
-  online.add(actions, "netLobby").name("end match (host)");
-  online.add(actions, "netLeave").name("leave room");
-  online.add(ui, "netStatus").name("status").disable().listen();
+  // Online (dev controls; the real lobby UI replaces these).
+  const net = game.net;
+  const dev = { room: "", status: "offline" };
+  const join = (code: string) => {
+    if (!ROOM_CODE.test(code)) return void (dev.status = "room codes are 4 letters (no I, L or O)");
+    dev.room = code;
+    net.connect(code, game.playerName);
+  };
+  const online = gui.addFolder("Online (dev)");
+  online.close();
+  online.add(dev, "room").name("room code").listen();
+  online.add({ create: () => join(randomRoomCode()) }, "create").name("create room");
+  online.add({ join: () => join(dev.room.trim().toUpperCase()) }, "join").name("join room");
+  online.add({ addBot: () => net.addBot() }, "addBot").name("add bot (host)");
+  online.add({ removeBot: () => net.removeBot() }, "removeBot").name("remove bot (host)");
+  online
+    .add(
+      {
+        start: () =>
+          net.start({ stage: STAGES[0].stage, match: { ...DEFAULT_MATCH, players: net.roster.length }, params: structuredClone(params) }),
+      },
+      "start",
+    )
+    .name("start match (host)");
+  online.add({ end: () => net.backToLobby() }, "end").name("end match (host)");
+  online.add({ leave: () => net.leave() }, "leave").name("leave room");
+  online.add(dev, "status").name("status").disable().listen();
+  setInterval(() => (dev.status = net.error ?? `${net.phase}${net.roster.length ? ` (${net.roster.map((p) => p.name).join(", ")})` : ""}`), 250);
 
   const juice = gui.addFolder("Juice");
-  juice.add(ui, "cameraFollow").name("camera follow");
-  juice.add(ui, "shakeScale", 0, 3, 0.1).name("screen shake");
-  juice.add(ui, "finalKoReplay").name("final KO replay");
+  juice.add(game.settings, "cameraFollow").name("camera follow");
+  juice.add(game.settings, "shakeScale", 0, 3, 0.1).name("screen shake");
+  juice.add(game.settings, "finalKoReplay").name("final KO replay");
 
   const folders = new Map(PARAM_GROUPS.map((g) => [g, gui.addFolder(g)]));
   folders.get("Advanced")!.close();
@@ -111,11 +97,10 @@ export function buildPanel(params: Params, ui: UiState, actions: PanelActions) {
   refreshVisibility();
 
   const misc = gui.addFolder("Misc");
-  misc.add(ui, "debug").name("debug overlay");
-  misc.add(actions, "restart").name("restart match (R)");
-  misc.add(actions, "watchLast").name("watch last match");
-  misc.add(actions, "downloadLast").name("download last match");
-  misc.add(actions, "loadFile").name("load match file…");
+  misc.add(game.settings, "debug").name("debug overlay");
+  misc.add({ watch: () => watchLast(game) }, "watch").name("watch last match");
+  misc.add({ download: () => downloadLast(game) }, "download").name("download last match");
+  misc.add({ load: () => loadFile(game) }, "load").name("load match file…");
   misc
     .add(
       {
@@ -128,17 +113,40 @@ export function buildPanel(params: Params, ui: UiState, actions: PanelActions) {
       },
       "reset",
     )
-    .name("reset to defaults");
-  misc
-    .add(
-      {
-        copy() {
-          navigator.clipboard?.writeText(JSON.stringify(params, null, 2));
-        },
-      },
-      "copy",
-    )
-    .name("copy params JSON");
+    .name("reset params to defaults");
+  misc.add({ copy: () => navigator.clipboard?.writeText(JSON.stringify(params, null, 2)) }, "copy").name("copy params JSON");
 
   return gui;
+}
+
+function watchLast(game: Game) {
+  const rec = game.latestRecording();
+  if (rec) game.watch(rec);
+}
+
+function downloadLast(game: Game) {
+  const rec = game.latestRecording();
+  if (!rec) return;
+  const blob = new Blob([JSON.stringify(rec)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `triangle-duel-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function loadFile(game: Game) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json,application/json";
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      game.watch(JSON.parse(await file.text()) as Recording);
+    } catch (err) {
+      alert(`Couldn't load that recording: ${err instanceof Error ? err.message : err}`);
+    }
+  };
+  input.click();
 }

@@ -52,6 +52,12 @@ export class CameraRig {
     this.targetWidth = this.width;
   }
 
+  /** Frame a different stage (new match) and snap to it. */
+  setStage(stage: Stage) {
+    this.stage = stage;
+    this.reset();
+  }
+
   reset() {
     this.center = { ...this.stage.camera.center };
     this.width = this.stage.camera.width;

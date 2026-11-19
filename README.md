@@ -1,7 +1,8 @@
 # Triangle Duel
 
-Prototype. Two triangles balanced on their points on one platform. Touch the
-platform with a top vertex, or fall off, and you lose.
+Triangles balanced on their points, bumping each other off the stage. Touch
+the stage with a top vertex, or fall off, and you lose a stock. 2–4 players,
+local or online.
 
 ```
 npm install
@@ -12,11 +13,15 @@ npm run verify -- f.json  # check a downloaded match recording replays exactly
 npm run cross-browser    # replay the fixture match in Node, Chrome, Firefox, WebKit and compare
 npm run relay      # the online room relay, locally (Cloudflare Workers runtime via wrangler)
 npm run relay:smoke  # end-to-end relay check: two clients, a match, identical tick streams
+npm run netsim     # rollback behavior on simulated connections
+npm run e2e        # browser test of the menu flow (screenshots in e2e-shots/)
 ```
 
-Controls: P1 `←`/`→` rotate, `↓` charge. P2 (if human) `A`/`D` rotate, `S` charge.
-`R` restart. P3 and P4 are always bots. The panel's Match section sets player
-count (2–4) and stocks.
+Open it, pick a name (remembered in this browser), then play locally (map,
+bots, stocks, bot level, optional 2nd player on the same keyboard) or online.
+Controls: `←`/`→` rotate, `↓` charge (2nd local player: `A`/`D`/`S`).
+`Esc` pauses (local) or opens the match menu (online); `R` restarts a local match.
+`` ` `` (backtick) toggles the debug panel (params, juice, recordings, dev online controls).
 The param panel edits the live match. Values persist in localStorage. Params
 marked "(restart)" apply on restart because they change the body itself. Mode
 switches and plumbing live in the collapsed "Advanced" folder; knobs for a mode
@@ -37,6 +42,10 @@ src/sim/        ← the game. No DOM, no clock, no randomness. Runs in Node.
   params.ts       every tunable number, with units and what "live" means
   geometry.ts     fighter shapes + stages as plain data, shared helpers
   detmath.ts      deterministic sin/cos (see "Determinism")
+src/game.ts     the game: canvas loop, modes (menu backdrop / local / online / replay),
+                and the small API the menus call
+src/ui/         menus and overlays (Svelte): name, main menu, local setup, pause, end of match
+src/stages.ts   the playable maps
 src/session.ts  what the loop drives: LiveSession (one InputSource per player,
                 recorded) or PlaybackSession. Online will be another Session.
 src/net/        online: protocol.ts (messages), room.ts (relay logic, no
@@ -48,7 +57,7 @@ src/render.ts canvas renderer; reads sim state, never writes it
 src/panel.ts  lil-gui param panel
 src/camera.ts follow cam (pan/zoom to fit fighters) + screen shake
 src/koReplay.ts final-KO instant replay (plays back recorded frames)
-src/main.ts   fixed-timestep loop gluing the above together
+src/main.ts   entry point: starts the game, mounts the menus, attaches the debug panel
 tests/        sim behavior tests
 scripts/      bot arena, recording verify, cross-browser check, fixture generator
 ```

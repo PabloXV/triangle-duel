@@ -24,8 +24,6 @@ export interface InputSource {
 
 export interface Session {
   readonly sim: Sim;
-  /** Optional, once per rendered frame before stepping (e.g. send input to the network). */
-  frame?(): void;
   /** Advance one tick. False if there was nothing to do (e.g. playback finished). */
   step(): boolean;
   /** The match so far as a recording (null if this session doesn't record). */
