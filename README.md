@@ -170,7 +170,12 @@ All presentation; none of it touches the sim. The panel's "Juice" section
 toggles each.
 
 - **Camera** (`src/camera.ts`): pans and zooms to fit living fighters, with
-  zoom limits, and doesn't dive after someone falling to a KO.
+  zoom limits, and doesn't dive after someone falling to a KO. It has dead zones
+  so it ignores hop-sized motion: zoom-in only once the action shrinks 15%,
+  and a vertical "push" camera that only moves when someone nears the edge.
+  Without them the stage bobbed ~28 px per quarter second (every fighter hops
+  ~4.5×/s), which read as stutter; `tests/camera.test.ts` keeps it under 10 px
+  and checks on-stage fighters never leave the frame.
 - **Shake**: the sim reports `SimEvent`s each tick: fighter-vs-fighter
   `impact`s (Rapier contact force) and `ko`s. Force maps to shake on a curve
   measured from bot matches (median contact ~39 N; top 1% > 126 N), and

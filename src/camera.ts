@@ -23,6 +23,12 @@ const PAD_X = 3; // breathing room around the fighters (m)
 const PAD_BOTTOM = 1.5;
 const PAD_TOP = 2.5; // more above: that's where jumps go
 const PAN_RATE = 4; // 1/s: higher = snappier
+// Dead zones, so the camera ignores hop-sized motion (every fighter auto-hops
+// ~4.5 times a second; a camera framing their exact bounding box bobs and
+// breathes with every hop, which reads as stutter: measured ~28 px of stage
+// movement per quarter second before these).
+const ZOOM_IN_BAND = 0.15; // only zoom in once the action needs 15% less width
+const RECENTER_RATE = 0.4; // 1/s: slow vertical drift back toward the action
 const ZOOM_OUT_RATE = 4; // zooming out is urgent (someone's leaving frame)...
 const ZOOM_IN_RATE = 1.5; // ...zooming in can be lazy
 const MAX_SHAKE = 0.35; // m of offset at full trauma
@@ -33,16 +39,24 @@ export class CameraRig {
   private center: Vec2;
   private width: number;
   private trauma = 0; // 0..1; shake strength is trauma², so small hits stay subtle
+  // The framing the camera is easing toward. Remembered between frames, because
+  // the dead zones are relative to it.
+  private targetY: number;
+  private targetWidth: number;
   private time = 0;
 
   constructor(private stage: Stage) {
     this.center = { ...stage.camera.center };
     this.width = stage.camera.width;
+    this.targetY = this.center.y;
+    this.targetWidth = this.width;
   }
 
   reset() {
     this.center = { ...this.stage.camera.center };
     this.width = this.stage.camera.width;
+    this.targetY = this.center.y;
+    this.targetWidth = this.width;
     this.trauma = 0;
   }
 
@@ -59,7 +73,7 @@ export class CameraRig {
     this.time += dt;
     this.trauma = Math.max(0, this.trauma - TRAUMA_DECAY * dt);
 
-    const target = s.follow ? this.framing(fighters, aspect) : this.stageFraming(aspect);
+    const target = s.follow ? this.framing(fighters, aspect, dt) : this.stageFraming(aspect);
     // Frame-rate independent smoothing: close a fixed fraction of the gap per second.
     const ease = (rate: number) => 1 - Math.exp(-rate * dt);
     this.center.x += (target.center.x - this.center.x) * ease(PAN_RATE);
@@ -83,8 +97,16 @@ export class CameraRig {
     };
   }
 
-  /** Fit all given fighters, within zoom limits, without chasing fallers into the void. */
-  private framing(fighters: FighterView[], aspect: number): { center: Vec2; width: number } {
+  /**
+   * Fit all given fighters, within zoom limits, without chasing fallers into
+   * the void, and without reacting to hop-sized motion:
+   *   - zoom out as soon as the action needs it, but only zoom in once it has
+   *     clearly shrunk (ZOOM_IN_BAND);
+   *   - vertically, a "push" camera: no movement while everyone fits, then just
+   *     enough to keep them in, plus a slow drift back toward the action;
+   *   - horizontally, center on the action (sideways motion is deliberate).
+   */
+  private framing(fighters: FighterView[], aspect: number, dt: number): { center: Vec2; width: number } {
     const cam = this.stage.camera;
     if (fighters.length === 0) return this.stageFraming(aspect);
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -107,12 +129,20 @@ export class CameraRig {
     maxY = Math.max(maxY, minY + 1);
 
     const maxWidth = cam.width * 1.25;
-    const width = clamp(Math.max(maxX - minX, (maxY - minY) * aspect), MIN_WIDTH, maxWidth);
-    const height = width / aspect;
-    const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+    const needed = clamp(Math.max(maxX - minX, (maxY - minY) * aspect), MIN_WIDTH, maxWidth);
+    if (needed > this.targetWidth || needed < this.targetWidth * (1 - ZOOM_IN_BAND)) this.targetWidth = needed;
+    const height = this.targetWidth / aspect;
+
+    // Vertical: drift slowly toward the action's center, then push just enough
+    // to keep everyone inside the view.
+    const drift = 1 - Math.exp(-RECENTER_RATE * dt);
+    this.targetY += ((minY + maxY) / 2 - this.targetY) * drift;
+    if (minY < this.targetY - height / 2) this.targetY = minY + height / 2;
+    if (maxY > this.targetY + height / 2) this.targetY = maxY - height / 2;
     // Keep the bottom of the view at or above the floor limit.
-    center.y = Math.max(center.y, floorLimit + height / 2);
-    return { center, width };
+    this.targetY = Math.max(this.targetY, floorLimit + height / 2);
+
+    return { center: { x: (minX + maxX) / 2, y: this.targetY }, width: this.targetWidth };
   }
 
   /** The stage's fixed framing, widened if needed to fit the screen's aspect. */
