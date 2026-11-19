@@ -1,0 +1,151 @@
+// Browser side of the relay connection: one WebSocket to a room, the lobby
+// state, and the official tick stream. C2 will drive an online Session from
+// onTick; for now the game shows what arrives.
+
+import { decodeInput } from "../sim/inputCodec";
+import type { Input } from "../sim/types";
+import { PROTOCOL_VERSION, type ClientMsg, type MatchSetup, type RosterEntry, type ServerMsg } from "./protocol";
+
+/** Where the relay lives. Dev default: `npm run relay` on this machine. */
+export const RELAY_URL: string = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:8787";
+
+export type NetPhase = "offline" | "connecting" | "lobby" | "match";
+
+export class NetClient {
+  phase: NetPhase = "offline";
+  room = "";
+  slot: number | null = null;
+  roster: RosterEntry[] = [];
+  rttMs: number | null = null;
+  error: string | null = null;
+  /** During a match: my fighter index, and the latest official step and inputs. */
+  you: number | null = null;
+  setup: MatchSetup | null = null;
+  lastStep = -1;
+  inputs: string[] = [];
+
+  /** Called when a match starts, and for every official step. */
+  onStart?: (setup: MatchSetup, you: number) => void;
+  onTick?: (t: number, changes: [number, string][]) => void;
+
+  private ws: WebSocket | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private pingSent = new Map<number, number>();
+  private pingId = 0;
+
+  get isHost(): boolean {
+    return this.roster.find((p) => p.slot === this.slot)?.host ?? false;
+  }
+
+  connect(room: string, name: string) {
+    this.leave();
+    this.phase = "connecting";
+    this.room = room;
+    this.error = null;
+    const ws = new WebSocket(`${RELAY_URL}/api/room/${room}/ws`);
+    this.ws = ws;
+    ws.onopen = () => {
+      this.send({ type: "hello", version: PROTOCOL_VERSION, name });
+      this.pingTimer = setInterval(() => this.ping(), 1000);
+    };
+    ws.onmessage = (e) => this.handle(JSON.parse(String(e.data)) as ServerMsg);
+    ws.onclose = () => {
+      if (this.ws !== ws) return; // a newer connection replaced this one
+      this.cleanup();
+      if (!this.error) this.error = "disconnected";
+    };
+    ws.onerror = () => {
+      this.error = `couldn't reach the relay at ${RELAY_URL} (is \`npm run relay\` running?)`;
+    };
+  }
+
+  leave() {
+    const ws = this.ws;
+    this.cleanup();
+    ws?.close();
+  }
+
+  /** Host: start a match with everyone in the room. */
+  start(setup: MatchSetup) {
+    this.send({ type: "start", setup });
+  }
+
+  /** Host: end the match. */
+  backToLobby() {
+    this.send({ type: "lobby" });
+  }
+
+  /** My input from step `tick` on. Only call when it changes. */
+  sendInput(tick: number, input: string) {
+    this.send({ type: "input", tick, input });
+  }
+
+  /** The latest official input of fighter `i`. */
+  inputOf(i: number): Input | null {
+    const c = this.inputs[i];
+    return c ? decodeInput(c) : null;
+  }
+
+  private handle(m: ServerMsg) {
+    switch (m.type) {
+      case "welcome":
+        this.slot = m.slot;
+        this.phase = "lobby";
+        break;
+      case "roster":
+        this.roster = m.players;
+        break;
+      case "start":
+        this.phase = "match";
+        this.setup = m.setup;
+        this.you = m.you;
+        this.lastStep = -1;
+        this.inputs = m.fighters.map(() => "1");
+        this.onStart?.(m.setup, m.you);
+        break;
+      case "tick":
+        this.lastStep = m.t;
+        for (const [f, input] of m.c ?? []) this.inputs[f] = input;
+        this.onTick?.(m.t, m.c ?? []);
+        break;
+      case "lobby":
+        this.phase = "lobby";
+        this.you = null;
+        this.setup = null;
+        break;
+      case "pong": {
+        const sent = this.pingSent.get(m.id);
+        this.pingSent.delete(m.id);
+        if (sent !== undefined) this.rttMs = performance.now() - sent;
+        break;
+      }
+      case "error":
+        this.error = m.message;
+        break;
+    }
+  }
+
+  private ping() {
+    const id = ++this.pingId;
+    this.pingSent.set(id, performance.now());
+    this.send({ type: "ping", id });
+  }
+
+  private send(m: ClientMsg) {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(m));
+  }
+
+  private cleanup() {
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.pingTimer = null;
+    this.pingSent.clear();
+    this.ws = null;
+    this.phase = "offline";
+    this.slot = null;
+    this.roster = [];
+    this.you = null;
+    this.setup = null;
+    this.lastStep = -1;
+    this.rttMs = null;
+  }
+}

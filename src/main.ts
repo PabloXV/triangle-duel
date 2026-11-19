@@ -4,13 +4,15 @@
 
 import { BotSource, DEFAULT_BOT, HeuristicBot } from "./bots/heuristic";
 import { CameraRig } from "./camera";
-import { BINDINGS, KeyboardSource, installKeyboard } from "./input";
+import { BINDINGS, KeyboardSource, installKeyboard, readInput } from "./input";
 import { FinalKoReplay, History } from "./koReplay";
+import { NetClient } from "./net/client";
+import { ROOM_CODE, randomRoomCode } from "./net/protocol";
 import { buildPanel, loadParams, type UiState } from "./panel";
 import { Renderer } from "./render";
 import { LiveSession, PlaybackSession, type InputSource, type Session } from "./session";
 import { WINGS_STAGE } from "./sim/geometry";
-import type { Recording } from "./sim/recording";
+import { encodeInput, type Recording } from "./sim/recording";
 import { DEFAULT_MATCH, DT, initPhysics, type FighterView, type SimEvent } from "./sim/sim";
 
 await initPhysics();
@@ -26,6 +28,9 @@ const ui: UiState = {
   cameraFollow: true,
   shakeScale: 1,
   finalKoReplay: true,
+  netName: "player",
+  netRoom: "",
+  netStatus: "offline",
 };
 const renderer = new Renderer(document.getElementById("game") as HTMLCanvasElement);
 const camera = new CameraRig(WINGS_STAGE);
@@ -119,6 +124,61 @@ function loadFile() {
   input.click();
 }
 
+// ---- online (C1: lobby + the official input stream; C2 will play the match) ----
+
+const net = new NetClient();
+/** Schedule my inputs this many steps ahead of the relay's clock (~50 ms). */
+const INPUT_LEAD = 3;
+let lastSentInput = "";
+
+function netJoin(code = ui.netRoom.trim().toUpperCase()) {
+  if (!ROOM_CODE.test(code)) {
+    ui.netStatus = "room codes are 4 letters (no I, L or O)";
+    return;
+  }
+  ui.netRoom = code;
+  net.connect(code, ui.netName);
+}
+
+function netStart() {
+  if (!net.isHost) {
+    ui.netStatus = "only the host can start";
+    return;
+  }
+  const match = { ...DEFAULT_MATCH, players: net.roster.length, stocks: ui.stocks };
+  net.start({ stage: WINGS_STAGE, match, params: structuredClone(params) });
+}
+
+net.onStart = () => (lastSentInput = "");
+
+/** During an online match: send P1's keys (arrows) to the relay when they change. */
+function pumpNetInput() {
+  if (net.phase !== "match") return;
+  const code = encodeInput(readInput(0));
+  if (code === lastSentInput) return;
+  lastSentInput = code;
+  net.sendInput(net.lastStep + 1 + INPUT_LEAD, code);
+}
+
+const ARROWS = ["←", "", "→"];
+function netStatusLine(): string | undefined {
+  if (net.phase === "offline") return net.error ? `ONLINE — ${net.error}` : undefined;
+  const ping = net.rttMs === null ? "" : ` · ping ${Math.round(net.rttMs)} ms`;
+  if (net.phase === "connecting") return `ONLINE ${net.room} — connecting…`;
+  if (net.phase === "lobby") {
+    const names = net.roster.map((p) => p.name + (p.host ? "*" : "") + (p.slot === net.slot ? " (you)" : "")).join(", ");
+    return `ONLINE ${net.room} — lobby: ${names}${ping}`;
+  }
+  const inputs = net.inputs
+    .map((_, i) => {
+      const inp = net.inputOf(i)!;
+      const keys = ARROWS[inp.turn + 1] + (inp.charge ? "↓" : "");
+      return `P${i + 1}${i === net.you ? "(you)" : ""} ${keys || "·"}`;
+    })
+    .join("  ");
+  return `ONLINE ${net.room} — step ${net.lastStep} — ${inputs}${ping}`;
+}
+
 // ---- presentation reacting to the sim ---------------------------------------
 
 /** Map a contact force (N) to shake trauma. Measured in bot matches: median
@@ -149,7 +209,18 @@ function startKoReplay() {
 // ---- wiring --------------------------------------------------------------
 
 restart();
-buildPanel(params, ui, { restart, controllersChanged, watchLast, downloadLast, loadFile });
+buildPanel(params, ui, {
+  restart,
+  controllersChanged,
+  watchLast,
+  downloadLast,
+  loadFile,
+  netCreate: () => netJoin(randomRoomCode()),
+  netJoin: () => netJoin(),
+  netStart,
+  netLobby: () => net.backToLobby(),
+  netLeave: () => net.leave(),
+});
 installKeyboard((code) => {
   if (code === "KeyR") restart();
 });
@@ -170,6 +241,9 @@ function frame(now: number) {
   last = now;
   const dt = Math.min((now - lastFrame) / 1000, 0.1);
   lastFrame = now;
+  pumpNetInput();
+  const netLine = netStatusLine();
+  ui.netStatus = net.error ?? net.phase;
   const sim = session.sim;
 
   if (koReplay) {
@@ -208,7 +282,7 @@ function frame(now: number) {
     labels: players.map((i) => session.describe(i)),
     humans: players.map((i) => session.isHuman(i)),
     totalStocks: sim.match.stocks,
-    status: session.status(),
+    status: session.status() ?? netLine,
   });
 }
 requestAnimationFrame(frame);

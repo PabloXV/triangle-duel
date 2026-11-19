@@ -232,7 +232,7 @@ export class Renderer {
       ctx.font = "bold 15px ui-monospace, monospace";
       ctx.fillStyle = opts.status.includes("DESYNC") ? "#ff6b6b" : "#fffc";
       ctx.textAlign = "center";
-      ctx.fillText(opts.status, w / 2, 14);
+      ctx.fillText(opts.status, w / 2, opts.debug ? 118 : 14); // below the debug overlay if shown
     }
 
     if (result.over && !opts.replay) {

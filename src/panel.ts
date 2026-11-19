@@ -38,6 +38,9 @@ export interface UiState {
   cameraFollow: boolean;
   shakeScale: number;
   finalKoReplay: boolean;
+  netName: string;
+  netRoom: string;
+  netStatus: string; // shown read-only in the panel
 }
 
 export interface PanelActions {
@@ -46,6 +49,11 @@ export interface PanelActions {
   watchLast(): void;
   downloadLast(): void;
   loadFile(): void;
+  netCreate(): void;
+  netJoin(): void;
+  netStart(): void;
+  netLobby(): void;
+  netLeave(): void;
 }
 
 export function buildPanel(params: Params, ui: UiState, actions: PanelActions) {
@@ -58,6 +66,16 @@ export function buildPanel(params: Params, ui: UiState, actions: PanelActions) {
   players.add(ui, "p1", ["human", "bot"]).name("P1 (arrows)").onChange(actions.controllersChanged);
   players.add(ui, "p2", ["human", "bot"]).name("P2 (A/D/S)").onChange(actions.controllersChanged);
   players.add(ui, "botReaction", 0, 40, 1).name("bot reaction (ticks)").onFinishChange(actions.controllersChanged);
+
+  const online = gui.addFolder("Online");
+  online.add(ui, "netName").name("your name");
+  online.add(ui, "netRoom").name("room code").listen(); // shows the code after "create room"
+  online.add(actions, "netCreate").name("create room");
+  online.add(actions, "netJoin").name("join room");
+  online.add(actions, "netStart").name("start match (host)");
+  online.add(actions, "netLobby").name("end match (host)");
+  online.add(actions, "netLeave").name("leave room");
+  online.add(ui, "netStatus").name("status").disable().listen();
 
   const juice = gui.addFolder("Juice");
   juice.add(ui, "cameraFollow").name("camera follow");

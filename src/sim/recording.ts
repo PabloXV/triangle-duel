@@ -8,6 +8,7 @@
 
 import type { Stage } from "./geometry";
 import type { Params } from "./params";
+import { decodeInput, encodeInput } from "./inputCodec";
 import { Sim, type Input, type MatchOptions } from "./sim";
 
 export const RECORDING_FORMAT = 1;
@@ -29,16 +30,7 @@ export interface Recording {
   checksums: { tick: number; hash: string }[];
 }
 
-// One input = one character '0'..'5': (turn + 1) + (charge ? 3 : 0).
-export function encodeInput(i: Input): string {
-  return String(i.turn + 1 + (i.charge ? 3 : 0));
-}
-
-export function decodeInput(c: string): Input {
-  const n = Number(c);
-  if (!(n >= 0 && n <= 5)) throw new Error(`bad input char ${JSON.stringify(c)}`);
-  return { turn: ((n % 3) - 1) as Input["turn"], charge: n >= 3 };
-}
+export { decodeInput, encodeInput } from "./inputCodec";
 
 /** Records a match as it's played. Call beforeStep() then afterStep() around every sim.step(). */
 export class Recorder {

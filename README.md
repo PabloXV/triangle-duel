@@ -10,6 +10,8 @@ npm test           # sim tests (Node, headless)
 npm run bots       # headless bot matches with win/loss stats (--experiments for more)
 npm run verify -- f.json  # check a downloaded match recording replays exactly
 npm run cross-browser    # replay the fixture match in Node, Chrome, Firefox, WebKit and compare
+npm run relay      # the online room relay, locally (Cloudflare Workers runtime via wrangler)
+npm run relay:smoke  # end-to-end relay check: two clients, a match, identical tick streams
 ```
 
 Controls: P1 `←`/`→` rotate, `↓` charge. P2 (if human) `A`/`D` rotate, `S` charge.
@@ -37,6 +39,9 @@ src/sim/        ← the game. No DOM, no clock, no randomness. Runs in Node.
   detmath.ts      deterministic sin/cos (see "Determinism")
 src/session.ts  what the loop drives: LiveSession (one InputSource per player,
                 recorded) or PlaybackSession. Online will be another Session.
+src/net/        online: protocol.ts (messages), room.ts (relay logic, no
+                Cloudflare APIs, tested in Node), client.ts (browser connection)
+server/         the relay Worker + Room Durable Object (thin wrapper over room.ts)
 src/bots/       bots: read FighterView, return Input, same as a keyboard
 src/input.ts    keyboard → Input { turn, charge } (KeyboardSource)
 src/render.ts canvas renderer; reads sim state, never writes it
@@ -163,6 +168,30 @@ touch-KOs (falling still counts). Ghosting doesn't end while still overlapping
 someone, because re-enabling collisions mid-overlap makes Rapier shove the
 bodies apart violently. Out of stocks = removed from the stage. Last one with
 stocks wins.
+
+## Online (relay)
+
+One Cloudflare Durable Object per room code: a single instance worldwide, so
+every player's messages are handled in one place, in order. It owns the
+match clock and the official input stream:
+
+- Clients send an input only when it changes, tagged with the step it should
+  apply on (a few steps ahead). That keeps traffic, and Cloudflare requests,
+  low.
+- At 60 Hz the room finalizes the next step and broadcasts it, with any input
+  changes. A late input moves to the next open step; the relay never waits,
+  so one laggy player can't stall everyone. A player who disconnects goes idle.
+- Every client simulates that same stream, which works because the sim is
+  deterministic (see below).
+
+The logic is plain TypeScript in `src/net/room.ts` (tested in Node);
+`server/room-do.ts` only connects WebSockets and the clock to it.
+`npm run relay:smoke` runs the real local Workers runtime with two clients.
+
+**Status (C1):** lobby, room codes, start, and the official stream work end to
+end in the browser (panel → Online; run `npm run relay` alongside
+`npm run dev`). Playing the match online (an online Session simulating the
+stream, then rollback) is C2.
 
 ## Juice (camera, shake, final-KO replay)
 

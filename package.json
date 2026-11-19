@@ -5,23 +5,27 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && tsc --noEmit -p server && vite build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p server",
     "test": "vitest run",
     "bots": "tsx scripts/bot-arena.ts",
     "verify": "tsx scripts/verify-recording.ts",
-    "cross-browser": "npm run build && tsx scripts/cross-browser.ts"
+    "cross-browser": "npm run build && tsx scripts/cross-browser.ts",
+    "relay": "wrangler dev --port 8787",
+    "relay:smoke": "tsx scripts/relay-smoke.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-deterministic-compat": "^0.21.0",
     "lil-gui": "^0.21.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261119.1",
     "@types/node": "^26.6.6",
     "playwright-core": "^1.65.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.1",
+    "wrangler": "^4.165.0"
   }
 }
