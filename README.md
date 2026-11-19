@@ -23,13 +23,22 @@ that's switched off are hidden.
 ## How it's put together
 
 ```
-src/sim/      ← the game. No DOM, no clock, no randomness. Runs in Node.
-  params.ts     every tunable number, with units and what "live" means
-  geometry.ts   fighter shapes + stages as plain data
-  sim.ts        Sim class: step(inputs) advances one 1/60 s tick
-  detmath.ts    the one place sin/cos come from (see "Determinism")
-src/bots/     bots: read FighterView, return Input, same as a keyboard
-src/input.ts  keyboard → Input { turn, charge }
+src/sim/        ← the game. No DOM, no clock, no randomness. Runs in Node.
+  sim.ts          Sim: world setup, the per-tick order of operations, view,
+                  save/restore/hash. Start reading here.
+  types.ts        public types (Input, SimEvent, MatchOptions, FighterView...)
+  movement.ts     grounded check, rotation, jumping, foot grip (the "feel")
+  lives.ts        KOs, stocks, respawning, ghosting, match end
+  platforms.ts    one-way platform solidity
+  fighter.ts      a fighter's parts + the match context the rules operate on
+  recording.ts    match recordings: record, play back, verify
+  params.ts       every tunable number, with units and what "live" means
+  geometry.ts     fighter shapes + stages as plain data, shared helpers
+  detmath.ts      deterministic sin/cos (see "Determinism")
+src/session.ts  what the loop drives: LiveSession (one InputSource per player,
+                recorded) or PlaybackSession. Online will be another Session.
+src/bots/       bots: read FighterView, return Input, same as a keyboard
+src/input.ts    keyboard → Input { turn, charge } (KeyboardSource)
 src/render.ts canvas renderer; reads sim state, never writes it
 src/panel.ts  lil-gui param panel
 src/camera.ts follow cam (pan/zoom to fit fighters) + screen shake
@@ -40,8 +49,9 @@ scripts/      bot arena, recording verify, cross-browser check, fixture generato
 ```
 
 **The one rule:** the only way to affect a match is `sim.step(inputs)`.
-Keyboard, future bots and future network peers all produce the same `Input`
-struct. That's what makes bots, replays, rollback netcode and headless testing
+Keyboard, bots, recordings and (soon) network peers all produce the same
+`Input` struct, through the `InputSource` interface in `src/session.ts`.
+That's what makes bots, replays, rollback netcode and headless testing
 possible without a rewrite.
 
 **Fixed timestep:** `main.ts` runs the sim in exact 1/60 s ticks no matter the

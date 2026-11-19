@@ -17,7 +17,8 @@
 
 import { clamp, platformTop, type Platform, type Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
-import type { FighterView, Input } from "../sim/sim";
+import type { InputSource } from "../session";
+import type { FighterView, Input, Sim } from "../sim/sim";
 
 export interface BotConfig {
   /**
@@ -321,4 +322,19 @@ function mulberry32(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** Adapts a HeuristicBot to the InputSource interface sessions use. */
+export class BotSource implements InputSource {
+  readonly isHuman = false;
+  constructor(
+    readonly bot: HeuristicBot,
+    private params: Params,
+  ) {}
+  describe() {
+    return `bot (${this.bot.mode})`;
+  }
+  next(view: FighterView[], sim: Sim): Input {
+    return this.bot.think(view, sim.stage, this.params);
+  }
 }

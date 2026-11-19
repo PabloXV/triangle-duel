@@ -1,6 +1,7 @@
 // Keyboard → Input. The sim never sees keys, only Input structs, so bots and
 // network peers can later produce the same thing.
 
+import type { InputSource } from "./session";
 import type { Input } from "./sim/sim";
 
 interface Binding {
@@ -34,4 +35,16 @@ export function readInput(player: number): Input {
   const b = BINDINGS[player];
   const turn = (held.has(b.right) ? 1 : 0) - (held.has(b.left) ? 1 : 0);
   return { turn: turn as Input["turn"], charge: held.has(b.charge) };
+}
+
+/** A player driven by keyboard binding `binding` (0 = arrows, 1 = A/D/S). */
+export class KeyboardSource implements InputSource {
+  readonly isHuman = true;
+  constructor(private binding: number) {}
+  describe() {
+    return "human";
+  }
+  next(): Input {
+    return readInput(this.binding);
+  }
 }
