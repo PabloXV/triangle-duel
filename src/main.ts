@@ -1,11 +1,13 @@
 // Wires everything together: fixed-timestep loop, input, sim, renderer, panel.
 
 import { DEFAULT_BOT, HeuristicBot } from "./bots/heuristic";
+import { CameraRig } from "./camera";
 import { BINDINGS, installKeyboard, readInput } from "./input";
 import { buildPanel, loadParams, type UiState } from "./panel";
 import { Renderer } from "./render";
+import { FinalKoReplay, History } from "./replay";
 import { WINGS_STAGE } from "./sim/geometry";
-import { DEFAULT_MATCH, DT, Sim, initPhysics, type FighterView, type Input } from "./sim/sim";
+import { DEFAULT_MATCH, DT, Sim, initPhysics, type FighterView, type Input, type SimEvent } from "./sim/sim";
 
 await initPhysics();
 
@@ -17,8 +19,14 @@ const ui: UiState = {
   p1: "human",
   p2: "bot",
   botReaction: DEFAULT_BOT.reactionTicks,
+  cameraFollow: true,
+  shakeScale: 1,
+  finalKoReplay: true,
 };
 const renderer = new Renderer(document.getElementById("game") as HTMLCanvasElement);
+const camera = new CameraRig(WINGS_STAGE);
+const history = new History();
+let replay: FinalKoReplay | null = null; // non-null while showing the final-KO replay
 
 let sim: Sim;
 let prev: FighterView[];
@@ -51,6 +59,34 @@ function restart() {
   setupControllers();
   curr = sim.view();
   prev = curr;
+  history.clear();
+  replay = null;
+  camera.reset();
+}
+
+/** Map a contact force (N) to shake trauma. Measured in bot matches: median
+ *  contact peaks ~39 N, top 10% > 62 N, top 1% > 126 N. Ordinary bumps barely
+ *  register (shake goes with trauma²); only big hits really shake. */
+const impactShake = (force: number) => Math.min(1, Math.max(0, (force - 30) / 100));
+
+/** React to what happened this tick. Returns true if the final KO just happened. */
+function handleEvents(events: SimEvent[]): boolean {
+  let final = false;
+  for (const e of events) {
+    if (e.type === "impact") camera.shake(impactShake(e.force));
+    else if (e.type === "ko") {
+      camera.shake(0.6);
+      if (e.final) final = true;
+    }
+  }
+  return final;
+}
+
+function startReplay() {
+  const r = sim.result;
+  const loser = sim.events.find((e) => e.type === "ko" && e.final);
+  if (!r.over || !loser || loser.type !== "ko") return;
+  replay = new FinalKoReplay(history.snapshot(), loser.fighter);
 }
 restart();
 
@@ -76,6 +112,7 @@ function labels(): string[] {
 // interpolates between the last two ticks using that leftover.
 let accumulator = 0;
 let last = performance.now();
+let lastFrame = performance.now();
 
 function frame(now: number) {
   // Schedule the next frame first, so an error in this one shows up in the
@@ -84,13 +121,37 @@ function frame(now: number) {
   // Cap the catch-up so a backgrounded tab doesn't simulate seconds at once.
   accumulator += Math.min((now - last) / 1000, 0.25);
   last = now;
-  while (accumulator >= DT) {
-    sim.step(gatherInputs());
-    prev = curr;
-    curr = sim.view();
-    accumulator -= DT;
+  const dt = Math.min((now - lastFrame) / 1000, 0.1);
+  lastFrame = now;
+
+  if (replay) {
+    // Final-KO replay: the sim is paused; we play back recorded frames.
+    accumulator = 0;
+    const playing = replay.update(dt);
+    if (replay.hitNow) camera.shake(1);
+    if (!playing) replay = null; // done: back to the live view, banner shows
+  } else {
+    while (accumulator >= DT) {
+      sim.step(gatherInputs());
+      prev = curr;
+      curr = sim.view();
+      history.push({ views: curr, events: sim.events });
+      accumulator -= DT;
+      if (handleEvents(sim.events) && ui.finalKoReplay) {
+        startReplay();
+        break;
+      }
+    }
   }
-  renderer.draw(sim.stage, prev, curr, accumulator / DT, sim.result, {
+
+  // What to show: the replay's recorded frames, or the live sim.
+  const shown = replay ? replay.current() : { prev, curr, alpha: accumulator / DT };
+  const inFrame = replay
+    ? replay.focus.map((i) => shown.curr[i])
+    : shown.curr.filter((f) => !f.ko && !f.eliminated);
+  const cam = camera.update(inFrame, dt, renderer.aspect(), { follow: ui.cameraFollow, shakeScale: ui.shakeScale });
+  renderer.draw(sim.stage, cam, shown.prev, shown.curr, shown.alpha, sim.result, {
+    replay: replay !== null,
     debug: ui.debug,
     labels: labels(),
     humans: Array.from({ length: sim.match.players }, (_, i) => !bots[i]),

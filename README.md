@@ -31,6 +31,8 @@ src/bots/     bots: read FighterView, return Input, same as a keyboard
 src/input.ts  keyboard → Input { turn, charge }
 src/render.ts canvas renderer; reads sim state, never writes it
 src/panel.ts  lil-gui param panel
+src/camera.ts follow cam (pan/zoom to fit fighters) + screen shake
+src/replay.ts final-KO instant replay (plays back recorded frames)
 src/main.ts   fixed-timestep loop gluing the above together
 tests/        sim behavior tests
 scripts/      probes that measured the foot/rotation behavior
@@ -149,6 +151,24 @@ touch-KOs (falling still counts). Ghosting doesn't end while still overlapping
 someone, because re-enabling collisions mid-overlap makes Rapier shove the
 bodies apart violently. Out of stocks = removed from the stage. Last one with
 stocks wins.
+
+## Juice (camera, shake, final-KO replay)
+
+All presentation; none of it touches the sim. The panel's "Juice" section
+toggles each.
+
+- **Camera** (`src/camera.ts`): pans and zooms to fit living fighters, with
+  zoom limits, and doesn't dive after someone falling to a KO.
+- **Shake**: the sim reports `SimEvent`s each tick: fighter-vs-fighter
+  `impact`s (Rapier contact force) and `ko`s. Force maps to shake on a curve
+  measured from bot matches (median contact ~39 N; top 1% > 126 N), and
+  strength goes with trauma², so ordinary bumps barely register.
+- **Final-KO replay** (`src/replay.ts`): when the match-ending KO lands, the
+  sim pauses and the last few seconds replay from just before the decisive
+  moment (the loser's last collision, else their last moment on the ground),
+  in slow motion and letterboxed. It's a replay rather than slowing time at the
+  KO because a fall only counts as a KO when the body leaves the blast zone,
+  well after (and below) the hit that caused it.
 
 ## Determinism
 

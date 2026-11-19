@@ -35,6 +35,9 @@ export interface UiState {
   p1: "human" | "bot";
   p2: "human" | "bot";
   botReaction: number; // ticks; see BotConfig.reactionTicks
+  cameraFollow: boolean;
+  shakeScale: number;
+  finalKoReplay: boolean;
 }
 
 export interface PanelActions {
@@ -52,6 +55,11 @@ export function buildPanel(params: Params, ui: UiState, actions: PanelActions) {
   players.add(ui, "p1", ["human", "bot"]).name("P1 (arrows)").onChange(actions.controllersChanged);
   players.add(ui, "p2", ["human", "bot"]).name("P2 (A/D/S)").onChange(actions.controllersChanged);
   players.add(ui, "botReaction", 0, 40, 1).name("bot reaction (ticks)").onFinishChange(actions.controllersChanged);
+
+  const juice = gui.addFolder("Juice");
+  juice.add(ui, "cameraFollow").name("camera follow");
+  juice.add(ui, "shakeScale", 0, 3, 0.1).name("screen shake");
+  juice.add(ui, "finalKoReplay").name("final KO replay");
 
   const folders = new Map(PARAM_GROUPS.map((g) => [g, gui.addFolder(g)]));
   folders.get("Advanced")!.close();

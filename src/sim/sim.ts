@@ -44,6 +44,16 @@ export const NO_INPUT: Input = { turn: 0, charge: false };
 
 export type KoReason = "touched" | "fell";
 
+/**
+ * Things that happened during the last step(), for presentation (screen shake,
+ * replays, later sound). Deterministic like everything else in the sim.
+ */
+export type SimEvent =
+  /** Two fighters pushing on each other this tick. `force` = Rapier contact force (N). */
+  | { type: "impact"; a: number; b: number; force: number }
+  /** A fighter lost a stock. `final` = this KO ended the match. */
+  | { type: "ko"; fighter: number; reason: KoReason; stocksLeft: number; final: boolean };
+
 /** Match setup: who's playing and how many lives. Fixed for the whole match. */
 export interface MatchOptions {
   players: number;
@@ -108,15 +118,18 @@ export class Sim {
   private platformColliders: RAPIER.Collider[] = [];
   private platformByCollider = new Map<number, number>(); // collider handle → platform index
   private fighterByBody = new Map<number, number>(); // body handle → fighter index
+  private fighterByCollider = new Map<number, number>(); // collider handle → fighter index
   /** oneWaySolid[fighter][platform]: does this one-way platform block this fighter this tick? */
   private oneWaySolid: boolean[][] = [];
   private hooks: RAPIER.PhysicsHooks;
-  // Rapier quirk: world.step() silently ignores physics hooks unless an event
-  // queue is passed too (see rapier's PhysicsPipeline.step). We don't use the
-  // events; the queue exists only so the one-way platform hook runs.
-  private events = new RAPIER.EventQueue(false);
+  // Collects Rapier's contact-force events (for SimEvent impacts). Also needed
+  // for a Rapier quirk: world.step() silently ignores physics hooks unless an
+  // event queue is passed too (see rapier's PhysicsPipeline.step).
+  private eventQueue = new RAPIER.EventQueue(false);
   private gripActive: boolean[] = [];
   readonly match: MatchOptions;
+  /** Events from the most recent step(). Replaced every step. */
+  events: SimEvent[] = [];
   tick = 0;
   result: MatchResult = { over: false };
 
@@ -156,7 +169,10 @@ export class Sim {
       if (!desc) throw new Error("degenerate fighter shape");
       // Fighters also go through the contact hook, so ghosts can pass through each other.
       desc.setDensity(params.density).setActiveHooks(RAPIER.ActiveHooks.FILTER_CONTACT_PAIRS);
+      // Report contact forces (threshold 0 = every contact); we keep fighter-vs-fighter ones.
+      desc.setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS).setContactForceEventThreshold(0);
       const collider = this.world.createCollider(desc, body);
+      this.fighterByCollider.set(collider.handle, i);
       this.fighterByBody.set(body.handle, i);
       this.fighters.push({
         shape,
@@ -206,6 +222,7 @@ export class Sim {
 
   /** Advance one tick. `inputs[i]` drives fighter i. */
   step(inputs: readonly Input[]) {
+    this.events = [];
     this.syncLiveParams();
     this.updateOneWaySolidity();
 
@@ -223,8 +240,13 @@ export class Sim {
       this.gripActive[i] = this.applyGrip(f, i);
     }
 
-    this.world.step(this.events, this.hooks);
-    this.events.clear();
+    this.world.step(this.eventQueue, this.hooks);
+    this.eventQueue.drainContactForceEvents((e) => {
+      const a = this.fighterByCollider.get(e.collider1());
+      const b = this.fighterByCollider.get(e.collider2());
+      if (a !== undefined && b !== undefined) this.events.push({ type: "impact", a, b, force: e.totalForceMagnitude() });
+    });
+    this.eventQueue.clear();
     this.tick++;
 
     this.checkKOs();
@@ -390,7 +412,11 @@ export class Sim {
     if (!this.result.over) {
       const remaining = this.fighters.flatMap((f, i) => (f.stocks > 0 ? [i] : []));
       // Last fighters losing their last stocks on the same tick = draw (winner null).
-      if (remaining.length <= 1) this.result = { over: true, winner: remaining[0] ?? null, tick: this.tick };
+      if (remaining.length <= 1) {
+        this.result = { over: true, winner: remaining[0] ?? null, tick: this.tick };
+        // The KO(s) this tick ended the match.
+        for (const e of this.events) if (e.type === "ko") e.final = true;
+      }
     }
   }
 
@@ -399,6 +425,8 @@ export class Sim {
   private knockOut(f: FighterRules, reason: KoReason) {
     f.ko = reason;
     f.stocks--;
+    const fighter = this.fighters.indexOf(f);
+    this.events.push({ type: "ko", fighter, reason, stocksLeft: f.stocks, final: false });
     f.respawnTimer = this.match.respawnDelayTicks;
     f.ghostTimer = 0;
     f.charging = false;
@@ -561,6 +589,6 @@ export class Sim {
 
   free() {
     this.world.free();
-    this.events.free();
+    this.eventQueue.free();
   }
 }

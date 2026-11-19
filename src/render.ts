@@ -1,5 +1,6 @@
 // Canvas 2D renderer. Reads sim state, never writes it.
 
+import type { CameraView } from "./camera";
 import type { Platform, Stage, Vec2 } from "./sim/geometry";
 import type { FighterView, MatchResult } from "./sim/sim";
 
@@ -10,6 +11,7 @@ export interface RenderOptions {
   labels: string[]; // per fighter, for the debug overlay
   humans: boolean[]; // per fighter: keyboard-controlled? (for the controls hint)
   totalStocks: number; // stocks each player started with
+  replay: boolean; // showing the final-KO replay: letterbox, no banner yet
 }
 
 const CONTROL_HINTS = ["P1: ←/→ rotate, ↓ charge", "P2: A/D rotate, S charge"];
@@ -24,8 +26,12 @@ export class Renderer {
     this.ctx = ctx;
   }
 
-  private resize(stage: Stage) {
-    const cam = stage.camera;
+  /** Canvas width / height, for the camera to match. */
+  aspect(): number {
+    return this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight);
+  }
+
+  private applyCamera(cam: CameraView) {
     const dpr = window.devicePixelRatio || 1;
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
@@ -34,9 +40,10 @@ export class Renderer {
       this.canvas.height = h * dpr;
     }
     this.scale = Math.min(w / cam.width, h / cam.height); // fit the whole camera box
-    // Origin at screen center, y up, 1 unit = 1 meter.
+    // Origin at screen center, y up, 1 unit = 1 meter; then shake (tilt + offset).
     this.ctx.setTransform(dpr * this.scale, 0, 0, -dpr * this.scale, (dpr * w) / 2, (dpr * h) / 2);
-    this.ctx.translate(-cam.center.x, -cam.center.y);
+    this.ctx.rotate(cam.tilt);
+    this.ctx.translate(-(cam.center.x + cam.shake.x), -(cam.center.y + cam.shake.y));
   }
 
   /**
@@ -44,9 +51,17 @@ export class Renderer {
    * (0..1) is how far between them the current frame falls. Interpolating keeps
    * motion smooth on displays faster than the 60Hz tick rate.
    */
-  draw(stage: Stage, prev: FighterView[], curr: FighterView[], alpha: number, result: MatchResult, opts: RenderOptions) {
+  draw(
+    stage: Stage,
+    cam: CameraView,
+    prev: FighterView[],
+    curr: FighterView[],
+    alpha: number,
+    result: MatchResult,
+    opts: RenderOptions,
+  ) {
     const ctx = this.ctx;
-    this.resize(stage);
+    this.applyCamera(cam);
 
     // background, in screen space
     ctx.save();
@@ -69,6 +84,7 @@ export class Renderer {
       this.drawFighter(verts, f, COLORS[i % COLORS.length]);
     });
 
+    if (opts.replay) this.drawLetterbox();
     this.drawHud(curr, result, opts);
   }
 
@@ -140,6 +156,18 @@ export class Renderer {
     ctx.globalAlpha = 1;
   }
 
+  /** Cinematic bars during the final-KO replay. */
+  private drawLetterbox() {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const bar = this.canvas.height * 0.09;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, this.canvas.width, bar);
+    ctx.fillRect(0, this.canvas.height - bar, this.canvas.width, bar);
+    ctx.restore();
+  }
+
   /** Stock row: one small triangle per life, hollow once lost. Screen pixels. */
   private drawStocks(fighters: FighterView[], totalStocks: number, cx: number, y: number) {
     const ctx = this.ctx;
@@ -199,7 +227,7 @@ export class Renderer {
     ctx.fillText([...hints, "R restart"].join("   ·   "), w / 2, h - 28);
     this.drawStocks(fighters, opts.totalStocks, w / 2, h - 64);
 
-    if (result.over) {
+    if (result.over && !opts.replay) {
       ctx.font = "bold 48px system-ui, sans-serif";
       ctx.fillStyle = result.winner === null ? "#fff" : COLORS[result.winner % COLORS.length];
       ctx.fillText(result.winner === null ? "DRAW" : `P${result.winner + 1} WINS`, w / 2, h * 0.2);
