@@ -174,9 +174,12 @@ toggles each.
 
 The sim uses Rapier's deterministic build (bit-identical across platforms).
 A test runs a 600-tick scripted match twice and compares physics snapshots
-byte for byte. Caveat: our own JS math must also be deterministic across
-browsers for netcode. `Math.sin`/`cos` aren't guaranteed to be, so they're
-routed through `src/sim/detmath.ts` to be replaced before netcode.
+byte for byte. Our own JS on top must be deterministic too: `src/sim/detmath.ts` has sin/cos
+ported from fdlibm using only exact operations (bit-identical in every engine,
+~1 ulp from `Math.sin`). `tests/detmath.test.ts` locks golden output bits and
+scans `src/sim/` for engine-dependent or nondeterministic operations
+(`Math.sin`, `Math.random`, `Date.now`, `**`, ...), so that rule is enforced
+rather than remembered.
 
 ### Save / restore (for rollback)
 
