@@ -4,7 +4,7 @@ import { cornersFromWorld } from "./look/fighterLayout";
 import { drawPlatform } from "./look/platforms";
 import { drawSticker, moodOf } from "./look/sticker";
 import { fillTexture, preloadTextures } from "./look/texture";
-import { DEBUG_COLORS, FONTS, HALO, INK, WALL, playerColor, withAlpha } from "./theme";
+import { DEBUG_COLORS, FONTS, HALO, INK, LINES, WALL, playerColor, withAlpha } from "./theme";
 import { stickerSVGFromCorners } from "./look/stickerSVG";
 import type { CameraView } from "./camera";
 import type { Stage, Vec2 } from "./sim/geometry";
@@ -159,7 +159,7 @@ export class Renderer {
       // its shadow and outline would show through the body.
       const layer = this.fadeLayer();
       layer.setTransform(ctx.getTransform());
-      drawSticker(layer, verts, f.footIndex, { color, eyes }, moodOf(f), hopping);
+      drawSticker(layer, verts, f.footIndex, { color, eyes }, moodOf(f), hopping, f.charge);
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalAlpha = alpha;
@@ -167,19 +167,31 @@ export class Renderer {
       ctx.restore();
       layer.setTransform(1, 0, 0, 1, 0, 0);
       layer.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-    } else drawSticker(ctx, verts, f.footIndex, { color, eyes }, moodOf(f), hopping);
+    } else drawSticker(ctx, verts, f.footIndex, { color, eyes }, moodOf(f), hopping, f.charge);
     ctx.globalAlpha = alpha;
 
     if (debug) this.drawFootMarker(verts, f, px);
 
-    // Jump charge bar above the fighter.
+    // Jump charge meter above the fighter: a mark (pill, ink line), filling with the fighter's color.
     if (f.charge > 0) {
-      const top = Math.max(verts[0].y, verts[1].y, verts[2].y) + 0.35;
+      const top = Math.max(verts[0].y, verts[1].y, verts[2].y) + 0.38;
       const cx = (verts[0].x + verts[1].x + verts[2].x) / 3;
-      ctx.fillStyle = withAlpha(INK, 0.8);
-      ctx.fillRect(cx - 0.52, top - 0.02, 1.04, 0.16);
-      ctx.fillStyle = HALO;
-      ctx.fillRect(cx - 0.5, top, f.charge, 0.12);
+      const W = 1;
+      const H = 0.16;
+      const pill = (x: number, w: number) => {
+        ctx.beginPath();
+        ctx.roundRect(x, top, w, H, H / 2);
+      };
+      pill(cx - W / 2, W);
+      ctx.fillStyle = withAlpha(INK, 0.75);
+      ctx.fill();
+      pill(cx - W / 2, Math.max(H, W * f.charge));
+      ctx.fillStyle = color;
+      ctx.fill();
+      pill(cx - W / 2, W);
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = LINES.markLine;
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }

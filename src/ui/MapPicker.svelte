@@ -26,18 +26,37 @@
   .maps {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 0.75rem;
+    gap: 1.1rem;
   }
-  .map {
+  /* A picture card, not a toggle: it stays dark so the preview and text read;
+     the chosen map gets a POP ring around its outline instead of a yellow body. */
+  :global(.card) button.map {
+    --btn-base: var(--panel);
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 0.3rem;
+    align-items: stretch;
+    gap: 0.35rem;
     text-align: left;
-    padding: 0.6rem !important;
+    padding: 0.5rem 0.5rem 0.65rem;
+    color: var(--halo);
+    text-shadow: none;
+  }
+  :global(.card) button.map.selected {
+    --btn-base: var(--panel);
+    color: var(--halo);
+    box-shadow:
+      0 0 0 3px var(--halo),
+      0 0 0 8px var(--pop),
+      0 0 0 11px var(--ink),
+      4px 5px 0 11px var(--shadow-ink);
+  }
+  .map strong {
+    font: 400 1.15rem var(--font-label);
+    padding: 0 0.2rem;
   }
   .map span {
-    font-size: 0.85rem;
+    font: 400 0.82rem/1.3 var(--font-body);
     color: var(--muted);
+    padding: 0 0.2rem;
   }
 </style>

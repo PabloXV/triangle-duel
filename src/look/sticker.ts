@@ -9,7 +9,7 @@
 // (docs/visual-language.md §5).
 
 import type { Vec2 } from "../sim/geometry";
-import { GOLD, HALO, INK, WHITE, mix, withAlpha } from "../theme";
+import { GOLD, HALO, INK, LINES, WHITE, mix, withAlpha } from "../theme";
 import { EYE_MOODS, FACE_EXTENT, eyesSVG, type EyeMood } from "./eyes";
 import { PLAY_OUTLINE, SHEET_PX, cornersFromWorld, fighterLayout } from "./fighterLayout";
 
@@ -60,21 +60,56 @@ export function facesReady(): number {
 }
 
 // ---- drawing ----
-/** Stroke width of stroke-style marks (charge ring, speed lines, arcs), meters. */
-const MARK_W = 5 * SHEET_PX;
-/** The thinnest ink line on a small mark (a sparkle's outline). */
+/** Ink line on marks (LINES.markLine), and the thinnest one on a tiny mark (a sparkle). */
+const MARK_INK = LINES.markLine;
 const MARK_LINE_MIN = 0.022;
 
-/** A stroke-style mark: an ink stroke twice as wide underneath, then the color. */
-function cased(ctx: CanvasRenderingContext2D, color: string, width: number, path: () => void) {
+/** A fill-style mark: flat `fill`, ink line (even-odd, so a path can have a hole). */
+function mark(ctx: CanvasRenderingContext2D, fill: string, path: () => void) {
   ctx.beginPath();
   path();
+  ctx.fillStyle = fill;
+  ctx.fill("evenodd");
   ctx.strokeStyle = INK;
-  ctx.lineWidth = width * 2;
+  ctx.lineWidth = MARK_INK;
+  ctx.lineJoin = "round";
   ctx.stroke();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
-  ctx.stroke();
+}
+
+/** A white band along an arc (center, radius, from/to angle), thickest in the middle, tapered at the ends. */
+function band(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, a0: number, a1: number, width: number) {
+  const N = 16;
+  const at = (u: number, side: number) => {
+    const a = a0 + (a1 - a0) * u;
+    const w = width * (0.2 + 0.8 * Math.sin(Math.PI * u));
+    const rr = r + (side * w) / 2;
+    return [cx + rr * Math.cos(a), cy + rr * Math.sin(a)];
+  };
+  mark(ctx, HALO, () => {
+    for (let i = 0; i <= N; i++) {
+      const [x, y] = at(i / N, 1);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    for (let i = N; i >= 0; i--) {
+      const [x, y] = at(i / N, -1);
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  });
+}
+
+/** A white spike: base centered at (x, y), `len` long toward angle `a`. */
+function spike(ctx: CanvasRenderingContext2D, x: number, y: number, a: number, len: number, halfWidth: number) {
+  const px = -Math.sin(a) * halfWidth;
+  const py = Math.cos(a) * halfWidth;
+  mark(ctx, HALO, () => {
+    ctx.moveTo(x + px, y + py);
+    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+    ctx.lineTo(x - px, y - py);
+    ctx.quadraticCurveTo(x - Math.cos(a) * halfWidth, y - Math.sin(a) * halfWidth, x + px, y + py);
+    ctx.closePath();
+  });
 }
 
 function tri(ctx: CanvasRenderingContext2D, [F, L, R]: readonly Vec2[]) {
@@ -110,7 +145,7 @@ function sparkle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number,
  * Draw one fighter (world units, y up). `verts` are its corners in the world,
  * `mood` picks the eyes and effects. Layout: fighterLayout.ts.
  */
-export function drawSticker(ctx: CanvasRenderingContext2D, verts: Vec2[], footIndex: number, look: StickerLook, mood: EyeMood, hopping = false) {
+export function drawSticker(ctx: CanvasRenderingContext2D, verts: Vec2[], footIndex: number, look: StickerLook, mood: EyeMood, hopping = false, charge = 0) {
   const c = cornersFromWorld(verts, footIndex);
   const lay = fighterLayout(c, PLAY_OUTLINE);
   const k = SHEET_PX; // effects keep the eye sheet's sizes
@@ -121,40 +156,34 @@ export function drawSticker(ctx: CanvasRenderingContext2D, verts: Vec2[], footIn
   ctx.translate(c.foot.x, c.foot.y);
   ctx.rotate(c.angle);
 
-  // Mood effects behind the body: marks, ink-cased (visual-language.md §6).
+  // Mood effects behind the body: fill-style marks (flat fill + ink line,
+  // visual-language.md §6), level with the ground rather than the lean.
+  ctx.save();
+  ctx.rotate(-c.angle);
   if (mood === "charge") {
-    cased(ctx, col, MARK_W, () => ctx.ellipse(0, -3 * k, 48 * k, 9 * k, 0, 0, Math.PI * 2));
-    cased(ctx, HALO, MARK_W, () => {
-      for (const [x1, y1, x2, y2] of [
-        [-32, 4, -56, 22],
-        [32, 4, 56, 22],
-        [-44, -4, -72, -2],
-        [44, -4, 72, -2],
-      ]) {
-        ctx.moveTo(x1 * k, y1 * k);
-        ctx.lineTo(x2 * k, y2 * k);
-      }
+    // A ring at the foot in the fighter's color, and spikes bursting out;
+    // both grow as the charge builds.
+    const rx = 0.36 + 0.3 * charge;
+    const ry = rx * 0.26;
+    mark(ctx, col, () => {
+      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, rx - 0.11, ry - 0.045, 0, Math.PI * 2, 0, true);
     });
+    for (const deg of [18, 52, 128, 162]) {
+      const a = (deg * Math.PI) / 180;
+      spike(ctx, Math.cos(a) * (rx + 0.06), 0.05 + Math.sin(a) * (ry + 0.08), a, 0.18 + 0.2 * charge, 0.05);
+    }
   } else if (mood === "wobble") {
-    cased(ctx, HALO, MARK_W, () => {
-      ctx.moveTo(-24 * k, 26 * k);
-      ctx.quadraticCurveTo(-36 * k, 12 * k, -24 * k, -2 * k);
-      ctx.moveTo(24 * k, 26 * k);
-      ctx.quadraticCurveTo(36 * k, 12 * k, 24 * k, -2 * k);
-    });
+    // "( )": two tapered crescents beside the foot.
+    band(ctx, 0, 0.18, 0.4, -0.7, 0.7, 0.09);
+    band(ctx, 0, 0.18, 0.4, Math.PI - 0.7, Math.PI + 0.7, 0.09);
   }
   if (hopping && mood === "idle") {
-    // Motion arcs under the foot, level with the world (not the lean).
-    ctx.save();
-    ctx.rotate(-c.angle);
-    cased(ctx, HALO, MARK_W * 0.8, () => {
-      ctx.moveTo(-26 * k, -22 * k);
-      ctx.quadraticCurveTo(0, -40 * k, 26 * k, -22 * k);
-      ctx.moveTo(-18 * k, -38 * k);
-      ctx.quadraticCurveTo(0, -50 * k, 18 * k, -38 * k);
-    });
-    ctx.restore();
+    // Motion arcs: two tapered smiles under the foot.
+    band(ctx, 0, 0.15, 0.3, Math.PI * 1.25, Math.PI * 1.75, 0.075);
+    band(ctx, 0, 0.15, 0.46, Math.PI * 1.33, Math.PI * 1.67, 0.06);
   }
+  ctx.restore();
 
   // Block shadow (with the white outline's thickness): offset down-right in
   // the world, so there's one light for everyone, whichever way they lean.
