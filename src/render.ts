@@ -4,7 +4,8 @@ import { cornersFromWorld } from "./look/fighterLayout";
 import { drawPlatform } from "./look/platforms";
 import { drawSticker, moodOf } from "./look/sticker";
 import { fillTexture, preloadTextures } from "./look/texture";
-import { DEBUG_COLORS, HALO, INK, WALL, playerColor, withAlpha } from "./theme";
+import { DEBUG_COLORS, FONTS, HALO, INK, WALL, playerColor, withAlpha } from "./theme";
+import { stickerSVGFromCorners } from "./look/stickerSVG";
 import type { CameraView } from "./camera";
 import type { Stage, Vec2 } from "./sim/geometry";
 import type { FighterView, MatchResult } from "./sim/sim";
@@ -152,12 +153,13 @@ export class Renderer {
     // Dead: faded. Ghost (just respawned): blinking.
     const blink = Math.floor(performance.now() / 100) % 2 === 0;
     const alpha = f.ko ? 0.6 : f.ghost ? (blink ? 0.35 : 0.8) : 1;
+    const hopping = !f.grounded && f.vy > 0.5; // rising from a hop: motion arcs
     if (alpha < 1) {
       // Fade the fighter as a whole: drawn layer by layer at partial opacity,
       // its shadow and outline would show through the body.
       const layer = this.fadeLayer();
       layer.setTransform(ctx.getTransform());
-      drawSticker(layer, verts, f.footIndex, { color, eyes }, moodOf(f));
+      drawSticker(layer, verts, f.footIndex, { color, eyes }, moodOf(f), hopping);
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalAlpha = alpha;
@@ -165,7 +167,7 @@ export class Renderer {
       ctx.restore();
       layer.setTransform(1, 0, 0, 1, 0, 0);
       layer.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-    } else drawSticker(ctx, verts, f.footIndex, { color, eyes }, moodOf(f));
+    } else drawSticker(ctx, verts, f.footIndex, { color, eyes }, moodOf(f), hopping);
     ctx.globalAlpha = alpha;
 
     if (debug) this.drawFootMarker(verts, f, px);
@@ -228,48 +230,37 @@ export class Renderer {
    * once lost. All icons share one scale, so relative sizes show (a tall
    * fighter's icons are taller), capped so the tallest fits. Screen pixels.
    */
-  private drawStocks(fighters: FighterView[], names: string[], totalStocks: number, cx: number, y: number) {
+  /**
+   * Stock row: per player, the name (Permanent Marker, ink stroke) and one
+   * mini fighter per life, each the player's own shape, color and eyes with
+   * the full sticker look; lost lives fade out. All icons share one scale,
+   * so relative sizes show. Screen pixels.
+   */
+  private drawStocks(fighters: FighterView[], names: string[], eyes: number[], totalStocks: number, cx: number, y: number) {
     const ctx = this.ctx;
     const label = (i: number) => (names[i] ?? `P${i + 1}`).slice(0, 10);
-    ctx.font = "bold 13px system-ui, sans-serif";
-    const labelW = Math.max(28, ...fighters.map((_, i) => ctx.measureText(label(i)).width + 8));
-    // Each fighter standing upright (its own frame; fighterLayout.ts).
-    const shapes = fighters.map((f) => {
-      const c = cornersFromWorld(f.vertices, f.footIndex);
-      return [c.F, c.L, c.R];
-    });
-    const extent = (s: Vec2[], axis: "x" | "y") => Math.max(...s.map((p) => p[axis])) - Math.min(...s.map((p) => p[axis]));
-    const ICON_PX_PER_M = 9; // the standard fighter (~1.2 m) comes out ~11 px tall
-    const MAX_ICON_PX = 15;
-    const scale = Math.min(ICON_PX_PER_M, MAX_ICON_PX / Math.max(...shapes.map((s) => extent(s, "y"))));
-    const iconW = Math.max(...shapes.map((s) => extent(s, "x"))) * scale;
-    const step = iconW + 5;
-    const slot = labelW + totalStocks * step + 14; // px per player
-    const midY = y + 7; // icons centered on the label's line
+    ctx.font = `15px ${FONTS.label}`;
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    const labelW = Math.max(28, ...fighters.map((_, i) => ctx.measureText(label(i)).width + 10));
+    const icons = fighters.map((f, i) => hudIcon(f, playerColor(i), eyes[i] ?? 0));
+    const iconW = Math.max(...icons.map((ic) => ic?.w ?? 0), 16);
+    const step = iconW + 2;
+    const slot = labelW + totalStocks * step + 18; // px per player
     fighters.forEach((f, i) => {
-      const color = playerColor(i);
       const x0 = cx - (fighters.length * slot) / 2 + i * slot;
-      ctx.globalAlpha = f.stocks > 0 ? 1 : 0.35;
-      ctx.fillStyle = color;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
+      ctx.globalAlpha = f.stocks > 0 ? 1 : 0.4;
       ctx.textAlign = "left";
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 4;
+      ctx.strokeText(label(i), x0, y);
+      ctx.fillStyle = playerColor(i);
       ctx.fillText(label(i), x0, y);
-      const s = shapes[i];
-      const minX = Math.min(...s.map((p) => p.x));
-      const midYm = (Math.max(...s.map((p) => p.y)) + Math.min(...s.map((p) => p.y))) / 2;
+      const ic = icons[i];
+      if (!ic) return;
       for (let n = 0; n < totalStocks; n++) {
-        const left = x0 + labelW + n * step + (iconW - extent(s, "x") * scale) / 2;
-        ctx.beginPath();
-        s.forEach((p, k) => {
-          const px = left + (p.x - minX) * scale;
-          const py = midY - (p.y - midYm) * scale; // screen y points down
-          if (k === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
-        });
-        ctx.closePath();
-        if (n < f.stocks) ctx.fill();
-        else ctx.stroke();
+        ctx.globalAlpha = n < f.stocks ? 1 : 0.22;
+        ctx.drawImage(ic.img, x0 + labelW + n * step + (iconW - ic.w) / 2, y - ic.h / 2, ic.w, ic.h);
       }
     });
     ctx.globalAlpha = 1;
@@ -300,13 +291,16 @@ export class Renderer {
       ctx.translate(ex, ey);
       ctx.rotate(a);
       ctx.beginPath();
-      ctx.moveTo(9, 0);
-      ctx.lineTo(-6, -7);
-      ctx.lineTo(-6, 7);
+      ctx.moveTo(10, 0);
+      ctx.lineTo(-7, -8);
+      ctx.lineTo(-7, 8);
       ctx.closePath();
       ctx.fillStyle = playerColor(i);
-      ctx.globalAlpha = 0.9;
       ctx.fill();
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = "round";
+      ctx.stroke();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     });
     ctx.restore();
@@ -319,7 +313,7 @@ export class Renderer {
     ctx.save();
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.font = "13px ui-monospace, monospace";
+    ctx.font = `13px ${FONTS.mono}`;
     ctx.textBaseline = "top";
 
     if (opts.debug) {
@@ -338,25 +332,41 @@ export class Renderer {
     }
 
     if (opts.hud) {
-      ctx.fillStyle = withAlpha(HALO, 0.55);
+      ctx.font = `13px ${FONTS.body}`;
+      ctx.fillStyle = withAlpha(HALO, 0.6);
       ctx.textAlign = "center";
       ctx.fillText(opts.controls.join("   ·   "), w / 2, h - 28);
-      this.drawStocks(fighters, opts.names, opts.totalStocks, w / 2, h - 64);
+      this.drawStocks(fighters, opts.names, opts.eyes ?? [], opts.totalStocks, w / 2, h - 52);
+      ctx.textBaseline = "top";
     }
 
     if (opts.status) {
-      ctx.font = "bold 15px ui-monospace, monospace";
+      ctx.font = `500 15px ${FONTS.body}`;
       ctx.fillStyle = opts.status.includes("DESYNC") ? playerColor(0) : withAlpha(HALO, 0.8);
       ctx.textAlign = "center";
       ctx.fillText(opts.status, w / 2, opts.debug ? 118 : 14); // below the debug overlay if shown
     }
 
     if (opts.hud && result.over && !opts.replay) {
-      ctx.textAlign = "center"; // (the stock row leaves it at "left")
-      ctx.font = "bold 48px system-ui, sans-serif";
-      ctx.fillStyle = result.winner === null ? HALO : playerColor(result.winner);
+      // Title style (visual-language.md §11): graffiti handstyle, an ink
+      // stroke behind the fill, a solid ink copy offset down-right, a slight tilt.
       const winner = result.winner === null ? "" : (opts.names[result.winner] ?? `P${result.winner + 1}`);
-      ctx.fillText(result.winner === null ? "DRAW" : `${winner.toUpperCase()} WINS`, w / 2, h * 0.2);
+      const text = result.winner === null ? "Draw!" : `${winner} wins!`;
+      ctx.save();
+      ctx.translate(w / 2, h * 0.2);
+      ctx.rotate((-4 * Math.PI) / 180);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `${Math.min(72, w / 9)}px ${FONTS.title}`;
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 12;
+      ctx.fillStyle = ctx.strokeStyle = INK;
+      ctx.strokeText(text, 6, 6);
+      ctx.fillText(text, 6, 6);
+      ctx.strokeText(text, 0, 0);
+      ctx.fillStyle = result.winner === null ? HALO : playerColor(result.winner);
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
     }
     ctx.restore();
   }
@@ -364,4 +374,21 @@ export class Renderer {
 
 function lerpV(a: Vec2, b: Vec2, t: number): Vec2 {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+// ---- stock icons: each fighter's sticker, rasterized once per shape/color/eyes ----
+const HUD_PX_PER_M = 19; // the standard fighter comes out ~24 px tall
+const hudIcons = new Map<string, { img: HTMLImageElement; w: number; h: number } | null>();
+
+function hudIcon(f: FighterView, color: string, eyes: number) {
+  const c = cornersFromWorld(f.vertices, f.footIndex);
+  const key = `${[c.L, c.R].map((v) => `${v.x.toFixed(3)},${v.y.toFixed(3)}`).join(";")}|${color}|${eyes}`;
+  const hit = hudIcons.get(key);
+  if (hit !== undefined) return hit;
+  hudIcons.set(key, null);
+  const svg = stickerSVGFromCorners(c, color, eyes, "idle", HUD_PX_PER_M * 2); // 2x for sharp screens
+  const img = new Image();
+  img.onload = () => hudIcons.set(key, { img, w: img.width / 2, h: img.height / 2 });
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  return null;
 }

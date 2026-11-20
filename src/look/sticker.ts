@@ -60,6 +60,23 @@ export function facesReady(): number {
 }
 
 // ---- drawing ----
+/** Stroke width of stroke-style marks (charge ring, speed lines, arcs), meters. */
+const MARK_W = 5 * SHEET_PX;
+/** The thinnest ink line on a small mark (a sparkle's outline). */
+const MARK_LINE_MIN = 0.022;
+
+/** A stroke-style mark: an ink stroke twice as wide underneath, then the color. */
+function cased(ctx: CanvasRenderingContext2D, color: string, width: number, path: () => void) {
+  ctx.beginPath();
+  path();
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = width * 2;
+  ctx.stroke();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.stroke();
+}
+
 function tri(ctx: CanvasRenderingContext2D, [F, L, R]: readonly Vec2[]) {
   ctx.beginPath();
   ctx.moveTo(F.x, F.y);
@@ -83,7 +100,7 @@ function sparkle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number,
   ctx.closePath();
   ctx.fillStyle = fill;
   ctx.fill();
-  ctx.lineWidth = r * 0.18;
+  ctx.lineWidth = Math.max(r * 0.2, MARK_LINE_MIN);
   ctx.strokeStyle = INK;
   ctx.lineJoin = "round";
   ctx.stroke();
@@ -93,7 +110,7 @@ function sparkle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number,
  * Draw one fighter (world units, y up). `verts` are its corners in the world,
  * `mood` picks the eyes and effects. Layout: fighterLayout.ts.
  */
-export function drawSticker(ctx: CanvasRenderingContext2D, verts: Vec2[], footIndex: number, look: StickerLook, mood: EyeMood) {
+export function drawSticker(ctx: CanvasRenderingContext2D, verts: Vec2[], footIndex: number, look: StickerLook, mood: EyeMood, hopping = false) {
   const c = cornersFromWorld(verts, footIndex);
   const lay = fighterLayout(c, PLAY_OUTLINE);
   const k = SHEET_PX; // effects keep the eye sheet's sizes
@@ -104,34 +121,39 @@ export function drawSticker(ctx: CanvasRenderingContext2D, verts: Vec2[], footIn
   ctx.translate(c.foot.x, c.foot.y);
   ctx.rotate(c.angle);
 
-  // Mood effects behind the body.
+  // Mood effects behind the body: marks, ink-cased (visual-language.md §6).
   if (mood === "charge") {
-    ctx.beginPath();
-    ctx.ellipse(0, -3 * k, 48 * k, 9 * k, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = col;
-    ctx.lineWidth = 5 * k;
-    ctx.stroke();
-    ctx.beginPath();
-    for (const [x1, y1, x2, y2] of [
-      [-32, 4, -56, 22],
-      [32, 4, 56, 22],
-      [-44, -4, -72, -2],
-      [44, -4, 72, -2],
-    ]) {
-      ctx.moveTo(x1 * k, y1 * k);
-      ctx.lineTo(x2 * k, y2 * k);
-    }
-    ctx.strokeStyle = WHITE;
-    ctx.stroke();
+    cased(ctx, col, MARK_W, () => ctx.ellipse(0, -3 * k, 48 * k, 9 * k, 0, 0, Math.PI * 2));
+    cased(ctx, HALO, MARK_W, () => {
+      for (const [x1, y1, x2, y2] of [
+        [-32, 4, -56, 22],
+        [32, 4, 56, 22],
+        [-44, -4, -72, -2],
+        [44, -4, 72, -2],
+      ]) {
+        ctx.moveTo(x1 * k, y1 * k);
+        ctx.lineTo(x2 * k, y2 * k);
+      }
+    });
   } else if (mood === "wobble") {
-    ctx.beginPath();
-    ctx.moveTo(-24 * k, 26 * k);
-    ctx.quadraticCurveTo(-36 * k, 12 * k, -24 * k, -2 * k);
-    ctx.moveTo(24 * k, 26 * k);
-    ctx.quadraticCurveTo(36 * k, 12 * k, 24 * k, -2 * k);
-    ctx.strokeStyle = withAlpha(WHITE, 0.85);
-    ctx.lineWidth = 5 * k;
-    ctx.stroke();
+    cased(ctx, HALO, MARK_W, () => {
+      ctx.moveTo(-24 * k, 26 * k);
+      ctx.quadraticCurveTo(-36 * k, 12 * k, -24 * k, -2 * k);
+      ctx.moveTo(24 * k, 26 * k);
+      ctx.quadraticCurveTo(36 * k, 12 * k, 24 * k, -2 * k);
+    });
+  }
+  if (hopping && mood === "idle") {
+    // Motion arcs under the foot, level with the world (not the lean).
+    ctx.save();
+    ctx.rotate(-c.angle);
+    cased(ctx, HALO, MARK_W * 0.8, () => {
+      ctx.moveTo(-26 * k, -22 * k);
+      ctx.quadraticCurveTo(0, -40 * k, 26 * k, -22 * k);
+      ctx.moveTo(-18 * k, -38 * k);
+      ctx.quadraticCurveTo(0, -50 * k, 18 * k, -38 * k);
+    });
+    ctx.restore();
   }
 
   // Block shadow (with the white outline's thickness): offset down-right in

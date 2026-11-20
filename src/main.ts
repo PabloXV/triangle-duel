@@ -8,6 +8,12 @@ import { buildPanel } from "./panel";
 import { initPhysics } from "./sim/sim";
 import App from "./ui/App.svelte";
 import { applyTheme } from "./ui/themeCss";
+// The theme's fonts, self-hosted (bundled): titles, labels, body text.
+import "@fontsource/sedgwick-ave-display";
+import "@fontsource/permanent-marker";
+import "@fontsource/rubik/400.css";
+import "@fontsource/rubik/500.css";
+import "@fontsource/rubik/700.css";
 
 applyTheme(); // colors and fonts as CSS variables, before any menu renders
 await initPhysics();
