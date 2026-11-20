@@ -10,6 +10,7 @@ npm run dev        # play at the printed URL
 npm test           # sim tests (Node, headless)
 npm run bots       # headless bot matches with win/loss stats (--experiments for more)
 npm run bot-tune   # compare bot steering variants (win rate, input changes/s; --robust)
+npm run shape-arena  # custom fighter shapes vs the standard one (bots playing)
 npm run verify -- f.json  # check a downloaded match recording replays exactly
 npm run cross-browser    # replay the fixture match in Node, Chrome, Firefox, WebKit and compare
 npm run relay      # the online room relay, locally (Cloudflare Workers runtime via wrangler)
@@ -263,6 +264,27 @@ everyone else a bot is just another remote player. Each bot thinks once per
 step; on a rollback the host reuses the decision it already sent. If the host
 disconnects mid-match, their bots go idle. Bots change input ~5×/s (see "Bot").
 
+
+## Custom fighters
+
+Main menu → Customize fighter: drag the two top corners, or slide the foot.
+On release the shape settles (`src/sim/shapes.ts`):
+
+- **balanced:** rotated so the center of mass is straight above the foot, so
+  it stands upright on its own, the way a real object would settle;
+- **same mass:** scaled to the standard fighter's area (density is shared).
+
+Limits, relative to the standard fighter, apply after that scaling (which is
+what turns a skinny shape into a long stick): at most 2× its height and 2× its
+width, and both top corners clearly above the foot (else a lopsided shape
+could balance with a corner low enough to touch the ground when it spawns).
+A drag that breaks a limit is pushed back along its path to the furthest point
+that fits. Shapes are balanced unit-area triangles in the match setup (so
+they're deterministic and recorded); online, the relay re-checks every shape
+with the same rules (no trig, so the check is identical everywhere), and the
+room shows each player's shape as their icon. `npm run shape-arena` (bots
+playing; bots were tuned on the standard shape): the extremes are weak (needle
+3–37, wedge 0–40), a moderately lopsided shape about even.
 
 ## Juice (camera, shake, final-KO replay)
 

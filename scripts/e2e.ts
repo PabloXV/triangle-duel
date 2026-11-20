@@ -95,6 +95,7 @@ try {
   const again = await info(page);
   check(again.mode === "local" && again.tick < 60, "play again starts a fresh match");
 
+  await customizeFlow(page);
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
 
   await onlineFlow();
@@ -216,4 +217,63 @@ async function onlineFlow() {
   check(JSON.stringify(await rosterNames(bo)) === JSON.stringify(["bot 1", "Bo", "Cy"]), `the bot and Cy stay in the room: ${await rosterNames(bo)}`);
   await shot(bo, "11-new-host-room");
   check(errors.length === 0, `online: no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
+}
+
+// ---- customize: drag corners (with push-back), settle into balance, save, use ----
+async function customizeFlow(page: Page) {
+  await page.keyboard.press("Escape").catch(() => {});
+  if (await page.getByRole("button", { name: "Menu" }).isVisible().catch(() => false)) await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByRole("button", { name: "Customize fighter" }).click();
+  const handle = (name: string) => page.getByRole("slider", { name });
+  const center = async (name: string) => {
+    const b = (await handle(name).boundingBox())!;
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  };
+  /** Handle positions in world units (from the SVG attributes). */
+  const corners = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("svg.editor circle")].map((c) => ({ x: +c.getAttribute("cx")!, y: -+c.getAttribute("cy")! })),
+    );
+  const drag = async (name: string, dx: number, dy: number) => {
+    const c = await center(name);
+    await page.mouse.move(c.x, c.y);
+    await page.mouse.down();
+    for (let k = 1; k <= 10; k++) await page.mouse.move(c.x + (dx * k) / 10, c.y + (dy * k) / 10);
+    await page.mouse.up();
+  };
+
+  // 1. An absurd drag (way up): pushed back, with a notice; the result is still a legal shape.
+  await drag("corner 1", 40, -600);
+  check(await page.getByText(/pushed back/).isVisible(), "a too-far drag is pushed back, with a notice");
+  await page.waitForTimeout(500);
+  check(await page.getByText(/yours: .* m tall/).isVisible(), "the pushed-back shape is still legal (stats shown)");
+
+  // 2. A lopsided drag, then let go: it settles so the center of mass is straight above the foot.
+  await drag("corner 2", -60, 40);
+  await page.waitForTimeout(600); // settle animation
+  const v = await corners();
+  const cx = (v[0].x + v[1].x + v[2].x) / 3;
+  check(Math.abs(cx - v[0].x) < 0.01, `after letting go: balanced (center of mass x ${cx.toFixed(3)} above foot x ${v[0].x.toFixed(3)})`);
+  await shot(page, "12-customize");
+
+  // 3. Save; reload; it's remembered.
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Customize fighter" }).click();
+  const after = await corners();
+  const same = after.every((p, i) => Math.abs(p.x - v[i].x) < 1e-3 && Math.abs(p.y - v[i].y) < 1e-3);
+  check(same, "after reload: the saved shape is remembered");
+  await page.getByRole("button", { name: "Back" }).click();
+
+  // 4. In a local match, my fighter has that shape, at the standard fighter's mass (area).
+  await page.getByRole("button", { name: "Play locally" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
+  await page.waitForTimeout(300);
+  const { shapes } = await info(page);
+  const [mine, bot] = shapes;
+  check(Math.abs(mine.height - bot.height) > 0.05 || Math.abs(mine.width - bot.width) > 0.05, `my fighter is my shape (${mine.height.toFixed(2)}×${mine.width.toFixed(2)} vs standard ${bot.height.toFixed(2)}×${bot.width.toFixed(2)})`);
+  check(Math.abs(mine.area - bot.area) < 1e-3, `same mass as the standard fighter (area ${mine.area.toFixed(4)} vs ${bot.area.toFixed(4)})`);
+  await shot(page, "13-custom-in-game");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Leave to menu" }).click();
 }

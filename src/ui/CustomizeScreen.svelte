@@ -1,0 +1,247 @@
+<script lang="ts">
+  // Shape your fighter. Drag the two top corners anywhere, and the foot left or
+  // right along the ground. On release, the shape settles into balance (center
+  // of mass straight above the foot) at the standard fighter's mass (area).
+  // Shapes breaking the limits get pushed back toward where you started.
+  import { untrack } from "svelte";
+  import type { FighterShape, Vec2 } from "../sim/geometry";
+  import { STANDARD_SHAPE, balanceShape, shapeIssue, shapeSize } from "../sim/shapes";
+  import { COLORS } from "../render";
+
+  let {
+    initial,
+    standardArea,
+    onSave,
+    onBack,
+  }: { initial: FighterShape | null; standardArea: number; onSave: (shape: FighterShape | null) => void; onBack: () => void } = $props();
+
+  const k = untrack(() => Math.sqrt(standardArea)); // unit shape → meters
+  const FOOT = 0;
+
+  /** A unit shape placed in the editor: true size, foot on the ground at x = footX. */
+  function place(shape: FighterShape, footX = 0): Vec2[] {
+    const foot = shape.vertices[shape.footIndex];
+    return shape.vertices.map((v) => ({ x: footX + (v.x - foot.x) * k, y: (v.y - foot.y) * k }));
+  }
+
+  let pts = $state<Vec2[]>(place(untrack(() => initial) ?? STANDARD_SHAPE)); // what you see and drag
+  let dragging = $state<number | null>(null);
+  let animating = $state(false);
+  let notice = $state("");
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+  let svg: SVGSVGElement;
+
+  const balanced = $derived(balanceShape(pts, FOOT));
+  const size = $derived(balanced ? shapeSize(balanced, standardArea) : null);
+  const standardSize = shapeSize(STANDARD_SHAPE, untrack(() => standardArea));
+  const outline = $derived(place(STANDARD_SHAPE, pts[FOOT].x)); // the standard fighter, on the same foot spot
+
+  const issueOf = (p: Vec2[]) => {
+    const b = balanceShape(p, FOOT);
+    return b ? shapeIssue(b) : "too flat";
+  };
+
+  function toWorld(e: PointerEvent): Vec2 {
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM()!.inverse());
+    return { x: p.x, y: -p.y };
+  }
+
+  function say(message: string) {
+    notice = message;
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => (notice = ""), 1500);
+  }
+
+  function onDown(i: number, e: PointerEvent) {
+    if (animating) return;
+    dragging = i;
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  }
+
+  function onMove(e: PointerEvent) {
+    if (dragging === null) return;
+    const p = toWorld(e);
+    const target = dragging === FOOT ? { x: p.x, y: 0 } : p; // the foot slides along the ground
+    const at = (t: number) => pts.map((v, i) => (i === dragging ? { x: v.x + (target.x - v.x) * t, y: v.y + (target.y - v.y) * t } : v));
+    const issue = issueOf(at(1));
+    if (!issue) {
+      pts = at(1);
+      return;
+    }
+    // Push back along the move toward where the corner was, to the furthest point that still fits.
+    let lo = 0;
+    let hi = 1;
+    for (let n = 0; n < 14; n++) {
+      const mid = (lo + hi) / 2;
+      if (issueOf(at(mid))) hi = mid;
+      else lo = mid;
+    }
+    pts = at(lo);
+    say(`${issue[0].toUpperCase()}${issue.slice(1)}: pushed back`);
+  }
+
+  function onUp() {
+    if (dragging === null) return;
+    dragging = null;
+    settle();
+  }
+
+  /** Animate to the balanced, equal-mass shape: rotate and scale about the foot. */
+  function settle() {
+    if (!balanced) return;
+    const from = pts.map((p) => ({ ...p }));
+    const to = place(balanced, from[FOOT].x);
+    const foot = from[FOOT];
+    // The similarity transform (rotation θ, scale s) about the foot taking `from` to `to`.
+    const a = { x: from[1].x - foot.x, y: from[1].y - foot.y };
+    const b = { x: to[1].x - foot.x, y: to[1].y - foot.y };
+    const theta = Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y);
+    const scale = Math.hypot(b.x, b.y) / Math.hypot(a.x, a.y);
+    const start = performance.now();
+    const DURATION = 350;
+    animating = true;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / DURATION);
+      const e = 1 - (1 - t) ** 3; // ease out
+      const [c, s] = [Math.cos(theta * e), Math.sin(theta * e)];
+      const sc = 1 + (scale - 1) * e;
+      pts = t < 1 ? from.map((p) => {
+        const d = { x: p.x - foot.x, y: p.y - foot.y };
+        return { x: foot.x + sc * (c * d.x - s * d.y), y: foot.y + sc * (s * d.x + c * d.y) };
+      }) : to;
+      if (t < 1) requestAnimationFrame(tick);
+      else animating = false;
+    };
+    requestAnimationFrame(tick);
+  }
+
+  function reset() {
+    pts = place(STANDARD_SHAPE, 0);
+  }
+
+  function save() {
+    const b = balanceShape(pts, FOOT);
+    if (!b || shapeIssue(b)) return;
+    // The standard shape counts as "no custom shape".
+    const isStandard = b.vertices.every((v, i) => Math.abs(v.x - STANDARD_SHAPE.vertices[i].x) + Math.abs(v.y - STANDARD_SHAPE.vertices[i].y) < 1e-6);
+    onSave(isStandard ? null : b);
+  }
+
+  const poly = (p: Vec2[]) => p.map((v) => `${v.x},${-v.y}`).join(" ");
+  const pct = (a: number, b: number) => `${Math.round((a / b) * 100)}%`;
+</script>
+
+<svelte:window onpointermove={onMove} onpointerup={onUp} />
+
+<div class="card wide">
+  <h2>Customize fighter</h2>
+  <p class="hint">Drag the top corners, or slide the foot. Let go and it settles into balance at the same mass as everyone else.</p>
+
+  <svg bind:this={svg} viewBox="-2.6 -3.3 5.2 3.7" class="editor" role="application" aria-label="fighter shape editor">
+    <line x1="-2.6" y1="0" x2="2.6" y2="0" class="ground" />
+    <polygon points={poly(outline)} class="standard" />
+    <polygon points={poly(pts)} fill={COLORS[0]} class="mine" />
+    {#each pts as p, i}
+      <circle
+        cx={p.x}
+        cy={-p.y}
+        r="0.13"
+        class="handle"
+        class:foot={i === FOOT}
+        class:active={dragging === i}
+        role="slider"
+        tabindex="-1"
+        aria-label={i === FOOT ? "foot" : `corner ${i}`}
+        aria-valuenow={Math.round(p.x * 100)}
+        onpointerdown={(e) => onDown(i, e)}
+      />
+    {/each}
+    {#if notice}<text x="0" y="-3.05" class="notice">{notice}</text>{/if}
+  </svg>
+
+  {#if size}
+    <div class="stats">
+      <span><span class="key mine-key"></span> yours: {size.height.toFixed(2)} m tall, {size.width.toFixed(2)} m wide</span>
+      <span><span class="key std-key"></span> standard: {standardSize.height.toFixed(2)} × {standardSize.width.toFixed(2)} m</span>
+      <span class="hint">({pct(size.height, standardSize.height)} height, {pct(size.width, standardSize.width)} width, same mass)</span>
+    </div>
+  {/if}
+
+  <div class="actions">
+    <button onclick={onBack}>Back</button>
+    <span class="row">
+      <button onclick={reset}>Reset to standard</button>
+      <button class="primary" onclick={save} disabled={animating || dragging !== null}>Save</button>
+    </span>
+  </div>
+</div>
+
+<style>
+  .editor {
+    width: 100%;
+    display: block;
+    background: #16121f;
+    border-radius: var(--radius);
+    touch-action: none;
+    user-select: none;
+  }
+  .ground {
+    stroke: var(--platform-light);
+    stroke-width: 0.04;
+  }
+  .standard {
+    fill: none;
+    stroke: #fff6;
+    stroke-width: 0.025;
+    stroke-dasharray: 0.08 0.06;
+  }
+  .handle {
+    fill: #fff;
+    stroke: #0008;
+    stroke-width: 0.03;
+    cursor: grab;
+  }
+  .handle.foot {
+    fill: #6bff8f;
+    cursor: ew-resize;
+  }
+  .handle.active {
+    cursor: grabbing;
+    stroke: var(--accent);
+    stroke-width: 0.05;
+  }
+  /* The browser focus ring is drawn in SVG units, so the editor's zoom would
+     blow it up into a huge circle; .active highlights the dragged handle instead. */
+  .handle:focus {
+    outline: none;
+  }
+  .notice {
+    fill: var(--accent);
+    font: 600 0.16px system-ui, sans-serif;
+    text-anchor: middle;
+  }
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 1rem;
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+  }
+  .key {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    vertical-align: -0.1rem;
+    margin-right: 0.2rem;
+  }
+  .mine-key {
+    background: var(--accent);
+  }
+  .std-key {
+    border: 1px dashed #fff8;
+  }
+  .row {
+    display: flex;
+    gap: 0.6rem;
+  }
+</style>

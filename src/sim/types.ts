@@ -1,7 +1,7 @@
 // Public types of the simulation. Re-exported from sim.ts, so other code can
 // keep importing everything from "./sim/sim".
 
-import type { Vec2 } from "./geometry";
+import type { FighterShape, Vec2 } from "./geometry";
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
@@ -37,6 +37,12 @@ export interface MatchOptions {
   ghostTicks: number; // after respawning: pass through fighters, immune to touch-KOs
   /** Override spawn positions (foot). Default: evenly spaced on the stage's spawn line. */
   spawns?: Vec2[];
+  /**
+   * Custom fighter shapes, by fighter: balanced unit-area shapes (see
+   * shapes.ts), scaled to the standard fighter's area. null or missing = the
+   * standard fighter.
+   */
+  shapes?: (FighterShape | null)[];
 }
 
 export const DEFAULT_MATCH: MatchOptions = {

@@ -4,6 +4,7 @@
 
 import { decodeInput } from "../sim/inputCodec";
 import type { Input } from "../sim/types";
+import type { FighterShape } from "../sim/geometry";
 import type { MatchTransport } from "./onlineSession";
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -27,6 +28,8 @@ export class NetClient implements MatchTransport {
   roster: RosterEntry[] = [];
   spectators: string[] = [];
   settings: RoomSettings = { ...DEFAULT_ROOM_SETTINGS };
+  /** My fighter shape (null = standard), sent after joining and whenever it changes. */
+  shape: FighterShape | null = null;
   rttMs: number | null = null;
   error: string | null = null;
   /** During a match: my fighter index, and the latest official step and inputs. */
@@ -78,6 +81,7 @@ export class NetClient implements MatchTransport {
     this.ws = ws;
     ws.onopen = () => {
       this.send({ type: "hello", version: PROTOCOL_VERSION, name });
+      if (this.shape) this.send({ type: "shape", shape: this.shape });
       this.pingTimer = setInterval(() => this.ping(), 1000);
     };
     ws.onmessage = (e) => {
@@ -107,6 +111,12 @@ export class NetClient implements MatchTransport {
   /** Host, in the lobby: change the room's settings. */
   setSettings(settings: RoomSettings) {
     this.send({ type: "settings", settings });
+  }
+
+  /** Change my fighter shape (sent now if connected, else after joining). */
+  setShape(shape: FighterShape | null) {
+    this.shape = shape;
+    this.send({ type: "shape", shape });
   }
 
   /** Host: remove the player (or bot) in `slot`. */

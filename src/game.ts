@@ -18,6 +18,7 @@ import { OnlineSession } from "./net/onlineSession";
 import { loadParams } from "./panel";
 import { Renderer } from "./render";
 import { LiveSession, PlaybackSession, type InputSource, type Session } from "./session";
+import type { FighterShape } from "./sim/geometry";
 import type { Params } from "./sim/params";
 import type { Recording } from "./sim/recording";
 import { DEFAULT_MATCH, DT, type FighterView, type MatchResult, type SimEvent } from "./sim/sim";
@@ -68,6 +69,8 @@ export class Game {
   readonly settings: GameSettings = { debug: false, cameraFollow: true, shakeScale: 1, finalKoReplay: true };
   readonly net = new NetClient();
   playerName = "player";
+  /** My custom fighter (balanced unit-area shape), or null for the standard one. */
+  playerShape: FighterShape | null = null;
 
   private renderer: Renderer;
   private camera = new CameraRig(STAGES[0].stage);
@@ -137,7 +140,9 @@ export class Game {
       }
     }
     const stage = stageById(setup.stageId).stage;
-    this.begin("local", new LiveSession(stage, this.params, { players, stocks: setup.stocks }, sources), names);
+    // My custom shape for me; everyone else (2nd local player, bots) is standard.
+    const shapes = [this.playerShape];
+    this.begin("local", new LiveSession(stage, this.params, { players, stocks: setup.stocks, shapes }, sources), names);
   }
 
   /** Same local setup again (R, or "play again"). */
@@ -155,6 +160,14 @@ export class Game {
       stocks: sim.match.stocks,
       platforms: sim.stage.platforms.length,
       eliminated: sim.view().map((f) => f.eliminated),
+      // Each fighter's shape at a glance: height, width, area (= mass, since density is shared).
+      shapes: sim.view().map((f) => {
+        const xs = f.vertices.map((v) => v.x);
+        const ys = f.vertices.map((v) => v.y);
+        const [a, b, c] = f.vertices;
+        const area = Math.abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) / 2;
+        return { height: Math.max(...ys) - Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), area };
+      }),
       status: this.session.status(),
     };
   }
@@ -167,8 +180,16 @@ export class Game {
   startOnline() {
     const net = this.net;
     if (!net.isHost) return;
-    const match = { ...DEFAULT_MATCH, players: net.roster.length, stocks: net.settings.stocks };
+    // Everyone's shape, as the relay knows it (validated there). Bots are standard.
+    const shapes = net.roster.map((p) => p.shape);
+    const match = { ...DEFAULT_MATCH, players: net.roster.length, stocks: net.settings.stocks, shapes };
     net.start({ stage: stageById(net.settings.stageId).stage, match, params: structuredClone(this.params) });
+  }
+
+  /** Set my fighter shape (null = standard); also tells the room if I'm in one. */
+  setPlayerShape(shape: FighterShape | null) {
+    this.playerShape = shape;
+    this.net.setShape(shape);
   }
 
   /** Pause a local match (online matches can't pause). */

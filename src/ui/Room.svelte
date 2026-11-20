@@ -4,6 +4,7 @@
   import type { NetClient } from "../net/client";
   import { MAX_PLAYERS, MAX_STOCKS } from "../net/protocol";
   import { COLORS } from "../render";
+  import FighterIcon from "./FighterIcon.svelte";
   import MapPicker from "./MapPicker.svelte";
   import Stepper from "./Stepper.svelte";
 
@@ -48,7 +49,7 @@
     <ul class="roster">
       {#each $net.roster as p, i (p.slot)}
         <li>
-          <span class="swatch" style:background={COLORS[i % COLORS.length]}></span>
+          <FighterIcon shape={p.shape} color={COLORS[i % COLORS.length]} />
           <span class="name">{p.name}</span>
           {#if p.host}<span class="tag">host</span>{/if}
           {#if p.bot}<span class="tag">bot</span>{/if}
@@ -132,11 +133,6 @@
     padding: 0.45rem 0.6rem;
     border-radius: var(--radius);
     background: #2a2440;
-  }
-  .swatch {
-    width: 0.9rem;
-    height: 0.9rem;
-    clip-path: polygon(0 0, 100% 0, 50% 100%); /* a little ▽ */
   }
   .name {
     font-weight: 600;

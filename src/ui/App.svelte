@@ -3,9 +3,12 @@
   // The menus around the game. The game itself (canvas, sim, netcode) is plain
   // TypeScript in src/game.ts; screens only call its small API.
   import { DEFAULT_LOCAL_SETUP, type Game, type LocalSetup } from "../game";
+  import type { FighterShape } from "../sim/geometry";
+  import { shapeIssue } from "../sim/shapes";
   import InGame from "./InGame.svelte";
   import LocalSetupScreen from "./LocalSetup.svelte";
   import MainMenu from "./MainMenu.svelte";
+  import CustomizeScreen from "./CustomizeScreen.svelte";
   import NameScreen from "./NameScreen.svelte";
   import OnlineMenu from "./OnlineMenu.svelte";
   import Room from "./Room.svelte";
@@ -14,6 +17,7 @@
 
   const NAME_KEY = "triangle-duel.name";
   const SETUP_KEY = "triangle-duel.localSetup";
+  const SHAPE_KEY = "triangle-duel.shape";
   const load = (key: string) => {
     try {
       return localStorage.getItem(key);
@@ -29,7 +33,7 @@
 
   const savedName = load(NAME_KEY) ?? "";
   let name = $state(savedName);
-  type Screen = "name" | "menu" | "local" | "online" | "room" | "game";
+  type Screen = "name" | "menu" | "local" | "online" | "room" | "game" | "customize";
   const net = untrack(() => game.net); // `game` never changes
   let screen = $state<Screen>(savedName ? "menu" : "name");
   let menuOpen = $state(false);
@@ -45,6 +49,25 @@
     }
   })();
   let setup = $state<LocalSetup>({ ...DEFAULT_LOCAL_SETUP, ...savedSetup });
+
+  // My fighter shape: re-checked on load, so a stale or corrupted save falls back to standard.
+  const savedShape = ((): FighterShape | null => {
+    try {
+      const s = JSON.parse(load(SHAPE_KEY) ?? "null") as FighterShape | null;
+      return s && !shapeIssue(s) ? s : null;
+    } catch {
+      return null;
+    }
+  })();
+  let shape = $state<FighterShape | null>(savedShape);
+  untrack(() => game.setPlayerShape(savedShape));
+
+  function saveShape(s: FighterShape | null) {
+    shape = s;
+    game.setPlayerShape(s);
+    save(SHAPE_KEY, JSON.stringify(s));
+    screen = "menu";
+  }
 
   function setName(n: string) {
     name = n;
@@ -92,7 +115,20 @@
   {#if screen === "name"}
     <NameScreen initial={name} onDone={setName} />
   {:else if screen === "menu"}
-    <MainMenu {name} onLocal={() => (screen = "local")} onOnline={() => (screen = "online")} onRename={() => (screen = "name")} />
+    <MainMenu
+      {name}
+      onLocal={() => (screen = "local")}
+      onOnline={() => (screen = "online")}
+      onRename={() => (screen = "name")}
+      onCustomize={() => (screen = "customize")}
+    />
+  {:else if screen === "customize"}
+    <CustomizeScreen
+      initial={shape}
+      standardArea={(game.params.triWidth * game.params.triHeight) / 2}
+      onSave={saveShape}
+      onBack={() => (screen = "menu")}
+    />
   {:else if screen === "local"}
     <LocalSetupScreen initial={setup} onStart={startLocal} onBack={() => (screen = "menu")} />
   {:else if screen === "online"}

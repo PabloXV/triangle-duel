@@ -5,6 +5,8 @@
 // Events in (connect, disconnect, receive, advance), messages out.
 
 import { LEFT, encodeInput } from "../sim/inputCodec";
+import type { FighterShape } from "../sim/geometry";
+import { shapeIssue } from "../sim/shapes";
 import { NO_INPUT } from "../sim/types";
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -35,6 +37,7 @@ interface Conn {
   slot: number | null; // seat; null = not joined yet, or spectating
   fighter: number | null; // during a match: this player's own fighter
   drives: number[]; // during a match: fighters whose inputs this connection may send
+  shape: FighterShape | null; // their custom fighter (null = standard)
 }
 
 /** A seat in the room: a connected player, or a bot (no connection; the host drives it). */
@@ -42,6 +45,7 @@ interface Seat {
   slot: number;
   name: string;
   conn: string | null; // null = bot
+  shape: FighterShape | null;
 }
 
 const IDLE = encodeInput(NO_INPUT);
@@ -73,7 +77,7 @@ export class RoomCore {
   }
 
   connect(id: string): Outgoing[] {
-    this.conns.set(id, { name: "player", joined: false, joinedAt: 0, slot: null, fighter: null, drives: [] });
+    this.conns.set(id, { name: "player", joined: false, joinedAt: 0, slot: null, fighter: null, drives: [], shape: null });
     return [];
   }
 
@@ -127,6 +131,7 @@ export class RoomCore {
         const seats = this.seats();
         if (seats.length < 2) return [error(id, "need at least 2 players (add a bot?)")];
         if (m.setup.match.players !== seats.length) return [error(id, `setup is for ${m.setup.match.players} players, ${seats.length} are here`)];
+        if ((m.setup.match.shapes ?? []).some((s) => s !== null && shapeIssue(s) !== null)) return [error(id, "the setup has an invalid fighter shape")];
         this.setup = m.setup;
         this.phase = "match";
         this.nextStep = 0;
@@ -181,6 +186,12 @@ export class RoomCore {
         if (slot === null) return [error(id, `room is full (${MAX_PLAYERS} players)`)];
         this.bots.set(slot, `bot ${this.bots.size + 1}`);
         return [this.roster()];
+      }
+      case "shape": {
+        const issue = m.shape && shapeIssue(m.shape);
+        if (issue) return [error(id, `that fighter shape isn't allowed (${issue})`)];
+        c.shape = m.shape;
+        return c.slot === null ? [] : [this.roster()];
       }
       case "settings": {
         if (!this.isHost(id)) return [error(id, "only the host can change settings")];
@@ -245,8 +256,8 @@ export class RoomCore {
 
   /** Every seat (joined players and bots), in slot order. */
   private seats(): Seat[] {
-    const players: Seat[] = [...this.conns].flatMap(([id, c]) => (c.slot === null ? [] : [{ slot: c.slot, name: c.name, conn: id }]));
-    const bots: Seat[] = [...this.bots].map(([slot, name]) => ({ slot, name, conn: null }));
+    const players: Seat[] = [...this.conns].flatMap(([id, c]) => (c.slot === null ? [] : [{ slot: c.slot, name: c.name, conn: id, shape: c.shape }]));
+    const bots: Seat[] = [...this.bots].map(([slot, name]) => ({ slot, name, conn: null, shape: null }));
     return [...players, ...bots].sort((a, b) => a.slot - b.slot);
   }
 
@@ -289,7 +300,7 @@ export class RoomCore {
 
   private roster(): Outgoing {
     const host = this.hostId();
-    const players: RosterEntry[] = this.seats().map((s) => ({ slot: s.slot, name: s.name, host: s.conn !== null && s.conn === host, bot: s.conn === null }));
+    const players: RosterEntry[] = this.seats().map((s) => ({ slot: s.slot, name: s.name, host: s.conn !== null && s.conn === host, bot: s.conn === null, shape: s.shape }));
     const spectators = this.spectators().map(([, c]) => c.name);
     return { to: "all", msg: { type: "roster", phase: this.phase, players, spectators, settings: this.settings } };
   }

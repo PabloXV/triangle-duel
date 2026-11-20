@@ -4,7 +4,8 @@
     onLocal,
     onOnline,
     onRename,
-  }: { name: string; onLocal: () => void; onOnline: () => void; onRename: () => void } = $props();
+    onCustomize,
+  }: { name: string; onLocal: () => void; onOnline: () => void; onRename: () => void; onCustomize: () => void } = $props();
 </script>
 
 <div class="card">
@@ -16,7 +17,7 @@
   <div class="stack">
     <button class="primary" onclick={onLocal}>Play locally</button>
     <button onclick={onOnline}>Play online</button>
-    <button disabled title="Coming soon">Customize fighter <span class="soon">soon</span></button>
+    <button onclick={onCustomize}>Customize fighter</button>
   </div>
 </div>
 
@@ -24,10 +25,5 @@
   .hello {
     margin: 0 0 1.25rem;
     color: var(--muted);
-  }
-  .soon {
-    font-size: 0.75em;
-    opacity: 0.7;
-    margin-left: 0.4em;
   }
 </style>

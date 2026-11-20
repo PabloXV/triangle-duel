@@ -3,6 +3,7 @@ import { PROTOCOL_VERSION, type MatchSetup, type ServerMsg } from "../src/net/pr
 import { RoomCore, type Outgoing } from "../src/net/room";
 import { WINGS_STAGE } from "../src/sim/geometry";
 import { DEFAULT_PARAMS } from "../src/sim/params";
+import { balanceShape } from "../src/sim/shapes";
 import { LEFT } from "../src/sim/inputCodec";
 import { DEFAULT_MATCH } from "../src/sim/types";
 
@@ -38,8 +39,8 @@ describe("room: joining", () => {
     room.connect("b");
     const out = room.receive("b", hello("Bo"));
     expect(ofType(out, "roster")[0].players).toEqual([
-      { slot: 0, name: "Ana", host: true, bot: false },
-      { slot: 1, name: "Bo", host: false, bot: false },
+      { slot: 0, name: "Ana", host: true, bot: false, shape: null },
+      { slot: 1, name: "Bo", host: false, bot: false, shape: null },
     ]);
   });
 
@@ -201,8 +202,8 @@ describe("room: bots", () => {
     const { room } = roomWith(1);
     const out = room.receive("a", addBot);
     expect(ofType(out, "roster")[0].players).toEqual([
-      { slot: 0, name: "a", host: true, bot: false },
-      { slot: 1, name: "bot 1", host: false, bot: true },
+      { slot: 0, name: "a", host: true, bot: false, shape: null },
+      { slot: 1, name: "bot 1", host: false, bot: true, shape: null },
     ]);
   });
 
@@ -406,5 +407,37 @@ describe("room: spectators", () => {
     }
     room.connect("s9");
     expect(room.receive("s9", hello())[0]).toEqual({ to: "s9", msg: { type: "error", message: "room is full" }, close: true });
+  });
+});
+
+describe("room: fighter shapes", () => {
+  const custom = balanceShape([{ x: 0, y: 0 }, { x: 1.4, y: 1.3 }, { x: -0.3, y: 1.0 }], 0)!;
+  const giant = { ...custom, vertices: custom.vertices.map((v) => ({ x: v.x * 3, y: v.y * 3 })) };
+
+  it("a player's shape shows in the roster; null = back to standard", () => {
+    const { room } = roomWith(2);
+    expect(ofType(room.receive("b", send({ type: "shape", shape: custom })), "roster")[0].players[1].shape).toEqual(custom);
+    expect(ofType(room.receive("b", send({ type: "shape", shape: null })), "roster")[0].players[1].shape).toBeNull();
+  });
+
+  it("the relay rejects shapes outside the limits (no cheating in a giant fighter)", () => {
+    const { room } = roomWith(1);
+    expect(room.receive("a", send({ type: "shape", shape: giant }))[0].msg).toEqual({
+      type: "error",
+      message: "that fighter shape isn't allowed (wrong size)",
+    });
+    const needle = balanceShape([{ x: 0, y: 0 }, { x: 0.15, y: 3 }, { x: -0.15, y: 3 }], 0)!;
+    expect(room.receive("a", send({ type: "shape", shape: needle }))[0].msg).toEqual({
+      type: "error",
+      message: "that fighter shape isn't allowed (too tall)",
+    });
+  });
+
+  it("a match setup with an invalid shape is refused", () => {
+    const { room } = roomWith(2);
+    const bad = { ...setup(2), match: { ...setup(2).match, shapes: [giant, null] } };
+    expect(room.receive("a", send({ type: "start", setup: bad }))[0].msg).toEqual({ type: "error", message: "the setup has an invalid fighter shape" });
+    const ok = { ...setup(2), match: { ...setup(2).match, shapes: [custom, null] } };
+    expect(ofType(room.receive("a", send({ type: "start", setup: ok })), "start")).toHaveLength(2);
   });
 });

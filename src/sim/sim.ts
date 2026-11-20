@@ -20,6 +20,7 @@ import { freshFighterState, worldVertices, type MatchContext } from "./fighter";
 import { applyGrip, applyJump, applyRotation, updateGrounded } from "./movement";
 import { checkKOs, forfeit, passesThroughFighters, updateDead, updateGhost } from "./lives";
 import { updateOneWaySolidity } from "./platforms";
+import { scaleShape } from "./shapes";
 import {
   DEFAULT_MATCH,
   DT,
@@ -107,7 +108,11 @@ export class Sim {
     }
 
     const fighters = Array.from({ length: fullMatch.players }, (_, i) => {
-      const shape = invertedIsosceles(params.triWidth, params.triHeight);
+      // Custom shapes are unit-area; scale them to the standard fighter's area (same mass).
+      const custom = fullMatch.shapes?.[i];
+      const shape = custom
+        ? scaleShape(custom, Math.sqrt((params.triWidth * params.triHeight) / 2))
+        : invertedIsosceles(params.triWidth, params.triHeight);
       const spawn = spawns[i % spawns.length];
       // Spawn so the foot (not the centroid) sits at the spawn point.
       const foot = shape.vertices[shape.footIndex];
