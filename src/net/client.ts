@@ -16,8 +16,14 @@ import {
   type ServerMsg,
 } from "./protocol";
 
-/** Where the relay lives. Dev default: `npm run relay` on this machine. */
-export const RELAY_URL: string = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:8787";
+/**
+ * Where the relay lives. A deployed game is served by the same Worker as the
+ * relay, so it's this page's own address. In dev (`npm run dev`), it's
+ * `npm run relay` on this machine. VITE_RELAY_URL overrides both.
+ */
+export const RELAY_URL: string =
+  import.meta.env.VITE_RELAY_URL ??
+  (import.meta.env.DEV || typeof location === "undefined" ? "ws://localhost:8787" : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`);
 
 export type NetPhase = "offline" | "connecting" | "lobby" | "match";
 

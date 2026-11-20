@@ -6,6 +6,7 @@
 // Usage: npm run relay:smoke
 
 import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { PROTOCOL_VERSION, type MatchSetup, type ServerMsg } from "../src/net/protocol";
 import { WINGS_STAGE } from "../src/sim/geometry";
 import { DEFAULT_PARAMS } from "../src/sim/params";
@@ -16,6 +17,7 @@ const BASE = `http://localhost:${PORT}`;
 const ROOM = "SMKT";
 const TICKS = 180; // 3 s of match
 
+mkdirSync("dist", { recursive: true }); // wrangler serves dist/ (the game); it must exist
 const relay = spawn("npx", ["wrangler", "dev", "--port", String(PORT), "--ip", "127.0.0.1"], { stdio: ["ignore", "pipe", "pipe"] });
 let relayLog = "";
 relay.stdout.on("data", (d) => (relayLog += d));

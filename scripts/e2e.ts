@@ -6,7 +6,8 @@ import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { chromium, type Page } from "playwright-core";
 
-const PORT = 4176;
+// The production setup: wrangler serves the built game and the relay together.
+const PORT = 8787;
 const URL = `http://localhost:${PORT}/`;
 const SHOTS = "e2e-shots";
 mkdirSync(SHOTS, { recursive: true });
@@ -19,11 +20,10 @@ function check(ok: boolean, what: string) {
 const info = (p: Page) => p.evaluate(() => (window as any).triangleDuel.game.info);
 const shot = (p: Page, name: string) => p.screenshot({ path: `${SHOTS}/${name}.png` });
 
-const server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], { stdio: "ignore" });
-const procs: { relay?: ReturnType<typeof spawn> } = {}; // started by onlineFlow()
+const server = spawn("npx", ["wrangler", "dev", "--port", String(PORT), "--ip", "127.0.0.1"], { stdio: "ignore" });
 const browser = await chromium.launch({ channel: "chrome" });
 try {
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 150; i++) {
     try {
       if ((await fetch(URL)).ok) break;
     } catch {
@@ -111,22 +111,13 @@ try {
 } finally {
   await browser.close();
   server.kill();
-  procs.relay?.kill();
 }
 console.log(failures ? `${failures} failed` : "all passed");
 process.exitCode = failures ? 1 : 0;
 
 // ---- online: lobby, settings, bots, kick, a match, back to the room, host handoff ----
 async function onlineFlow() {
-  // The game's default relay address is ws://localhost:8787.
-  procs.relay = spawn("npx", ["wrangler", "dev", "--port", "8787", "--ip", "127.0.0.1"], { stdio: "ignore" });
-  for (let i = 0; i < 150; i++) {
-    try {
-      if ((await fetch("http://localhost:8787/")).ok) break;
-    } catch {
-      await new Promise((r) => setTimeout(r, 200));
-    }
-  }
+  // The relay is the same server as the game (started above).
   const errors: string[] = [];
   async function player(name: string) {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 760 } });

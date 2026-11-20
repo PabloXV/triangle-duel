@@ -14,6 +14,8 @@ npm run shape-arena  # custom fighter shapes vs the standard one (bots playing)
 npm run verify -- f.json  # check a downloaded match recording replays exactly
 npm run cross-browser    # replay the fixture match in Node, Chrome, Firefox, WebKit and compare
 npm run relay      # the online room relay, locally (Cloudflare Workers runtime via wrangler)
+npm run serve      # production setup locally: build, then game + relay on http://localhost:8787
+npm run deploy     # build and deploy to Cloudflare (or push: the Git-connected Worker builds itself)
 npm run relay:smoke  # end-to-end relay check: two clients, a match, identical tick streams
 npm run netsim     # rollback behavior on simulated connections
 npm run e2e        # browser test of the menu flow (screenshots in e2e-shots/)
@@ -181,6 +183,12 @@ bodies apart violently. Out of stocks = removed from the stage. Last one with
 stocks wins.
 
 ## Online (relay)
+
+**Deploy:** one Worker (`wrangler.jsonc`) serves both the game (static files
+from `dist/`) and the relay (`/api/*`), so the game finds the relay at its own
+address. The Durable Object is created by the config's migration on first
+deploy. Cloudflare's Git builds run only `wrangler deploy`; its `build` hook
+(`scripts/ci-build.mjs`) builds the game first there.
 
 One Cloudflare Durable Object per room code: a single instance worldwide, so
 every player's messages are handled in one place, in order. It owns the

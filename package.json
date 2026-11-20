@@ -13,7 +13,9 @@
     "shape-arena": "tsx scripts/shape-arena.ts",
     "verify": "tsx scripts/verify-recording.ts",
     "cross-browser": "npm run build && tsx scripts/cross-browser.ts",
-    "relay": "wrangler dev --port 8787",
+    "relay": "node -e \"require('fs').mkdirSync('dist',{recursive:true})\" && wrangler dev --port 8787",
+    "serve": "npm run build && wrangler dev --port 8787",
+    "deploy": "npm run build && wrangler deploy",
     "relay:smoke": "tsx scripts/relay-smoke.ts",
     "netsim": "tsx scripts/netsim.ts",
     "e2e": "npm run build && tsx scripts/e2e.ts"
