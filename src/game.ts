@@ -20,7 +20,7 @@ import { Renderer } from "./render";
 import { LiveSession, PlaybackSession, type InputSource, type Session } from "./session";
 import type { Params } from "./sim/params";
 import type { Recording } from "./sim/recording";
-import { DT, type FighterView, type MatchResult, type SimEvent } from "./sim/sim";
+import { DEFAULT_MATCH, DT, type FighterView, type MatchResult, type SimEvent } from "./sim/sim";
 import { CorrectionSmoother } from "./smoothing";
 import { STAGES, stageById } from "./stages";
 
@@ -58,6 +58,8 @@ export interface GameSettings {
 }
 
 const KEYS = ["←/→ rotate, ↓ charge", "A/D rotate, S charge"]; // by keyboard binding
+/** After an online match ends, how long the winner shows before everyone returns to the room. */
+const BACK_TO_ROOM_MS = 3500;
 
 export class Game {
   readonly params: Params = loadParams();
@@ -78,6 +80,7 @@ export class Game {
   private matchNumber = 0;
   private localSetup: LocalSetup = DEFAULT_LOCAL_SETUP;
   private attractRestartAt = 0; // when the attract match should restart (ms), after it ends
+  private backToRoomAt = 0; // host: when to send the room back to the lobby after an online match (ms)
 
   private state: GameState = { mode: "attract", paused: false, ended: false, winnerName: null };
   private listeners = new Set<(s: GameState) => void>();
@@ -147,6 +150,14 @@ export class Game {
     return this.localSetup;
   }
 
+  /** Host: start an online match with everyone in the room, using the room's settings. */
+  startOnline() {
+    const net = this.net;
+    if (!net.isHost) return;
+    const match = { ...DEFAULT_MATCH, players: net.roster.length, stocks: net.settings.stocks };
+    net.start({ stage: stageById(net.settings.stageId).stage, match, params: structuredClone(this.params) });
+  }
+
   /** Pause a local match (online matches can't pause). */
   setPaused(paused: boolean) {
     if (this.state.mode !== "local" && this.state.mode !== "replay") paused = false;
@@ -194,6 +205,7 @@ export class Game {
     this.camera.setStage(next.sim.stage);
     this.smoother.reset();
     this.attractRestartAt = 0;
+    this.backToRoomAt = 0;
     this.update({ mode, paused: false, ended: false, winnerName: null });
   }
 
@@ -247,6 +259,7 @@ export class Game {
 
   /** Once the match is decided and its replay is done: tell the menus (or restart the backdrop). */
   private checkEnded(now: number) {
+    this.checkBackToRoom(now);
     const result: MatchResult = this.session.sim.result;
     if (!result.over || this.koReplay || this.state.ended) return;
     if (this.state.mode === "attract") {
@@ -256,6 +269,24 @@ export class Game {
     }
     const winnerName = result.winner === null ? null : (this.names[result.winner] ?? `P${result.winner + 1}`);
     this.update({ ended: true, winnerName });
+  }
+
+  /**
+   * Online, the relay doesn't simulate, so it doesn't know when a match is
+   * over. Every client does, identically; the host tells the relay a few
+   * seconds after the end (time for the banner), and everyone returns to the
+   * room together. Decided on the confirmed timeline: the present can briefly
+   * show a win that a rollback undoes.
+   */
+  private checkBackToRoom(now: number) {
+    const s = this.session;
+    if (!(s instanceof OnlineSession) || !this.net.isHost || !this.state.ended) return;
+    if (!s.confirmedResult.over) return;
+    this.backToRoomAt ||= now + BACK_TO_ROOM_MS;
+    if (now >= this.backToRoomAt && this.backToRoomAt > 0) {
+      this.backToRoomAt = -1; // sent
+      this.net.backToLobby();
+    }
   }
 
   private controlHints(): string[] {

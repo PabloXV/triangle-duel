@@ -21,7 +21,7 @@
 import type { InputSource, Session } from "../session";
 import { decodeInput, encodeInput } from "../sim/inputCodec";
 import { Recorder, type Recording } from "../sim/recording";
-import { Sim, NO_INPUT, hashState, type FighterView, type SimState } from "../sim/sim";
+import { Sim, NO_INPUT, hashState, type FighterView, type MatchResult, type SimState } from "../sim/sim";
 import { HASH_EVERY, type MatchSetup } from "./protocol";
 
 /** What the session needs from the network. NetClient implements it. */
@@ -239,6 +239,11 @@ export class OnlineSession implements Session {
   /** Fingerprint of the confirmed timeline (the same on every client). */
   confirmedHash(): string {
     return hashState(this.confirmedState());
+  }
+
+  /** The match result on the confirmed timeline (the present can briefly show a win a rollback undoes). */
+  get confirmedResult(): MatchResult {
+    return this.confirmedState().result;
   }
 
   get confirmedTick(): number {

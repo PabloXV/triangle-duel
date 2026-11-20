@@ -20,6 +20,7 @@ const info = (p: Page) => p.evaluate(() => (window as any).triangleDuel.game.inf
 const shot = (p: Page, name: string) => p.screenshot({ path: `${SHOTS}/${name}.png` });
 
 const server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], { stdio: "ignore" });
+const procs: { relay?: ReturnType<typeof spawn> } = {}; // started by onlineFlow()
 const browser = await chromium.launch({ channel: "chrome" });
 try {
   for (let i = 0; i < 50; i++) {
@@ -95,12 +96,97 @@ try {
   check(again.mode === "local" && again.tick < 60, "play again starts a fresh match");
 
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
+
+  await onlineFlow();
 } catch (err) {
   console.error(err);
   failures++;
 } finally {
   await browser.close();
   server.kill();
+  procs.relay?.kill();
 }
 console.log(failures ? `${failures} failed` : "all passed");
 process.exitCode = failures ? 1 : 0;
+
+// ---- online: lobby, settings, bots, kick, a match, back to the room, host handoff ----
+async function onlineFlow() {
+  // The game's default relay address is ws://localhost:8787.
+  procs.relay = spawn("npx", ["wrangler", "dev", "--port", "8787", "--ip", "127.0.0.1"], { stdio: "ignore" });
+  for (let i = 0; i < 150; i++) {
+    try {
+      if ((await fetch("http://localhost:8787/")).ok) break;
+    } catch {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+  const errors: string[] = [];
+  async function player(name: string) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 760 } });
+    const p = await ctx.newPage();
+    p.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
+    await p.goto(URL);
+    await p.getByLabel("What should we call you?").fill(name);
+    await p.getByRole("button", { name: "Continue" }).click();
+    await p.getByRole("button", { name: "Play online" }).click();
+    return p;
+  }
+  const rosterNames = (p: Page) => p.locator(".roster .name").allTextContents();
+  const ana = await player("Ana");
+  const bo = await player("Bo");
+  const cy = await player("Cy");
+
+  // Ana creates a room and sets it up.
+  await ana.getByRole("button", { name: "Create a room" }).click();
+  const code = (await ana.locator("button.code").textContent({ timeout: 10_000 }))!.trim();
+  check(/^[A-Z]{4}$/.test(code), `room created: ${code}`);
+  await ana.getByRole("button", { name: /Island/ }).click();
+  await ana.getByRole("button", { name: "fewer stocks" }).click();
+  await ana.getByRole("button", { name: "fewer stocks" }).click();
+  await ana.getByRole("button", { name: "more bots" }).click();
+
+  // Bo joins and sees the same room.
+  await bo.getByLabel("…or join one with its code").fill(code.toLowerCase()); // lowercase is fine
+  await bo.getByRole("button", { name: "Join" }).click();
+  await bo.locator("button.code").waitFor();
+  await bo.waitForTimeout(400);
+  check(JSON.stringify(await rosterNames(bo)) === JSON.stringify(["Ana", "bot 1", "Bo"]), `Bo sees the roster: ${await rosterNames(bo)}`);
+  check((await bo.getByRole("button", { name: /Island/ }).getAttribute("aria-pressed")) === "true", "Bo sees the host's map (Island)");
+  check((await bo.getByLabel("stocks", { exact: true }).textContent()) === "1", "Bo sees the host's stocks (1)");
+  check(await bo.getByText("Waiting for the host to start").isVisible(), "Bo (not host) waits");
+  check((await bo.getByRole("button", { name: "Start match" }).count()) === 0, "Bo has no start button");
+  await shot(ana, "7-room-host");
+  await shot(bo, "8-room-guest");
+
+  // Cy joins; Ana kicks him.
+  await cy.getByLabel("…or join one with its code").fill(code);
+  await cy.getByRole("button", { name: "Join" }).click();
+  await cy.locator("button.code").waitFor();
+  await ana.getByRole("button", { name: "kick Cy" }).click();
+  await cy.getByText("the host removed you from the room").waitFor({ timeout: 5000 });
+  check(true, "Cy was kicked: back on the online menu, told why");
+  await ana.waitForTimeout(300);
+  check(!(await rosterNames(ana)).includes("Cy"), "Cy is gone from Ana's roster");
+
+  // Ana starts. Both walk right off the island, so the bot wins quickly.
+  await ana.getByRole("button", { name: "Start match" }).click();
+  await ana.waitForTimeout(800);
+  const ia = await info(ana);
+  const ib = await info(bo);
+  check(ia.mode === "online" && ib.mode === "online" && ia.players === 3 && ia.platforms === 1, `both in the online match (3 fighters, Island)`);
+  await shot(bo, "9-online-match");
+  await ana.keyboard.down("ArrowRight");
+  await bo.keyboard.down("ArrowRight");
+  await ana.locator("button.code").waitFor({ timeout: 60_000 });
+  await bo.locator("button.code").waitFor({ timeout: 10_000 });
+  check(true, "match over → both back in the room automatically");
+  await ana.keyboard.up("ArrowRight");
+  await bo.keyboard.up("ArrowRight");
+
+  // Ana leaves; Bo becomes host.
+  await ana.getByRole("button", { name: "Leave room" }).click();
+  await bo.getByRole("button", { name: "Start match" }).waitFor({ timeout: 5000 });
+  check(JSON.stringify(await rosterNames(bo)) === JSON.stringify(["bot 1", "Bo"]), "Ana left: Bo is host, the bot stays");
+  await shot(bo, "10-new-host");
+  check(errors.length === 0, `online: no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
+}

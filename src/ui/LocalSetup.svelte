@@ -2,8 +2,8 @@
   // Set up a match on this machine: map, bots, stocks, difficulty, 2nd player.
   import { untrack } from "svelte";
   import type { BotLevel, LocalSetup } from "../game";
-  import { STAGES } from "../stages";
-  import StagePreview from "./StagePreview.svelte";
+  import MapPicker from "./MapPicker.svelte";
+  import Stepper from "./Stepper.svelte";
 
   let { initial, onStart, onBack }: { initial: LocalSetup; onStart: (s: LocalSetup) => void; onBack: () => void } = $props();
 
@@ -33,33 +33,17 @@
 
   <fieldset>
     <legend>Map</legend>
-    <div class="maps">
-      {#each STAGES as s (s.id)}
-        <button class="map" class:selected={stageId === s.id} onclick={() => (stageId = s.id)} aria-pressed={stageId === s.id}>
-          <StagePreview stage={s.stage} />
-          <strong>{s.name}</strong>
-          <span>{s.blurb}</span>
-        </button>
-      {/each}
-    </div>
+    <MapPicker value={stageId} onPick={(id) => (stageId = id)} />
   </fieldset>
 
   <div class="row">
     <fieldset>
       <legend>Bots</legend>
-      <div class="stepper">
-        <button onclick={() => bots--} disabled={bots <= minBots} aria-label="fewer bots">−</button>
-        <output>{bots}</output>
-        <button onclick={() => bots++} disabled={bots >= maxBots} aria-label="more bots">+</button>
-      </div>
+      <Stepper bind:value={bots} min={minBots} max={maxBots} label="bots" />
     </fieldset>
     <fieldset>
       <legend>Stocks</legend>
-      <div class="stepper">
-        <button onclick={() => stocks--} disabled={stocks <= 1} aria-label="fewer stocks">−</button>
-        <output>{stocks}</output>
-        <button onclick={() => stocks++} disabled={stocks >= 5} aria-label="more stocks">+</button>
-      </div>
+      <Stepper bind:value={stocks} min={1} max={5} label="stocks" />
     </fieldset>
     <fieldset>
       <legend>Bot level</legend>
@@ -84,42 +68,10 @@
 </div>
 
 <style>
-  .maps {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 0.75rem;
-  }
-  .map {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.3rem;
-    text-align: left;
-    padding: 0.6rem;
-  }
-  .map span {
-    font-size: 0.85rem;
-    color: var(--muted);
-  }
   .row {
     display: flex;
     flex-wrap: wrap;
     gap: 1rem;
-  }
-  .stepper {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .stepper button {
-    width: 2.25rem;
-    padding: 0.35rem 0;
-  }
-  .stepper output {
-    min-width: 1.5rem;
-    text-align: center;
-    font-size: 1.2rem;
-    font-weight: 700;
   }
   .segmented {
     display: flex;

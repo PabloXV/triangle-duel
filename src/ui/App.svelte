@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   // The menus around the game. The game itself (canvas, sim, netcode) is plain
   // TypeScript in src/game.ts; screens only call its small API.
   import { DEFAULT_LOCAL_SETUP, type Game, type LocalSetup } from "../game";
@@ -6,6 +7,8 @@
   import LocalSetupScreen from "./LocalSetup.svelte";
   import MainMenu from "./MainMenu.svelte";
   import NameScreen from "./NameScreen.svelte";
+  import OnlineMenu from "./OnlineMenu.svelte";
+  import Room from "./Room.svelte";
 
   let { game }: { game: Game } = $props();
 
@@ -26,7 +29,8 @@
 
   const savedName = load(NAME_KEY) ?? "";
   let name = $state(savedName);
-  type Screen = "name" | "menu" | "local" | "online" | "game";
+  type Screen = "name" | "menu" | "local" | "online" | "room" | "game";
+  const net = untrack(() => game.net); // `game` never changes
   let screen = $state<Screen>(savedName ? "menu" : "name");
   let menuOpen = $state(false);
   $effect(() => {
@@ -58,9 +62,22 @@
 
   function leave() {
     menuOpen = false;
-    game.leaveToMenu();
-    screen = "menu";
+    const wasOnline = $game.mode === "online";
+    game.leaveToMenu(); // (online: also leaves the room)
+    screen = wasOnline ? "online" : "menu";
   }
+
+  // Online, the screen follows the connection: joined → room; host started →
+  // game; match over (host sent everyone back) → room; kicked or
+  // disconnected → the online menu, which shows why.
+  $effect(() => {
+    const phase = $net.phase;
+    const mode = $game.mode;
+    if (mode === "online") screen = "game";
+    else if (screen === "online" && phase === "lobby") screen = "room";
+    else if (screen === "room" && phase === "offline") screen = "online";
+    else if (screen === "game" && mode === "attract" && phase === "lobby") screen = "room";
+  });
 
   function onKey(e: KeyboardEvent) {
     if (e.key !== "Escape" || screen !== "game" || $game.ended) return;
@@ -79,11 +96,9 @@
   {:else if screen === "local"}
     <LocalSetupScreen initial={setup} onStart={startLocal} onBack={() => (screen = "menu")} />
   {:else if screen === "online"}
-    <div class="card">
-      <h2>Play online</h2>
-      <p class="muted">The online lobby is the next step. For now, online play is in the debug panel (press `).</p>
-      <div class="actions"><button onclick={() => (screen = "menu")}>Back</button></div>
-    </div>
+    <OnlineMenu {net} {name} onBack={() => (screen = "menu")} />
+  {:else if screen === "room"}
+    <Room {net} onStart={() => game.startOnline()} onLeave={() => net.leave()} />
   {:else if screen === "game"}
     <InGame {game} gs={$game} bind:menuOpen onLeave={leave} onChangeSetup={() => { game.leaveToMenu(); screen = "local"; }} />
   {/if}

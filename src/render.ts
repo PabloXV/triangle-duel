@@ -4,7 +4,8 @@ import type { CameraView } from "./camera";
 import type { Platform, Stage, Vec2 } from "./sim/geometry";
 import type { FighterView, MatchResult } from "./sim/sim";
 
-const COLORS = ["#ff6b6b", "#4ecdc4", "#ffd93d", "#a78bfa"];
+/** Fighter colors, by fighter index (also used by the menus). */
+export const COLORS = ["#ff6b6b", "#4ecdc4", "#ffd93d", "#a78bfa"];
 
 export interface RenderOptions {
   hud: boolean; // false = no in-game interface (e.g. the bot match behind the menus)

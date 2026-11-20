@@ -4,11 +4,8 @@
 
 import GUI, { type Controller } from "lil-gui";
 import type { Game } from "./game";
-import { DEFAULT_MATCH } from "./sim/types";
-import { ROOM_CODE, randomRoomCode } from "./net/protocol";
 import type { Recording } from "./sim/recording";
 import { DEFAULT_PARAMS, PARAM_GROUPS, PARAM_META, type Params } from "./sim/params";
-import { STAGES } from "./stages";
 
 const STORAGE_KEY = "triangle-duel.params.v1";
 
@@ -37,35 +34,6 @@ function saveParams(params: Params) {
 export function buildPanel(game: Game, container: HTMLElement) {
   const params = game.params;
   const gui = new GUI({ title: "Debug panel  (` to hide)", container });
-
-  // Online (dev controls; the real lobby UI replaces these).
-  const net = game.net;
-  const dev = { room: "", status: "offline" };
-  const join = (code: string) => {
-    if (!ROOM_CODE.test(code)) return void (dev.status = "room codes are 4 letters (no I, L or O)");
-    dev.room = code;
-    net.connect(code, game.playerName);
-  };
-  const online = gui.addFolder("Online (dev)");
-  online.close();
-  online.add(dev, "room").name("room code").listen();
-  online.add({ create: () => join(randomRoomCode()) }, "create").name("create room");
-  online.add({ join: () => join(dev.room.trim().toUpperCase()) }, "join").name("join room");
-  online.add({ addBot: () => net.addBot() }, "addBot").name("add bot (host)");
-  online.add({ removeBot: () => net.removeBot() }, "removeBot").name("remove bot (host)");
-  online
-    .add(
-      {
-        start: () =>
-          net.start({ stage: STAGES[0].stage, match: { ...DEFAULT_MATCH, players: net.roster.length }, params: structuredClone(params) }),
-      },
-      "start",
-    )
-    .name("start match (host)");
-  online.add({ end: () => net.backToLobby() }, "end").name("end match (host)");
-  online.add({ leave: () => net.leave() }, "leave").name("leave room");
-  online.add(dev, "status").name("status").disable().listen();
-  setInterval(() => (dev.status = net.error ?? `${net.phase}${net.roster.length ? ` (${net.roster.map((p) => p.name).join(", ")})` : ""}`), 250);
 
   const juice = gui.addFolder("Juice");
   juice.add(game.settings, "cameraFollow").name("camera follow");

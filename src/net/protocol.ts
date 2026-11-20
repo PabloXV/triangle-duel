@@ -17,7 +17,7 @@ import type { Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { MatchOptions } from "../sim/sim";
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const MAX_PLAYERS = 4;
 export const MAX_MESSAGE_BYTES = 64 * 1024;
 /** Clients report a state fingerprint every this many steps. */
@@ -34,6 +34,15 @@ export interface MatchSetup {
   match: MatchOptions;
   params: Params;
 }
+
+/** Lobby settings the host chooses; everyone sees them. */
+export interface RoomSettings {
+  stageId: string; // see src/stages.ts
+  stocks: number;
+}
+
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = { stageId: "wings", stocks: 3 };
+export const MAX_STOCKS = 5;
 
 export interface RosterEntry {
   slot: number;
@@ -52,6 +61,10 @@ export type ClientMsg =
   /** Host, in the lobby: add or remove a bot seat. */
   | { type: "addBot" }
   | { type: "removeBot" }
+  /** Host, in the lobby: change the room's settings. */
+  | { type: "settings"; settings: RoomSettings }
+  /** Host: remove the player in `slot` from the room. */
+  | { type: "kick"; slot: number }
   /** During a match: my state fingerprint (Sim.hash) after step `step`, for desync detection. */
   | { type: "hash"; step: number; hash: string }
   /** Round-trip time measurement. */
@@ -62,8 +75,10 @@ export type ClientMsg =
 export type ServerMsg =
   /** You're in. `slot` = your seat in the lobby. */
   | { type: "welcome"; room: string; slot: number }
-  /** Who's here, sent whenever it changes. */
-  | { type: "roster"; phase: "lobby" | "match"; players: RosterEntry[] }
+  /** Who's here and the room's settings, sent whenever either changes. */
+  | { type: "roster"; phase: "lobby" | "match"; players: RosterEntry[]; settings: RoomSettings }
+  /** You were removed from the room by the host. */
+  | { type: "kicked" }
   /**
    * A match begins at step 0. `fighters[i]` = the lobby slot playing fighter i;
    * `you` = your fighter; `drive` = fighters whose inputs you send (yours, plus
@@ -113,6 +128,14 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     case "addBot":
     case "removeBot":
       return { type: m.type };
+    case "settings": {
+      const s = m.settings;
+      if (!isObj(s) || typeof s.stageId !== "string" || !/^[a-z0-9-]{1,24}$/.test(s.stageId)) return null;
+      if (!isInt(s.stocks) || s.stocks < 1 || s.stocks > MAX_STOCKS) return null;
+      return { type: "settings", settings: { stageId: s.stageId, stocks: s.stocks } };
+    }
+    case "kick":
+      return isInt(m.slot) && m.slot >= 0 ? { type: "kick", slot: m.slot } : null;
     case "hash":
       return isInt(m.step) && m.step >= 0 && typeof m.hash === "string" && /^[0-9a-f]{8}$/.test(m.hash)
         ? { type: "hash", step: m.step, hash: m.hash }

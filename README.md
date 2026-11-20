@@ -226,9 +226,14 @@ bit-identical, rollbacks must actually occur, late own inputs must be
 corrected, prediction must stay bounded, your own input must apply on the
 next step, and a client with a corrupted setup must be caught as a desync.
 
-To try it: `npm run relay` and `npm run dev`, two tabs, panel → Online:
-create room in one, join with the code in the other, host starts. Online,
-everyone uses the arrow keys.
+To try it: `npm run relay` and `npm run dev`, two tabs, Play online: create a
+room in one, join with its code in the other. The host picks the map and
+stocks (everyone sees them live; the relay only accepts changes from the
+host), adds bots, kicks, and starts. Online, everyone uses the arrow keys.
+When a match ends, everyone returns to the room together: the relay doesn't
+simulate, so the host's browser tells it, a few seconds after the *confirmed*
+timeline shows the result (the present can briefly show a win a rollback
+undoes). If the host leaves the room, the next player becomes host.
 
 **Bots online:** the host can add/remove bot seats in the lobby (Online →
 add bot). The host's browser runs them and sends their inputs through the

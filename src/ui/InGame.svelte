@@ -45,6 +45,9 @@
 
 {#if gs.ended}
   <div class="end">
+    {#if gs.mode === "online"}
+      <p class="note">Back to the room in a moment…</p>
+    {:else}
     <div class="stack row">
       {#if gs.mode === "local"}
         <button class="primary" onclick={() => game.playAgain()}>Play again</button>
@@ -52,6 +55,7 @@
       {/if}
       <button onclick={onLeave}>Menu</button>
     </div>
+    {/if}
   </div>
 {/if}
 
@@ -84,5 +88,10 @@
   }
   .row {
     flex-direction: row;
+  }
+  .note {
+    color: #fffc;
+    font: 600 1rem system-ui, sans-serif;
+    margin: 0;
   }
 </style>

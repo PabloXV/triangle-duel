@@ -5,7 +5,15 @@
 import { decodeInput } from "../sim/inputCodec";
 import type { Input } from "../sim/types";
 import type { MatchTransport } from "./onlineSession";
-import { PROTOCOL_VERSION, type ClientMsg, type MatchSetup, type RosterEntry, type ServerMsg } from "./protocol";
+import {
+  DEFAULT_ROOM_SETTINGS,
+  PROTOCOL_VERSION,
+  type ClientMsg,
+  type MatchSetup,
+  type RoomSettings,
+  type RosterEntry,
+  type ServerMsg,
+} from "./protocol";
 
 /** Where the relay lives. Dev default: `npm run relay` on this machine. */
 export const RELAY_URL: string = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:8787";
@@ -17,6 +25,7 @@ export class NetClient implements MatchTransport {
   room = "";
   slot: number | null = null;
   roster: RosterEntry[] = [];
+  settings: RoomSettings = { ...DEFAULT_ROOM_SETTINGS };
   rttMs: number | null = null;
   error: string | null = null;
   /** During a match: my fighter index, and the latest official step and inputs. */
@@ -35,9 +44,21 @@ export class NetClient implements MatchTransport {
   fighters: number[] = [];
 
   private ws: WebSocket | null = null;
+  private listeners = new Set<(c: NetClient) => void>();
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pingSent = new Map<number, number>();
   private pingId = 0;
+
+  /** Svelte-store-compatible: call `fn` now and whenever anything changes. */
+  subscribe(fn: (c: NetClient) => void): () => void {
+    this.listeners.add(fn);
+    fn(this);
+    return () => this.listeners.delete(fn);
+  }
+
+  private notify() {
+    for (const fn of this.listeners) fn(this);
+  }
 
   get isHost(): boolean {
     return this.roster.find((p) => p.slot === this.slot)?.host ?? false;
@@ -54,21 +75,38 @@ export class NetClient implements MatchTransport {
       this.send({ type: "hello", version: PROTOCOL_VERSION, name });
       this.pingTimer = setInterval(() => this.ping(), 1000);
     };
-    ws.onmessage = (e) => this.handle(JSON.parse(String(e.data)) as ServerMsg);
+    ws.onmessage = (e) => {
+      this.handle(JSON.parse(String(e.data)) as ServerMsg);
+      this.notify();
+    };
     ws.onclose = () => {
       if (this.ws !== ws) return; // a newer connection replaced this one
       this.cleanup();
-      if (!this.error) this.error = "disconnected";
+      if (!this.error) this.error = "disconnected from the room";
+      this.notify();
     };
     ws.onerror = () => {
-      this.error = `couldn't reach the relay at ${RELAY_URL} (is \`npm run relay\` running?)`;
+      if (this.phase === "connecting") this.error = `couldn't reach the relay at ${RELAY_URL}`;
+      this.notify();
     };
+    this.notify();
   }
 
   leave() {
     const ws = this.ws;
     this.cleanup();
     ws?.close();
+    this.notify();
+  }
+
+  /** Host, in the lobby: change the room's settings. */
+  setSettings(settings: RoomSettings) {
+    this.send({ type: "settings", settings });
+  }
+
+  /** Host: remove the player (or bot) in `slot`. */
+  kick(slot: number) {
+    this.send({ type: "kick", slot });
   }
 
   /** Host: start a match with everyone in the room. */
@@ -119,6 +157,10 @@ export class NetClient implements MatchTransport {
         break;
       case "roster":
         this.roster = m.players;
+        this.settings = m.settings;
+        break;
+      case "kicked":
+        this.error = "the host removed you from the room";
         break;
       case "start":
         this.phase = "match";
@@ -177,5 +219,6 @@ export class NetClient implements MatchTransport {
     this.setup = null;
     this.lastStep = -1;
     this.rttMs = null;
+    this.settings = { ...DEFAULT_ROOM_SETTINGS };
   }
 }

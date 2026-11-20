@@ -7,6 +7,7 @@
 import { encodeInput } from "../sim/inputCodec";
 import { NO_INPUT } from "../sim/types";
 import {
+  DEFAULT_ROOM_SETTINGS,
   HASH_EVERY,
   MAX_INPUT_LEAD,
   MAX_PLAYERS,
@@ -14,6 +15,7 @@ import {
   cleanName,
   parseClientMsg,
   type MatchSetup,
+  type RoomSettings,
   type RosterEntry,
   type ServerMsg,
 } from "./protocol";
@@ -44,6 +46,7 @@ const IDLE = encodeInput(NO_INPUT);
 export class RoomCore {
   private conns = new Map<string, Conn>();
   private bots = new Map<number, string>(); // slot → name
+  private settings: RoomSettings = { ...DEFAULT_ROOM_SETTINGS };
   phase: "lobby" | "match" = "lobby";
   private setup: MatchSetup | null = null;
   /** The next step to finalize. Steps before it are final and broadcast. */
@@ -152,6 +155,25 @@ export class RoomCore {
         this.bots.set(slot, `bot ${this.bots.size + 1}`);
         return [this.roster()];
       }
+      case "settings": {
+        if (!this.isHost(id)) return [error(id, "only the host can change settings")];
+        if (this.phase !== "lobby") return [error(id, "can't change settings during a match")];
+        this.settings = m.settings;
+        return [this.roster()];
+      }
+      case "kick": {
+        if (!this.isHost(id)) return [error(id, "only the host can kick")];
+        const seat = this.seats().find((s) => s.slot === m.slot);
+        if (!seat) return [error(id, "nobody in that seat")];
+        if (seat.conn === id) return [error(id, "you can't kick yourself (leave instead)")];
+        if (seat.conn === null) {
+          if (this.phase !== "lobby") return [error(id, "can't remove bots during a match")];
+          this.bots.delete(seat.slot); // kicking a bot seat just removes the bot
+          return [this.roster()];
+        }
+        // Tell them, close their connection, and treat it as them leaving.
+        return [{ to: seat.conn, msg: { type: "kicked" }, close: true }, ...this.disconnect(seat.conn)];
+      }
       case "removeBot": {
         if (!this.isHost(id)) return [error(id, "only the host can remove bots")];
         if (this.phase !== "lobby") return [error(id, "can't change seats during a match")];
@@ -218,7 +240,7 @@ export class RoomCore {
   private roster(): Outgoing {
     const host = this.hostId();
     const players: RosterEntry[] = this.seats().map((s) => ({ slot: s.slot, name: s.name, host: s.conn !== null && s.conn === host, bot: s.conn === null }));
-    return { to: "all", msg: { type: "roster", phase: this.phase, players } };
+    return { to: "all", msg: { type: "roster", phase: this.phase, players, settings: this.settings } };
   }
 
   private toLobby() {
@@ -236,6 +258,7 @@ export class RoomCore {
     this.toLobby();
     this.nextStep = 0;
     this.bots.clear();
+    this.settings = { ...DEFAULT_ROOM_SETTINGS };
   }
 }
 

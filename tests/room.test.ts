@@ -264,3 +264,56 @@ describe("room: bots", () => {
     expect(ofType(out, "roster")[0].players.map((p) => p.name)).toEqual(["z"]);
   });
 });
+
+describe("room: settings and kick", () => {
+  const settings = (stageId: string, stocks: number) => send({ type: "settings", settings: { stageId, stocks } });
+
+  it("everyone sees the room's settings; the host changes them", () => {
+    const { room } = roomWith(1);
+    room.connect("b");
+    expect(ofType(room.receive("b", hello("b")), "roster")[0].settings).toEqual({ stageId: "wings", stocks: 3 });
+    expect(ofType(room.receive("a", settings("island", 1)), "roster")[0].settings).toEqual({ stageId: "island", stocks: 1 });
+  });
+
+  it("only the host, only in the lobby, and only sane values", () => {
+    const { room } = roomWith(2);
+    expect(room.receive("b", settings("island", 1))[0].msg).toEqual({ type: "error", message: "only the host can change settings" });
+    expect(room.receive("a", settings("island", 9))[0].msg).toEqual({ type: "error", message: "malformed message" });
+    expect(room.receive("a", settings("Bad Id!", 3))[0].msg).toEqual({ type: "error", message: "malformed message" });
+    const { room: r2 } = started(2);
+    expect(r2.receive("a", settings("island", 1))[0].msg).toEqual({ type: "error", message: "can't change settings during a match" });
+  });
+
+  it("the host can kick a player: they're told and disconnected, everyone else sees them gone", () => {
+    const { room } = roomWith(3);
+    const out = room.receive("a", send({ type: "kick", slot: 1 }));
+    expect(out[0]).toEqual({ to: "b", msg: { type: "kicked" }, close: true });
+    expect(ofType(out, "roster")[0].players.map((p) => p.name)).toEqual(["a", "c"]);
+    expect(room.receive("b", send({ type: "ping", id: 1 }))).toEqual([]); // b is gone
+  });
+
+  it("kicking a bot seat removes the bot; you can't kick yourself; only the host kicks", () => {
+    const { room } = roomWith(2);
+    room.receive("a", send({ type: "addBot" })); // slot 2
+    expect(ofType(room.receive("a", send({ type: "kick", slot: 2 })), "roster")[0].players.map((p) => p.name)).toEqual(["a", "b"]);
+    expect(room.receive("a", send({ type: "kick", slot: 0 }))[0].msg).toEqual({ type: "error", message: "you can't kick yourself (leave instead)" });
+    expect(room.receive("b", send({ type: "kick", slot: 0 }))[0].msg).toEqual({ type: "error", message: "only the host can kick" });
+    expect(room.receive("a", send({ type: "kick", slot: 3 }))[0].msg).toEqual({ type: "error", message: "nobody in that seat" });
+  });
+
+  it("kicking mid-match: their fighter goes idle", () => {
+    const { room } = started(2);
+    room.receive("b", send({ type: "input", tick: 0, input: "5" }));
+    room.advance();
+    room.receive("a", send({ type: "kick", slot: 1 }));
+    expect(room.advance()[0].msg).toEqual({ type: "tick", t: 1, c: [[1, "1"]] });
+  });
+
+  it("settings reset when the room empties", () => {
+    const { room } = roomWith(1);
+    room.receive("a", settings("island", 1));
+    room.disconnect("a");
+    room.connect("z");
+    expect(ofType(room.receive("z", hello("z")), "roster")[0].settings).toEqual({ stageId: "wings", stocks: 3 });
+  });
+});
