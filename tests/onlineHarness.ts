@@ -27,6 +27,7 @@ export function playOnline(opts: {
   bots?: number; // bot seats the host adds before starting (driven by client A, the host)
   leave?: { id: "a" | "b"; at: number }; // disconnect this client at this tick
   spectateAt?: number; // a spectator ("s") joins at this tick (same latency as A)
+  asleep?: { id: string; from: number; to: number }; // this client's tab is hidden: it receives but doesn't step
 }) {
   let now = 0;
   let seed = 12345;
@@ -117,7 +118,8 @@ export function playOnline(opts: {
       sessions.delete(opts.leave.id);
     }
     route(room.advance());
-    for (const s of sessions.values()) {
+    for (const [id, s] of sessions) {
+      if (opts.asleep && id === opts.asleep.id && now >= opts.asleep.from && now < opts.asleep.to) continue;
       s.step();
       opts.sample?.(s);
     }

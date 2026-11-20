@@ -412,6 +412,18 @@ export class Game {
         }
         this.prev = this.curr;
         this.curr = sim.view();
+        // Caught up at once after the tab slept: snap to the present, and skip the
+        // missed steps' effects (shakes, a KO replay); only say who left.
+        const jumped = session instanceof OnlineSession && session.takeJumped();
+        if (jumped) {
+          this.smoother.reset();
+          this.prev = this.curr;
+          const missed = session.takeEvents();
+          session.takeCorrection();
+          this.handleEvents(missed.filter((e) => e.type === "ko" && e.reason === "left"));
+          this.accumulator = 0;
+          break;
+        }
         if (session instanceof OnlineSession) {
           const c = session.takeCorrection();
           if (c) {

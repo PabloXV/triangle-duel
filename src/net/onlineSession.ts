@@ -55,6 +55,15 @@ export const MAX_PREDICTION = 30;
  */
 const AHEAD_SLACK = 2;
 const FAR_BEHIND = 12;
+/**
+ * Further behind than this (a hidden tab doesn't draw, so it doesn't step, but
+ * steps keep arriving), catch up at once, silently: every step must still be
+ * simulated (that's what keeps everyone in sync), but there's no point showing
+ * them; replaying them a few per frame looked like a hyperspeed mess. Within
+ * a time budget per frame, then the screen snaps to the present (takeJumped).
+ */
+const CATCH_UP_FROM = 60;
+const CATCH_UP_BUDGET_MS = 30;
 const MAX_STEPS_PER_FRAME = 10;
 
 const IDLE = encodeInput(NO_INPUT);
@@ -90,6 +99,7 @@ export class OnlineSession implements Session {
   private confirmed = 0;
   private lastSent = new Map<number, string>(); // per driven fighter
   private margin = MARGIN_MIN; // see MARGIN_MIN
+  private jumped = false; // caught up at once since the last takeJumped()
   private lastLate = 0; // confirmed step when my input last arrived late
   private recorder: Recorder;
 
@@ -179,11 +189,36 @@ export class OnlineSession implements Session {
       if (!this.sim.result.over) this.stats.stalls++;
       return false; // well ahead: let the relay catch up
     }
+    if (drift < -CATCH_UP_FROM) return this.catchUpNow(target);
     const steps = drift < -FAR_BEHIND ? MAX_STEPS_PER_FRAME : drift < -AHEAD_SLACK ? 2 : 1;
     let n = 0;
     while (n < steps && this.advance()) n++;
     if (n >= 3) this.stats.bursts++;
     return n > 0;
+  }
+
+  /** Far behind: simulate the missed steps now (they're all official), within a time budget. */
+  private catchUpNow(target: number): boolean {
+    const until = performance.now() + CATCH_UP_BUDGET_MS;
+    let n = 0;
+    while (this.sim.tick < target && performance.now() < until) {
+      if (!this.advance()) {
+        this.reconcile(); // confirm what's been simulated, so prediction room frees up
+        if (!this.advance()) break;
+      }
+      n++;
+      if (n % 30 === 0) this.reconcile();
+    }
+    this.reconcile();
+    this.jumped = true;
+    return n > 0;
+  }
+
+  /** True once after a silent catch-up: the caller should snap its picture (no smoothing, no effects for the skipped steps). */
+  takeJumped(): boolean {
+    const j = this.jumped;
+    this.jumped = false;
+    return j;
   }
 
   private aheadSteps(): number {
@@ -196,7 +231,10 @@ export class OnlineSession implements Session {
   private advance(): boolean {
     const s = this.sim.tick;
     if (s - this.confirmed >= MAX_PREDICTION) return false; // connection trouble: stall, don't guess wildly
-    if (!this.mine.has(s)) {
+    if (!this.mine.has(s) && this.official.has(s)) {
+      // Already final (we're catching up): nothing to decide or send for it.
+      this.mine.set(s, new Map());
+    } else if (!this.mine.has(s)) {
       // First time at this step: ask each source once (bots think exactly once per
       // step; on a rewind we reuse this decision), and send what changed.
       const view = this.sim.view();

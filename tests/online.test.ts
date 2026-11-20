@@ -89,6 +89,27 @@ describe("online rollback (in-process relay + two clients)", () => {
     console.log(`present lives went back up ${presentUp} times; confirmed never`);
   });
 
+  it("a tab that slept (hidden: it got steps but didn't run them) catches up in a few frames, still in sync", () => {
+    let framesAwake = 0;
+    let caughtUpAt = -1;
+    const { a, b, desyncs } = playOnline({
+      latency: [2, 2],
+      jitter: 1,
+      ticks: 2400,
+      bots: 2,
+      asleep: { id: "b", from: 600, to: 1800 }, // 20 s hidden
+      sample: (s) => {
+        if (s.isHuman(0)) return; // B only
+        framesAwake++;
+        if (framesAwake > 600 && caughtUpAt < 0 && s.predicting < 15) caughtUpAt = framesAwake - 600;
+      },
+    });
+    expect(caughtUpAt).toBeGreaterThan(0);
+    expect(caughtUpAt).toBeLessThanOrEqual(5); // was ~120 frames of fast-forward at 10 steps a frame
+    expect(desyncs).toEqual([]);
+    expect(b.confirmedHash()).toBe(a.confirmedHash());
+  });
+
   it("never predicts more than MAX_PREDICTION steps ahead, even on a terrible connection", () => {
     const { a, b } = playOnline({ latency: [25, 25], ticks: 900, sample: (s) => maxAhead.push(s.predicting) });
     expect(Math.max(...maxAhead)).toBeLessThanOrEqual(MAX_PREDICTION);

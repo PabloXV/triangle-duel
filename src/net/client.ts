@@ -66,6 +66,7 @@ export class NetClient implements MatchTransport {
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pingSent = new Map<number, number>();
   private pingId = 0;
+  private onVisible: (() => void) | null = null;
 
   /** Svelte-store-compatible: call `fn` now and whenever anything changes. */
   subscribe(fn: (c: NetClient) => void): () => void {
@@ -95,6 +96,13 @@ export class NetClient implements MatchTransport {
       if (this.eyes) this.send({ type: "eyes", eyes: this.eyes });
       if (this.color !== null) this.send({ type: "color", color: this.color });
       this.pingTimer = setInterval(() => this.ping(), 1000);
+      // Back from a hidden tab: forget pings sent before it slept, and measure afresh.
+      this.onVisible ??= () => {
+        if (document.hidden) return;
+        this.pingSent.clear();
+        this.ping();
+      };
+      if (typeof document !== "undefined") document.addEventListener("visibilitychange", this.onVisible);
     };
     ws.onmessage = (e) => {
       this.handle(JSON.parse(String(e.data)) as ServerMsg);
@@ -238,8 +246,10 @@ export class NetClient implements MatchTransport {
         this.onLobby?.();
         break;
       case "pong": {
-        const sent = this.pingSent.get(m.id);
+        let sent = this.pingSent.get(m.id);
         this.pingSent.delete(m.id);
+        if (typeof document !== "undefined" && document.hidden) sent = undefined; // timed while asleep: ignore
+        if (sent !== undefined && performance.now() - sent > 3000) sent = undefined; // stale (sent before a sleep)
         // Smoothed (a moving average), so one slow ping doesn't swing how far
         // ahead the match runs (OnlineSession) or the ping shown in the room.
         if (sent !== undefined) {
@@ -261,6 +271,9 @@ export class NetClient implements MatchTransport {
   }
 
   private ping() {
+    // Hidden tabs handle messages late, so a ping timed there would read as a
+    // round trip of seconds and swing how far ahead the match runs.
+    if (typeof document !== "undefined" && document.hidden) return;
     const id = ++this.pingId;
     this.pingSent.set(id, performance.now());
     this.send({ type: "ping", id });
@@ -273,6 +286,7 @@ export class NetClient implements MatchTransport {
   private cleanup() {
     if (this.pingTimer) clearInterval(this.pingTimer);
     this.pingTimer = null;
+    if (this.onVisible && typeof document !== "undefined") document.removeEventListener("visibilitychange", this.onVisible);
     this.pingSent.clear();
     this.ws = null;
     this.phase = "offline";
