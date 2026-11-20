@@ -223,15 +223,31 @@ The logic is plain TypeScript in `src/net/room.ts` (tested in Node);
 
 **Playing online (rollback):** `src/net/onlineSession.ts` runs your own full
 copy of the match on two timelines. *Confirmed* = steps the relay finalized
-(official inputs). *Present* = what's on screen, about one round trip + 2
-steps ahead: other players are predicted to keep their last input, and your
-own input applies immediately (and is sent for that same step). When official
-inputs differ from the prediction, the sim rewinds to that step (Sim.restore)
-and re-simulates to the present. Prediction is capped at 30 steps; past that
-it stalls instead of guessing. Recordings and desync fingerprints use only
-the confirmed timeline, so they mean the same on every client: if two
-clients ever differ, the relay tells everyone the exact step
-(`DESYNC at step N`). Online matches can be watched/downloaded after.
+(official inputs). *Present* = what's on screen, running ahead: other players
+are predicted to keep their last input. When official inputs differ from the
+prediction, the sim rewinds to that step (Sim.restore) and re-simulates to
+the present. Prediction is capped at 30 steps; past that it stalls instead
+of guessing. Recordings and desync fingerprints use only the confirmed
+timeline, so they mean the same on every client: if two clients ever differ,
+the relay tells everyone the exact step (`DESYNC at step N`). Online matches
+can be watched/downloaded after.
+
+- **Input delay (3 steps, ~50 ms),** as in GGPO-style fighting games: what you
+  press at step s takes effect at step s + 3, on every screen including yours,
+  and is sent for that step. It covers part of the trip to the relay, so the
+  present runs less far ahead: shallower, rarer-to-see corrections (netsim,
+  steady link: average correction 2.2 px -> 0.4 px).
+- **Adaptive margin:** the present runs ahead by one round trip (a moving
+  average; pings from a hidden tab are ignored) plus a margin, minus the input
+  delay. If your own input still arrives late (the relay moves it to the next
+  open step, and your fighter would snap), the margin grows; 10 s without one,
+  it shrinks. Only your own fighter counts, not bots you host.
+- **Pacing:** one step per frame; small drift is absorbed gradually (wait only
+  when 2+ steps ahead, catch up 2 per frame), and a tab that slept (hidden
+  tabs don't step, but steps keep arriving) catches up at once, silently, and
+  snaps to the present.
+- **The HUD shows confirmed lives,** so a predicted KO that a rollback undoes
+  never flickers the stock row.
 
 Corrections are smoothed visually (`src/smoothing.ts`): after a rollback the
 drawn fighter glides to its corrected spot over ~80 ms instead of snapping.

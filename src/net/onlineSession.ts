@@ -41,6 +41,14 @@ export interface MatchTransport {
  * one needs ~3, 100 ms ~6, jittery wifi more); 10 s without one gives one back.
  */
 const MARGIN_MIN = 3;
+/**
+ * Input delay, as in GGPO-style fighting games: an input I decide at step s
+ * takes effect at step s + INPUT_DELAY, on my screen and everyone else's.
+ * The delay covers part of the trip to the relay, so the present needn't run
+ * as far ahead: fewer and shallower rollbacks (smoother), and my inputs are
+ * rarely late. The cost is that many steps of responsiveness (about 50 ms).
+ */
+export const INPUT_DELAY = 3;
 const MARGIN_MAX = 12;
 const MARGIN_RELAX_STEPS = 600;
 /** Until a ping has been measured, assume this round trip. */
@@ -91,8 +99,10 @@ export class OnlineSession implements Session {
   private newest = -1; // newest official step received
   /** Inputs actually used for each simulated step past `confirmed` (to detect mispredictions). */
   private used = new Map<number, string>();
-  /** What I decided for the fighters I drive, per step (what I sent the relay): step → fighter → input. */
+  /** What I decided for the fighters I drive, by the step it takes effect (what I sent the relay): step → fighter → input. */
   private mine = new Map<number, Map<number, string>>();
+  /** Present steps at which I've already asked my sources (once each, also across rewinds). */
+  private asked = new Set<number>();
   /** State at the start of each step past `confirmed` (for rewinding). */
   private snapshots = new Map<number, SimState>();
   /** Steps 0..confirmed-1 were simulated with official inputs and are final. */
@@ -122,6 +132,8 @@ export class OnlineSession implements Session {
     private transport: MatchTransport,
     private room = "",
     private rtt: () => number | null = () => null,
+    /** Steps between deciding an input and it taking effect (see INPUT_DELAY). */
+    readonly inputDelay = INPUT_DELAY,
   ) {
     // Our own copy of the setup: the local panel can't change an online match.
     this.params = structuredClone(setup.params);
@@ -224,33 +236,45 @@ export class OnlineSession implements Session {
   private aheadSteps(): number {
     if (this.spectating) return 0; // nothing to make responsive: show only final steps
     const rtt = this.rtt() ?? DEFAULT_RTT_MS;
-    return Math.ceil(rtt / STEP_MS) + this.margin;
+    // The input delay covers part of the round trip: run that much less ahead.
+    return Math.max(1, Math.ceil(rtt / STEP_MS) + this.margin - this.inputDelay);
   }
 
   /** Simulate one present step. False if we're too far past the confirmed timeline. */
   private advance(): boolean {
     const s = this.sim.tick;
     if (s - this.confirmed >= MAX_PREDICTION) return false; // connection trouble: stall, don't guess wildly
-    if (!this.mine.has(s) && this.official.has(s)) {
-      // Already final (we're catching up): nothing to decide or send for it.
-      this.mine.set(s, new Map());
-    } else if (!this.mine.has(s)) {
+    const at = s + this.inputDelay; // when what I decide now takes effect
+    if (!this.asked.has(s) && this.official.has(at)) {
+      this.asked.add(s); // already final (we're catching up): nothing to decide or send
+    } else if (!this.asked.has(s)) {
       // First time at this step: ask each source once (bots think exactly once per
-      // step; on a rewind we reuse this decision), and send what changed.
+      // step; on a rewind we reuse this decision), and send what changed, for the
+      // step it takes effect.
+      this.asked.add(s);
       const view = this.sim.view();
       const decided = new Map<number, string>();
       for (const [fighter, source] of this.sources) {
         const input = this.disconnected ? IDLE : encodeInput(source.next(view, this.sim));
         decided.set(fighter, input);
         if (input !== (this.lastSent.get(fighter) ?? IDLE)) {
-          this.transport.sendInput(s, input, fighter); // for this very step
+          this.transport.sendInput(at, input, fighter);
           this.lastSent.set(fighter, input);
         }
       }
-      this.mine.set(s, decided);
+      this.mine.set(at, decided);
     }
     this.runStep(s);
     return true;
+  }
+
+  /** My latest decided input for `fighter` taking effect at or before step s (idle if none yet). */
+  private latestMine(fighter: number, s: number): string {
+    for (let t = s; t >= this.confirmed - 1 && t >= 0; t--) {
+      const m = this.mine.get(t)?.get(fighter);
+      if (m !== undefined) return m;
+    }
+    return this.lastOfficial[fighter] ?? IDLE;
   }
 
   /** Inputs for step s: official if known; otherwise predicted. */
@@ -261,7 +285,9 @@ export class OnlineSession implements Session {
     // I drive: I know theirs.
     const inputs = this.lastOfficial.split("");
     for (const fighter of this.sources.keys()) {
-      inputs[fighter] = this.mine.get(s)?.get(fighter) ?? this.lastSent.get(fighter) ?? IDLE;
+      // Decided inputDelay steps ago; before any decision takes effect, my last
+      // sent input still holds (idle at the start, as on the relay).
+      inputs[fighter] = this.mine.get(s)?.get(fighter) ?? this.latestMine(fighter, s);
     }
     return inputs.join("");
   }
@@ -332,6 +358,7 @@ export class OnlineSession implements Session {
     this.official.delete(t);
     this.used.delete(t);
     this.mine.delete(t);
+    this.asked.delete(t);
     this.snapshots.delete(t);
   }
 

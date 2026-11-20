@@ -28,6 +28,7 @@ export function playOnline(opts: {
   leave?: { id: "a" | "b"; at: number }; // disconnect this client at this tick
   spectateAt?: number; // a spectator ("s") joins at this tick (same latency as A)
   asleep?: { id: string; from: number; to: number }; // this client's tab is hidden: it receives but doesn't step
+  inputDelay?: number; // the players' input delay (default: OnlineSession's)
 }) {
   let now = 0;
   let seed = 12345;
@@ -91,7 +92,7 @@ export function playOnline(opts: {
     };
     const trueRtt = 2 * latencyOf(id) * (1000 / 60);
     const rtt = () => (opts.rttMs ? opts.rttMs(id) : trueRtt);
-    sessions.set(id, new OnlineSession(mySetup, you, ["A", "B", "bot 1", "bot 2"], sources, transport, "TEST", rtt));
+    sessions.set(id, new OnlineSession(mySetup, you, ["A", "B", "bot 1", "bot 2"], sources, transport, "TEST", rtt, opts.inputDelay));
   }
 
   for (const id of ids) {

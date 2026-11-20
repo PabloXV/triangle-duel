@@ -130,14 +130,14 @@ describe("online rollback (in-process relay + two clients)", () => {
 });
 
 describe("online rollback: responsiveness", () => {
-  it("my own input is used on the very next step, with no round-trip delay", () => {
+  it("with no input delay, my own input is used on the very next step, with no round-trip delay", () => {
     let mine: Input = NO_INPUT;
     const local: InputSource = { isHuman: true, describe: () => "me", next: () => mine };
     const sent: [number, string][] = [];
     const transport = { sendInput: (step: number, input: string) => sent.push([step, input]), sendHash: () => {} };
     const setup: MatchSetup = { stage: WINGS_STAGE, match: { ...DEFAULT_MATCH, players: 2 }, params: DEFAULT_PARAMS };
     // A slow connection (200 ms) and no official steps yet: lockstep would wait; rollback doesn't.
-    const s = new OnlineSession(setup, 1, ["A", "B"], new Map([[1, local]]), transport, "TEST", () => 200);
+    const s = new OnlineSession(setup, 1, ["A", "B"], new Map([[1, local]]), transport, "TEST", () => 200, 0);
     for (let i = 0; i < 3; i++) s.step();
     mine = { turn: -1, charge: true }; // press left + charge
     s.step();
@@ -145,6 +145,25 @@ describe("online rollback: responsiveness", () => {
     expect(s.lastStepInputs[1]).toBe(left); // already applied in the step just simulated...
     expect(sent.at(-1)).toEqual([s.sim.tick - 1, left]); // ...and sent to the relay for that same step
     expect(s.lastStepInputs[0]).toBe(encodeInput(NO_INPUT)); // the other player: predicted idle
+  });
+
+  it("with an input delay of 3, my input takes effect exactly 3 steps after I press, here and on the relay", () => {
+    let mine: Input = NO_INPUT;
+    const local: InputSource = { isHuman: true, describe: () => "me", next: () => mine };
+    const sent: [number, string][] = [];
+    const transport = { sendInput: (step: number, input: string) => sent.push([step, input]), sendHash: () => {} };
+    const setup: MatchSetup = { stage: WINGS_STAGE, match: { ...DEFAULT_MATCH, players: 2 }, params: DEFAULT_PARAMS };
+    const s = new OnlineSession(setup, 1, ["A", "B"], new Map([[1, local]]), transport, "TEST", () => 200, 3);
+    for (let i = 0; i < 3; i++) s.step();
+    mine = { turn: -1, charge: true };
+    const pressedAt = s.sim.tick; // the next step() decides at this step
+    const left = encodeInput(mine);
+    s.step();
+    // (A step() call may simulate a couple of steps; check each step's inputs directly.)
+    const inputsAt = (t: number) => (s as unknown as { inputsFor(t: number): string }).inputsFor(t)[1];
+    const idle = encodeInput(NO_INPUT);
+    expect([0, 1, 2, 3].map((k) => inputsAt(pressedAt + k))).toEqual([idle, idle, idle, left]);
+    expect(sent.at(-1)).toEqual([pressedAt + 3, left]); // sent for the step it takes effect
   });
 });
 
