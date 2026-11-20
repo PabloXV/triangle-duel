@@ -3,3 +3,7 @@ dist
 .DS_Store
 .wrangler
 e2e-shots
+
+# Local concept art (not part of the game)
+concept/
+ab5b2e77-8d49-4e5a-88d3-fbe358c306ff.png
