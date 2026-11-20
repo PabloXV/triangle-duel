@@ -14,6 +14,7 @@ import "@fontsource/permanent-marker";
 import "@fontsource/rubik/400.css";
 import "@fontsource/rubik/500.css";
 import "@fontsource/rubik/700.css";
+import "./ui/theme.css";
 
 applyTheme(); // colors and fonts as CSS variables, before any menu renders
 await initPhysics();

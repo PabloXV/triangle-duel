@@ -1,0 +1,214 @@
+/* The menus' look, in one place: docs/visual-language.md §11 (UI elements are
+   Objects too: ink line, white outline, block shadow, top-lit gradient, gloss,
+   sparkle, grain). Colors, fonts and the small art pieces (grain, gloss,
+   sparkle, drips) are CSS variables from src/theme.ts (src/ui/themeCss.ts). */
+
+:root {
+  color-scheme: dark;
+  /* Ink outline for light text on color (layered shadows: a centered text
+     stroke would eat into the letters). */
+  --text-ink: 0 2px 0 var(--ink), 2px 0 0 var(--ink), 0 -2px 0 var(--ink), -2px 0 0 var(--ink), 1.5px 1.5px 0 var(--ink), -1.5px 1.5px 0 var(--ink), 1.5px -1.5px 0 var(--ink), -1.5px -1.5px 0 var(--ink);
+  --shadow-ink: color-mix(in srgb, var(--ink) 85%, transparent);
+}
+
+body {
+  font-family: var(--font-body);
+}
+
+/* ---- panels ---- */
+.card {
+  pointer-events: auto;
+  position: relative;
+  width: min(380px, 100%);
+  box-sizing: border-box;
+  padding: 1.5rem 1.75rem;
+  color: var(--text);
+  font-family: var(--font-body);
+  border: 5px solid var(--ink);
+  border-radius: 14px;
+  background: var(--grain), linear-gradient(174deg, color-mix(in srgb, var(--panel) 88%, white), color-mix(in srgb, var(--panel) 70%, var(--ink)));
+  background-blend-mode: multiply, normal;
+  /* White outline (4 px), then the block shadow (it includes the outline). */
+  box-shadow: 0 0 0 4px var(--halo), 8px 10px 0 4px color-mix(in srgb, var(--ink) 80%, transparent);
+}
+/* White paint dripping off the bottom of the outline. */
+.card::after {
+  content: "";
+  position: absolute;
+  left: -9px;
+  right: -9px;
+  top: calc(100% + 2px);
+  height: 96px;
+  background: var(--drips);
+  pointer-events: none;
+}
+.card.wide {
+  width: min(640px, 100%);
+}
+.card.narrow {
+  width: min(300px, 100%);
+}
+.card h2 {
+  margin: 0 0 1rem;
+  font: 400 1.6rem/1.1 var(--font-label);
+  color: var(--halo);
+  text-shadow: var(--text-ink);
+}
+.card fieldset {
+  border: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+.card legend {
+  font: 400 1rem var(--font-label);
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+
+/* ---- titles: graffiti handstyle, ink stroke, offset ink copy, a slight tilt ---- */
+.title {
+  margin: 0.2rem 0 1.2rem;
+  font: 400 3rem/0.95 var(--font-title);
+  color: var(--pop);
+  text-shadow: var(--text-ink), 5px 5px 0 var(--ink), 6px 6px 0 var(--ink);
+  transform: rotate(-4deg);
+  transform-origin: left center;
+}
+.title .logo {
+  color: var(--halo);
+}
+
+/* ---- sticker buttons ---- */
+.card button,
+.sticker {
+  --btn-base: var(--violet);
+  --btn: var(--btn-base);
+  position: relative;
+  font: 400 1.1rem/1.15 var(--font-label);
+  letter-spacing: 0.01em;
+  color: var(--halo);
+  text-shadow: var(--text-ink);
+  padding: 0.7rem 1.2rem;
+  border: 3px solid var(--ink);
+  border-radius: 10px;
+  background: var(--grain), linear-gradient(171deg, color-mix(in srgb, var(--btn) 68%, white), var(--btn) 50%, color-mix(in srgb, var(--btn) 70%, var(--ink)));
+  background-blend-mode: multiply, normal;
+  box-shadow: 0 0 0 3px var(--halo), 4px 5px 0 3px var(--shadow-ink);
+  cursor: pointer;
+  transition: transform 50ms, box-shadow 50ms;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Gloss: only on full-size buttons (menu stacks, action rows, primaries); on
+   small ones (steppers, kick/remove chips) it would run into the label. */
+.card .stack button::before,
+.card .actions button::before,
+.card button.primary::before,
+.sticker::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 5px;
+  width: 52px;
+  max-width: 45%;
+  height: 8px;
+  background: var(--gloss) left center / auto 100% no-repeat;
+  pointer-events: none;
+}
+.card button:hover:not(:disabled),
+.sticker:hover:not(:disabled) {
+  --btn: color-mix(in srgb, var(--btn-base) 90%, white);
+}
+/* Pressed: sinks onto its shadow. */
+.card button:active:not(:disabled),
+.sticker:active:not(:disabled) {
+  transform: translate(4px, 5px);
+  box-shadow: 0 0 0 3px var(--halo);
+}
+.card button:focus-visible,
+.sticker:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--halo), 0 0 0 7px var(--pop), 0 0 0 10px var(--ink), 4px 5px 0 3px var(--shadow-ink);
+}
+.card button:disabled,
+.sticker:disabled {
+  --btn: color-mix(in srgb, var(--btn-base) 30%, var(--slate));
+  color: color-mix(in srgb, var(--halo) 50%, var(--slate));
+  box-shadow: 0 0 0 3px var(--halo);
+  cursor: default;
+}
+/* Primary (and selected toggles): POP yellow, ink label, a sparkle. */
+.card button.primary,
+.card button.selected,
+.sticker.primary {
+  --btn-base: var(--pop);
+  color: var(--ink);
+  text-shadow: none;
+}
+.card button.primary::after,
+.sticker.primary::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  top: 4px;
+  width: 14px;
+  height: 14px;
+  background: var(--sparkle);
+  pointer-events: none;
+}
+.card button.primary:disabled::after {
+  display: none;
+}
+/* A plain text link (not a sticker). */
+.card button.link {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0 0.25rem;
+  font: inherit;
+  color: var(--muted);
+  text-shadow: none;
+  text-decoration: underline;
+}
+.card button.link::before {
+  display: none;
+}
+.card button.link:active {
+  transform: none;
+}
+
+/* ---- text fields ---- */
+.card input:not([type]),
+.card input[type="text"] {
+  font: 500 1.05rem var(--font-body);
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 0.8rem;
+  margin: 0.5rem 0 1.1rem;
+  border-radius: 10px;
+  border: 3px solid var(--ink);
+  box-shadow: 0 0 0 3px var(--halo);
+  background: var(--field);
+  color: var(--text);
+}
+.card input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--halo), 0 0 0 7px var(--pop), 0 0 0 10px var(--ink);
+}
+
+/* ---- layout helpers ---- */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+.actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.9rem;
+}
+.hint,
+.muted {
+  color: var(--muted);
+  font-size: 0.85rem;
+}

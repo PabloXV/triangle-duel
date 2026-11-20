@@ -72,6 +72,10 @@ export const UI = {
   accent: PLAYER_COLORS[0],
   accentText: "#1a0f12",
   radius: "10px",
+  /** Panels (menu cards): a dark violet slab (visual-language.md §11). */
+  panel: "#3b2d63",
+  /** Disabled buttons fade toward this. */
+  slate: "#6b6680",
 };
 
 // ---- helpers ----

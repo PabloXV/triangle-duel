@@ -167,9 +167,14 @@
       <p class="stick-hint">Thumb anywhere here · slide ◀ ▶ to move · pull ▼ to charge, then slide to aim</p>
     {/if}
   {:else}
-    <div class="zone" style:width="{FLANK * 100}%"><div class="btn" class:on={pressed.left} data-zone="left">◀</div></div>
+    <!-- Sticker buttons (visual-language.md §11): arrows secondary, Charge primary. Icons are drawn marks. -->
+    <div class="zone" style:width="{FLANK * 100}%">
+      <div class="btn" class:on={pressed.left} data-zone="left"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 4V20L5 12Z" /></svg></div>
+    </div>
     <div class="zone" style:width="{(1 - 2 * FLANK) * 100}%"><div class="btn charge" class:on={pressed.charge} data-zone="charge">Charge</div></div>
-    <div class="zone" style:width="{FLANK * 100}%"><div class="btn" class:on={pressed.right} data-zone="right">▶</div></div>
+    <div class="zone" style:width="{FLANK * 100}%">
+      <div class="btn" class:on={pressed.right} data-zone="right"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4V20L19 12Z" /></svg></div>
+    </div>
   {/if}
 </div>
 
@@ -191,8 +196,10 @@
     height: var(--pad-h);
     padding-bottom: env(safe-area-inset-bottom);
     box-sizing: border-box;
-    background: color-mix(in srgb, var(--bg) 92%, var(--surface));
-    border-top: 1px solid color-mix(in srgb, var(--halo) 8%, transparent);
+    background: var(--grain), linear-gradient(color-mix(in srgb, var(--panel) 80%, var(--ink)), color-mix(in srgb, var(--panel) 55%, var(--ink)));
+    background-blend-mode: multiply, normal;
+    border-top: 5px solid var(--ink);
+    box-shadow: 0 -4px 0 var(--halo);
   }
   .pad.landscape {
     height: 60%;
@@ -250,45 +257,73 @@
     padding-bottom: 1.2rem;
   }
   .btn {
+    --btn: var(--violet);
+    position: relative;
     display: grid;
     place-items: center;
-    width: 4.6rem;
-    height: 4.6rem;
-    border-radius: 1.2rem;
-    background: var(--surface);
-    border: 1px solid color-mix(in srgb, var(--halo) 13%, transparent);
-    color: color-mix(in srgb, var(--halo) 80%, transparent);
-    font: 700 1.6rem system-ui, sans-serif;
-    transition: background 60ms, transform 60ms;
+    width: 5rem;
+    height: 5rem;
+    border: 3px solid var(--ink);
+    border-radius: 12px;
+    background: var(--grain), linear-gradient(171deg, color-mix(in srgb, var(--btn) 68%, white), var(--btn) 50%, color-mix(in srgb, var(--btn) 70%, var(--ink)));
+    background-blend-mode: multiply, normal;
+    box-shadow: 0 0 0 3px var(--halo), 4px 5px 0 3px var(--shadow-ink);
+    transition: transform 50ms, box-shadow 50ms;
+  }
+  .btn::before {
+    content: "";
+    position: absolute;
+    left: 8px;
+    top: 5px;
+    width: 40%;
+    height: 7px;
+    background: var(--gloss) left center / auto 100% no-repeat;
+  }
+  .btn svg {
+    width: 2.2rem;
+    height: 2.2rem;
+  }
+  .btn path {
+    fill: var(--halo);
+    stroke: var(--ink);
+    stroke-width: 2.4;
+    stroke-linejoin: round;
   }
   .btn.charge {
-    width: 7rem;
-    height: 7rem;
-    border-radius: 50%;
-    font-size: 1.05rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    --btn: var(--pop);
+    width: 8.5rem;
+    font: 400 1.5rem var(--font-label);
+    color: var(--ink);
   }
+  .btn.charge::after {
+    content: "";
+    position: absolute;
+    right: 6px;
+    top: 5px;
+    width: 14px;
+    height: 14px;
+    background: var(--sparkle);
+  }
+  /* Pressed: sinks onto its shadow. */
+  .btn.on {
+    transform: translate(4px, 5px);
+    box-shadow: 0 0 0 3px var(--halo);
+    --btn: color-mix(in srgb, var(--violet) 88%, white);
+  }
+  .btn.charge.on {
+    --btn: color-mix(in srgb, var(--pop) 88%, white);
+  }
+  /* Landscape: over the game, so smaller and see-through until pressed. */
   .landscape .btn {
-    background: color-mix(in srgb, var(--halo) 6%, transparent);
-    border-color: color-mix(in srgb, var(--halo) 13%, transparent);
-    color: color-mix(in srgb, var(--halo) 55%, transparent);
-    width: 3.8rem;
-    height: 3.8rem;
-    font-size: 1.3rem;
+    width: 4rem;
+    height: 4rem;
+    opacity: 0.6;
   }
   .landscape .btn.charge {
-    width: 5.6rem;
-    height: 5.6rem;
-    font-size: 0.9rem;
-  }
-  .btn.on {
-    background: var(--accent);
-    color: var(--accent-text);
-    transform: scale(0.94);
+    width: 6.5rem;
+    font-size: 1.15rem;
   }
   .landscape .btn.on {
-    background: color-mix(in srgb, var(--accent) 53%, transparent);
-    color: var(--halo);
+    opacity: 1;
   }
 </style>

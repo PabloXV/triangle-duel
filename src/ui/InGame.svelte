@@ -54,7 +54,19 @@
 {#if gs.notice}<div class="notice" role="status">{gs.notice}</div>{/if}
 
 {#if !gs.ended && !menuOpen}
-  <button class="corner" onclick={openMenu} aria-label={canPause ? "pause" : "menu"}>{canPause ? "❚❚" : "☰"}</button>
+  <button class="corner sticker" onclick={openMenu} aria-label={canPause ? "pause" : "menu"}>
+    <!-- Icons are marks: drawn shapes, white with an ink line (no glyphs). -->
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      {#if canPause}
+        <rect x="5" y="4" width="5" height="16" rx="1.5" />
+        <rect x="14" y="4" width="5" height="16" rx="1.5" />
+      {:else}
+        <rect x="3" y="5" width="18" height="3.4" rx="1.5" />
+        <rect x="3" y="10.3" width="18" height="3.4" rx="1.5" />
+        <rect x="3" y="15.6" width="18" height="3.4" rx="1.5" />
+      {/if}
+    </svg>
+  </button>
 {/if}
 
 {#if menuOpen && !gs.ended}
@@ -80,10 +92,10 @@
     {:else}
     <div class="stack row">
       {#if gs.mode === "local"}
-        <button class="primary" onclick={() => game.playAgain()}>Play again</button>
-        <button onclick={onChangeSetup}>Change setup</button>
+        <button class="sticker primary" onclick={() => game.playAgain()}>Play again</button>
+        <button class="sticker" onclick={onChangeSetup}>Change setup</button>
       {/if}
-      <button onclick={onLeave}>Menu</button>
+      <button class="sticker" onclick={onLeave}>Menu</button>
     </div>
     {/if}
   </div>
@@ -92,12 +104,27 @@
 <style>
   .corner {
     position: absolute;
-    top: 12px;
-    right: 12px;
-    width: 2.6rem;
-    height: 2.6rem;
+    top: 14px;
+    right: 18px;
+    width: 3rem;
+    height: 3rem;
     padding: 0;
+    display: grid;
+    place-items: center;
     pointer-events: auto;
+  }
+  .corner::before {
+    display: none; /* too small for the gloss */
+  }
+  .corner svg {
+    width: 1.4rem;
+    height: 1.4rem;
+  }
+  .corner rect {
+    fill: var(--halo);
+    stroke: var(--ink);
+    stroke-width: 2;
+    stroke-linejoin: round;
   }
   .scrim {
     position: absolute;
@@ -118,22 +145,27 @@
   }
   .row {
     flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1.2rem;
   }
   .notice {
     position: absolute;
     top: 44px; /* below the online status line */
     left: 50%;
     transform: translateX(-50%);
-    padding: 0.5rem 1rem;
+    padding: 0.45rem 1rem;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--surface) 91%, transparent);
-    border: 1px solid var(--line);
-    color: var(--text);
-    font: 600 0.95rem system-ui, sans-serif;
+    background: var(--panel);
+    border: 3px solid var(--ink);
+    box-shadow: 0 0 0 3px var(--halo), 4px 5px 0 3px var(--shadow-ink);
+    color: var(--halo);
+    font: 400 1rem var(--font-label);
   }
   .note {
-    color: color-mix(in srgb, var(--halo) 80%, transparent);
-    font: 600 1rem system-ui, sans-serif;
+    color: var(--halo);
+    text-shadow: var(--text-ink);
+    font: 400 1.2rem var(--font-label);
     margin: 0;
   }
 </style>
