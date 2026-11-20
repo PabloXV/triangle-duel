@@ -17,6 +17,8 @@ export function svgDataUrl(svg: string): string {
  */
 export class SvgImages<T = HTMLImageElement> {
   private items = new Map<string, T | null>(); // null = loading; Map order = least recently used first
+  /** How many images have been started (for tests: a stable cache stops growing this). */
+  loads = 0;
 
   constructor(
     private ready: (img: HTMLImageElement) => T = (img) => img as unknown as T,
@@ -33,6 +35,7 @@ export class SvgImages<T = HTMLImageElement> {
       return hit;
     }
     this.items.set(key, null);
+    this.loads++;
     this.evict();
     const img = new Image();
     img.onload = () => {

@@ -22,6 +22,7 @@ export interface RenderOptions {
   colors?: string[]; // per fighter: body color (default: by player number)
   countdown?: { text: string; t: number } | null; // "3", "2", "1", "Fight!" and how far into it (0..1)
   stocks?: number[]; // lives to show per fighter (online: the confirmed ones); default: the fighters' own
+  shapeKeys?: string[]; // per fighter: a stable id of its shape (for caching its stock icon)
 }
 
 /** Fighter i's body color: as chosen (opts.colors), else by player number. */
@@ -79,7 +80,7 @@ function drawStocks(ctx: CanvasRenderingContext2D, fighters: FighterView[], opts
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
   const labelW = Math.max(28, ...fighters.map((_, i) => ctx.measureText(label(i)).width + 10));
-  const icons = fighters.map((f, i) => hudIcon(f, colorOf(opts, i), opts.eyes?.[i] ?? 0));
+  const icons = fighters.map((f, i) => hudIcon(i, f, colorOf(opts, i), opts.eyes?.[i] ?? 0, opts.shapeKeys?.[i] ?? "standard"));
   const iconW = Math.max(...icons.map((ic) => ic?.w ?? 0), 16);
   const step = iconW + 2;
   const slot = labelW + opts.totalStocks * step + 18; // px per player
@@ -236,10 +237,20 @@ function drawDebug(ctx: CanvasRenderingContext2D, fighters: FighterView[], opts:
 
 // ---- stock icons: each fighter's sticker, rasterized once per shape/color/eyes ----
 const HUD_PX_PER_M = 19; // the standard fighter comes out ~24 px tall
-const hudIcons = new SvgImages((img) => ({ img, w: img.width / 2, h: img.height / 2 })); // drawn at 2x for sharp screens
+type Icon = { img: HTMLImageElement; w: number; h: number };
+const hudIcons = new SvgImages<Icon>((img) => ({ img, w: img.width / 2, h: img.height / 2 })); // drawn at 2x for sharp screens
+/** How many stock icons have been made (for tests: it should stop growing once a match is on). */
+export const hudIconLoads = () => hudIcons.loads;
+/** Each fighter's last shown icon: kept on screen while a new one (another look) loads, so it never blinks out. */
+const lastIcon = new Map<number, Icon>();
 
-function hudIcon(f: FighterView, color: string, eyes: number) {
-  const c = cornersFromWorld(f.vertices, f.footIndex);
-  const key = `${[c.L, c.R].map((v) => `${v.x.toFixed(3)},${v.y.toFixed(3)}`).join(";")}|${color}|${eyes}`;
-  return hudIcons.get(key, () => stickerSVGFromCorners(c, color, eyes, "idle", HUD_PX_PER_M * 2));
+/**
+ * Fighter i's stock icon. Keyed by a stable id of its shape (not its current
+ * corners: those wobble in the last decimals as it moves, which made a "new"
+ * icon load every few frames, and the row blinked).
+ */
+function hudIcon(i: number, f: FighterView, color: string, eyes: number, shapeKey: string): Icon | null {
+  const icon = hudIcons.get(`${shapeKey}|${color}|${eyes}`, () => stickerSVGFromCorners(cornersFromWorld(f.vertices, f.footIndex), color, eyes, "idle", HUD_PX_PER_M * 2));
+  if (icon) lastIcon.set(i, icon);
+  return icon ?? lastIcon.get(i) ?? null;
 }

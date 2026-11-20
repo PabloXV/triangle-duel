@@ -17,6 +17,7 @@ import { NetClient } from "./net/client";
 import { OnlineSession } from "./net/onlineSession";
 import { loadParams } from "./panel";
 import { Renderer } from "./render";
+import { hudIconLoads } from "./hud";
 import { colorIndex, playerColor } from "./theme";
 import { eyeStyle } from "./look/eyes";
 import { DEFAULT_LOCAL_SETUP, attractLineup, botMaker, localLineup, onlineLooks, type LocalSetup, type Looks, type Profile } from "./lineup";
@@ -69,6 +70,7 @@ export class Game {
   readonly profile: Profile = { name: "player", shape: null, eyes: 0, color: 0 };
   /** How each fighter looks this match (names, eyes, colors). */
   private looks: Looks = { names: [], eyes: [], colors: [] };
+  private shapeKeys: string[] = [];
 
   private renderer: Renderer;
   private camera = new CameraRig(STAGES[0].stage);
@@ -150,6 +152,7 @@ export class Game {
       eyes: this.looks.eyes,
       colors: this.looks.colors,
       facesReady: facesReady(),
+      hudIconLoads: hudIconLoads(),
       grounded: sim.view().map((f) => f.grounded),
       lastInputs: (this.session as { lastInputs?: unknown }).lastInputs ?? null,
       charge: sim.view().map((f) => f.charge),
@@ -240,6 +243,8 @@ export class Game {
     this.session?.free();
     this.session = next;
     this.looks = looks;
+    // A stable id per fighter's shape (from the match setup), for caching its stock icon.
+    this.shapeKeys = Array.from({ length: next.sim.match.players }, (_, i) => JSON.stringify(next.sim.match.shapes?.[i] ?? null));
     preloadFaces(looks.eyes.map((e, i) => ({ eyes: e, color: playerColor(looks.colors[i] ?? i) })));
     this.matchNumber++;
     this.curr = next.sim.view();
@@ -457,6 +462,7 @@ export class Game {
       countdown: hud ? countdownText(sim.tick, sim.match.countdownTicks ?? 0) : null,
       // Online, lives as confirmed (the predicted present can flicker as rollbacks undo KOs).
       stocks: session instanceof OnlineSession ? session.confirmedStocks() : undefined,
+      shapeKeys: this.shapeKeys,
     });
   }
 }

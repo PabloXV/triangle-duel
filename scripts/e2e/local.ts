@@ -32,6 +32,15 @@ export async function localFlow(page: Page) {
   }
   await page.waitForTimeout(800);
   await shot(page, "4-in-game");
+  {
+    // The stock icons are made once per fighter, then reused (a cache keyed by
+    // the fighters' wobbling corners used to remake them every few frames, so
+    // the row blinked).
+    const before = (await info(page)).hudIconLoads;
+    await page.waitForTimeout(3000);
+    const made = (await info(page)).hudIconLoads - before;
+    check(made === 0, `stock icons stay put during play (${made} remade in 3 s)`);
+  }
 
   // 3. Pause freezes the clock; resume runs it.
   await page.keyboard.press("Escape");
