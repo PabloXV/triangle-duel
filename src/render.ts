@@ -1,10 +1,12 @@
 // Canvas 2D renderer. Reads sim state, never writes it.
 
 import { cornersFromWorld } from "./look/fighterLayout";
+import { drawPlatform } from "./look/platforms";
 import { drawSticker, moodOf } from "./look/sticker";
-import { DEBUG_COLORS, HALO, INK, SCENE, playerColor, withAlpha } from "./theme";
+import { fillTexture, preloadTextures } from "./look/texture";
+import { DEBUG_COLORS, HALO, INK, WALL, playerColor, withAlpha } from "./theme";
 import type { CameraView } from "./camera";
-import type { Platform, Stage, Vec2 } from "./sim/geometry";
+import type { Stage, Vec2 } from "./sim/geometry";
 import type { FighterView, MatchResult } from "./sim/sim";
 
 /** Fighter colors, by fighter index (also used by the menus). */
@@ -30,6 +32,7 @@ export class Renderer {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("no 2d context");
     this.ctx = ctx;
+    preloadTextures();
   }
 
   /** Canvas size in CSS px. */
@@ -74,17 +77,8 @@ export class Renderer {
     const ctx = this.ctx;
     this.applyCamera(cam);
 
-    // background, in screen space
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const g = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-    g.addColorStop(0, SCENE.skyTop);
-    g.addColorStop(1, SCENE.skyBottom);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    ctx.restore();
-
-    for (const plat of stage.platforms) this.drawPlatform(plat);
+    this.drawWall(cam);
+    stage.platforms.forEach((plat, i) => drawPlatform(ctx, plat, i));
 
     curr.forEach((f, i) => {
       if (f.eliminated) return; // out of stocks: gone from the stage
@@ -95,33 +89,61 @@ export class Renderer {
       this.drawFighter(verts, f, playerColor(i), opts.eyes?.[i] ?? 0, opts.debug);
     });
 
+    // Paint grain over the whole scene (not the HUD: it must stay crisp).
+    fillTexture(ctx, "grain", ctx.getTransform(), 1, "multiply");
+
     if (opts.replay) this.drawLetterbox();
     if (opts.hud) this.drawOffscreen(cam, curr);
     this.drawHud(curr, result, opts);
   }
 
-  private drawPlatform(plat: Platform) {
+  /**
+   * The backdrop: a dark wall (visual-language.md §10). A gradient in screen
+   * space; faint brick courses and spray speckle locked to the world.
+   */
+  private drawWall(cam: CameraView) {
     const ctx = this.ctx;
-    const left = plat.center.x - plat.halfWidth;
-    const bottom = plat.center.y - plat.halfHeight;
-    const w = plat.halfWidth * 2;
-    const h = plat.halfHeight * 2;
-    ctx.fillStyle = plat.oneWay ? SCENE.platformPassable : SCENE.platform;
-    ctx.fillRect(left, bottom, w, h);
-    ctx.fillStyle = SCENE.groundLine; // walkable top edge
-    ctx.fillRect(left, bottom + h - 0.06, w, 0.06);
-    if (plat.oneWay) {
-      // Dashed underside: a hint that you can jump up through it.
-      ctx.save();
-      ctx.setLineDash([0.15, 0.12]);
-      ctx.strokeStyle = withAlpha(SCENE.groundLine, 0.6);
-      ctx.lineWidth = 2 / this.scale;
-      ctx.beginPath();
-      ctx.moveTo(left, bottom);
-      ctx.lineTo(left + w, bottom);
-      ctx.stroke();
-      ctx.restore();
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const g = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+    g.addColorStop(0, WALL.top);
+    g.addColorStop(1, WALL.bottom);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.restore();
+
+    // Bricks: courses 1.32 m tall, bricks 2.8 m wide, staggered.
+    const COURSE = 1.32;
+    const BRICK = 2.8;
+    const x0 = cam.center.x - cam.width;
+    const x1 = cam.center.x + cam.width;
+    const y0 = cam.center.y - cam.height;
+    const y1 = cam.center.y + cam.height;
+    const px = 1 / this.scale;
+    ctx.save();
+    ctx.lineWidth = 2 * px;
+    ctx.strokeStyle = withAlpha(INK, 0.14);
+    ctx.beginPath();
+    for (let y = Math.floor(y0 / COURSE) * COURSE; y < y1; y += COURSE) {
+      ctx.moveTo(x0, y);
+      ctx.lineTo(x1, y);
     }
+    ctx.stroke();
+    ctx.strokeStyle = withAlpha(INK, 0.1);
+    ctx.beginPath();
+    for (let y = Math.floor(y0 / COURSE) * COURSE; y < y1; y += COURSE) {
+      const offset = Math.round(y / COURSE) % 2 ? 0 : BRICK / 2;
+      for (let x = Math.floor((x0 - offset) / BRICK) * BRICK + offset; x < x1; x += BRICK) {
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + COURSE);
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    const world = ctx.getTransform();
+    fillTexture(ctx, "speckLight", world, 0.45);
+    fillTexture(ctx, "speckDark", world, 0.55);
   }
 
   private drawFighter(verts: Vec2[], f: FighterView, color: string, eyes: number, debug: boolean) {

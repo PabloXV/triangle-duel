@@ -57,15 +57,6 @@ export const FONTS = {
   mono: "ui-monospace, monospace",
 };
 
-// ---- the scene as drawn today (to be replaced by the visual-language pass) ----
-export const SCENE = {
-  skyTop: "#1e1b2e",
-  skyBottom: "#2b2340",
-  platform: "#5c5470",
-  platformPassable: "#7a6f96",
-  groundLine: "#b9b4c7",
-};
-
 /** Debug overlay colors (the foot marker). */
 export const DEBUG_COLORS = { grounded: "#6bff8f", coyote: "#ffd93d", airborne: "#888888" };
 

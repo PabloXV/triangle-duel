@@ -1,7 +1,7 @@
 // The theme (src/theme.ts) as CSS custom properties, for the menus' styles.
 // Browser only (theme.ts itself stays DOM-free: the relay server imports it).
 
-import { DEBUG_COLORS, FONTS, GOLD, HALO, INK, PLAYER_COLORS, POP, SCENE, UI } from "../theme";
+import { DEBUG_COLORS, FONTS, GOLD, HALO, INK, PLATFORM_COLORS, PLAYER_COLORS, POP, UI, WHITE, mix } from "../theme";
 
 /** Publish the tokens as CSS custom properties, for the menus' styles. */
 export function applyTheme(root: HTMLElement = document.documentElement) {
@@ -20,8 +20,8 @@ export function applyTheme(root: HTMLElement = document.documentElement) {
     accent: UI.accent,
     "accent-text": UI.accentText,
     radius: UI.radius,
-    platform: SCENE.platform,
-    "platform-light": SCENE.platformPassable,
+    platform: PLATFORM_COLORS.violet,
+    "platform-light": mix(PLATFORM_COLORS.violet, WHITE, 0.75), // the ground line
     "debug-grounded": DEBUG_COLORS.grounded,
     "font-title": FONTS.title,
     "font-label": FONTS.label,
