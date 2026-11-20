@@ -43,6 +43,12 @@ export interface MatchOptions {
    * standard fighter.
    */
   shapes?: (FighterShape | null)[];
+  /** The first this-many ticks ignore everyone's input: a countdown ("3, 2, 1, fight!") while fighters drop in. Default 0. */
+  countdownTicks?: number;
+  /** Start above each spawn point (at the stage's respawn height) and drop in, instead of standing on it. */
+  dropIn?: boolean;
+  /** Respawn above the stage's spawn point farthest from any opponent, instead of your own. */
+  smartRespawn?: boolean;
 }
 
 export const DEFAULT_MATCH: MatchOptions = {

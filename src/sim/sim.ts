@@ -114,11 +114,13 @@ export class Sim {
         ? scaleShape(custom, Math.sqrt((params.triWidth * params.triHeight) / 2))
         : invertedIsosceles(params.triWidth, params.triHeight);
       const spawn = spawns[i % spawns.length];
-      // Spawn so the foot (not the centroid) sits at the spawn point.
+      // Spawn so the foot (not the centroid) sits at the spawn point, or (dropIn)
+      // at the respawn height above it.
       const foot = shape.vertices[shape.footIndex];
+      const startY = fullMatch.dropIn ? stage.respawnY : spawn.y;
       const body = this.world.createRigidBody(
         RAPIER.RigidBodyDesc.dynamic()
-          .setTranslation(spawn.x - foot.x, spawn.y - foot.y)
+          .setTranslation(spawn.x - foot.x, startY - foot.y)
           .setCcdEnabled(true), // fast jumps shouldn't tunnel through platforms
       );
       const points = new Float32Array(shape.vertices.flatMap((v) => [v.x, v.y]));
@@ -131,7 +133,9 @@ export class Sim {
       const collider = this.world.createCollider(desc, body);
       this.fighterByCollider.set(collider.handle, i);
       this.fighterByBody.set(body.handle, i);
-      return { shape, spawn, body, collider, state: freshFighterState(fullMatch.stocks) };
+      const state = freshFighterState(fullMatch.stocks);
+      if (fullMatch.dropIn) state.ticksSinceGrounded = params.coyoteTicks + 1; // in the air: no jump until landing
+      return { shape, spawn, body, collider, state };
     });
 
     this.ctx = {
@@ -187,7 +191,8 @@ export class Sim {
         return; // dead fighters ignore input
       }
       updateGhost(ctx, i);
-      const input = inputs[i] ?? NO_INPUT;
+      // During the countdown, nobody's input counts (leaving still does, above).
+      const input = ctx.tick < (ctx.match.countdownTicks ?? 0) ? NO_INPUT : (inputs[i] ?? NO_INPUT);
       updateGrounded(ctx, f, i);
       applyRotation(ctx, f, input);
       applyJump(ctx, f, input);

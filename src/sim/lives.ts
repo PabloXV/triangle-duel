@@ -1,6 +1,7 @@
 // KOs, stocks, respawning, ghosting, and deciding when the match is over.
 
 import { worldVertices, type Fighter, type MatchContext } from "./fighter";
+import { spawnPoints } from "./geometry";
 import { distanceToSolid } from "./platforms";
 import type { KoReason } from "./types";
 
@@ -58,10 +59,34 @@ export function updateDead(ctx: MatchContext, f: Fighter) {
   else if (f.body.isEnabled()) f.body.setEnabled(false); // eliminated
 }
 
-/** Drop back in, upright and still, above this fighter's own spawn point. */
+/**
+ * Of the stage's spawn points (its 4-player set), the x farthest from the
+ * nearest opponent still in play. Ties go to the first; deterministic, as
+ * everything in the sim must be.
+ */
+function safestSpawnX(ctx: MatchContext, f: Fighter): number {
+  const others = ctx.fighters.filter((o) => o !== f && !o.state.ko && o.body.isEnabled()).map((o) => o.body.translation());
+  if (others.length === 0) return f.spawn.x;
+  let best = f.spawn.x;
+  let bestDist = -1;
+  for (const p of spawnPoints(ctx.stage, 4)) {
+    const nearest = Math.min(...others.map((o) => (o.x - p.x) * (o.x - p.x) + (o.y - p.y) * (o.y - p.y)));
+    if (nearest > bestDist) {
+      bestDist = nearest;
+      best = p.x;
+    }
+  }
+  return best;
+}
+
+/**
+ * Drop back in, upright and still, above this fighter's own spawn point, or
+ * (smartRespawn) above the stage's spawn point farthest from any opponent.
+ */
 function respawn(ctx: MatchContext, f: Fighter) {
   const foot = f.shape.vertices[f.shape.footIndex];
-  f.body.setTranslation({ x: f.spawn.x - foot.x, y: ctx.stage.respawnY - foot.y }, true);
+  const x = ctx.match.smartRespawn ? safestSpawnX(ctx, f) : f.spawn.x;
+  f.body.setTranslation({ x: x - foot.x, y: ctx.stage.respawnY - foot.y }, true);
   f.body.setRotation(0, true);
   f.body.setLinvel({ x: 0, y: 0 }, true);
   f.body.setAngvel(0, true);

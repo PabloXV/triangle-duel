@@ -31,6 +31,9 @@ import { STAGES, stageById } from "./stages";
 
 export type { LocalSetup } from "./lineup";
 
+/** How real matches start and respawn: drop in during a 3 s countdown; respawn away from the action. */
+const MATCH_START = { countdownTicks: 180, dropIn: true, smartRespawn: true };
+
 export type GameMode = "attract" | "local" | "online" | "replay";
 
 /** What the menus need to know. */
@@ -114,13 +117,14 @@ export class Game {
   attract() {
     const stage = STAGES[this.matchNumber % STAGES.length].stage;
     const l = attractLineup(this.bots());
-    this.begin("attract", new LiveSession(stage, this.params, { players: l.sources.length, stocks: 2, shapes: l.shapes }, l.sources), l.looks);
+    const match = { players: l.sources.length, stocks: 2, shapes: l.shapes, dropIn: true, smartRespawn: true };
+    this.begin("attract", new LiveSession(stage, this.params, match, l.sources), l.looks);
   }
 
   playLocal(setup: LocalSetup) {
     this.localSetup = setup;
     const l = localLineup(setup, this.profile, this.bots());
-    const match = { players: l.sources.length, stocks: setup.stocks, shapes: l.shapes };
+    const match = { ...MATCH_START, players: l.sources.length, stocks: setup.stocks, shapes: l.shapes };
     this.begin("local", new LiveSession(stageById(setup.stageId).stage, this.params, match, l.sources), l.looks);
   }
 
@@ -174,7 +178,7 @@ export class Game {
     if (!net.isHost) return;
     // Everyone's shape, as the relay knows it (validated there; bots' picked by the relay).
     const shapes = net.roster.map((p) => p.shape);
-    const match = { ...DEFAULT_MATCH, players: net.roster.length, stocks: net.settings.stocks, shapes };
+    const match = { ...DEFAULT_MATCH, ...MATCH_START, players: net.roster.length, stocks: net.settings.stocks, shapes };
     net.start({ stage: stageById(net.settings.stageId).stage, match, params: structuredClone(this.params) });
   }
 
@@ -450,6 +454,7 @@ export class Game {
       controls: hud && !this.state.ended ? this.controlHints() : [],
       totalStocks: sim.match.stocks,
       status: [session.status(), this.fps.text()].filter(Boolean).join("  ·  "),
+      countdown: hud ? countdownText(sim.tick, sim.match.countdownTicks ?? 0) : null,
     });
   }
 }
@@ -466,4 +471,12 @@ class FpsMeter {
   text(): string {
     return this.enabled ? `${this.frames.length} fps` : "";
   }
+}
+
+/** "3", "2", "1" during the countdown, then "Fight!" for a moment; null otherwise. Plus how far into the current one (0..1). */
+function countdownText(tick: number, countdown: number): { text: string; t: number } | null {
+  if (countdown <= 0 || tick >= countdown + 45) return null;
+  if (tick >= countdown) return { text: "Fight!", t: (tick - countdown) / 45 };
+  const left = countdown - tick;
+  return { text: String(Math.ceil(left / 60)), t: 1 - ((left - 1) % 60) / 60 };
 }

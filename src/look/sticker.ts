@@ -31,13 +31,19 @@ export function moodOf(f: { ko: unknown; charge: number; angle: number }): EyeMo
 }
 
 // ---- faces: each (style, mood, color) rasterized once ----
-const FACE_PX = 256;
-const faces = new SvgImages<HTMLCanvasElement>((img) => {
-  const c = document.createElement("canvas");
-  c.width = c.height = FACE_PX;
-  c.getContext("2d")!.drawImage(img, 0, 0, FACE_PX, FACE_PX);
-  return c;
-});
+const FACE_PX = 192; // plenty: a face is rarely over ~80 px on screen
+const faces = new SvgImages<HTMLCanvasElement>(
+  (img) => {
+    const c = document.createElement("canvas");
+    c.width = c.height = FACE_PX;
+    const g = c.getContext("2d");
+    if (!g) throw new Error("no canvas memory"); // the cache retries later
+    g.drawImage(img, 0, 0, FACE_PX, FACE_PX);
+    return c;
+  },
+  96, // 4 fighters x 4 moods for several matches; older ones are dropped
+  (c) => (c.width = c.height = 0), // free the pixels now (iOS counts canvas memory)
+);
 const face = (style: number, mood: EyeMood, color: string) => faces.get(`${style}|${mood}|${color}`, () => eyesSVG(style, mood, color, FACE_PX));
 
 /** Start rasterizing every mood for these looks (e.g. at a match start), so no face pops in late. */

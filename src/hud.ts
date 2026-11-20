@@ -7,7 +7,7 @@ import { cornersFromWorld } from "./look/fighterLayout";
 import { stickerSVGFromCorners } from "./look/stickerSVG";
 import { SvgImages } from "./look/svgImage";
 import type { FighterView, MatchResult } from "./sim/sim";
-import { FONTS, HALO, INK, playerColor, withAlpha } from "./theme";
+import { FONTS, HALO, INK, POP, playerColor, withAlpha } from "./theme";
 
 export interface RenderOptions {
   hud: boolean; // false = no in-game interface (e.g. the bot match behind the menus)
@@ -20,6 +20,7 @@ export interface RenderOptions {
   status?: string; // shown at the top center (e.g. "REPLAY")
   eyes?: number[]; // per fighter: eye style (src/look/eyes.ts)
   colors?: string[]; // per fighter: body color (default: by player number)
+  countdown?: { text: string; t: number } | null; // "3", "2", "1", "Fight!" and how far into it (0..1)
 }
 
 /** Fighter i's body color: as chosen (opts.colors), else by player number. */
@@ -61,6 +62,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, screen: Screen, cam: Came
   }
 
   if (opts.hud && result.over && !opts.replay) drawBanner(ctx, w, h, result, opts);
+  if (opts.countdown) drawCountdown(ctx, w, h, opts.countdown);
   ctx.restore();
 }
 
@@ -135,6 +137,28 @@ function inkText(ctx: CanvasRenderingContext2D, text: string, x: number, y: numb
   ctx.strokeText(text, x, y);
   ctx.fillStyle = color;
   ctx.fillText(text, x, y);
+}
+
+/** The countdown, in the title style: each number pops in and shrinks; "Fight!" fades out. */
+function drawCountdown(ctx: CanvasRenderingContext2D, w: number, h: number, { text, t }: { text: string; t: number }) {
+  const fight = text === "Fight!";
+  const size = Math.min(fight ? 96 : 140, w / (fight ? 5 : 3)) * (1.3 - 0.3 * Math.min(1, t * 2.5));
+  ctx.save();
+  ctx.globalAlpha = fight ? 1 - t : 1;
+  ctx.translate(w / 2, h * 0.36);
+  ctx.rotate((-4 * Math.PI) / 180);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `${size}px ${FONTS.title}`;
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(8, size / 9);
+  ctx.fillStyle = ctx.strokeStyle = INK;
+  ctx.strokeText(text, 6, 6);
+  ctx.fillText(text, 6, 6);
+  ctx.strokeText(text, 0, 0);
+  ctx.fillStyle = fight ? POP : HALO;
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
 }
 
 /** The winner banner, in the title style (visual-language.md §11): graffiti handstyle, ink stroke, offset ink copy, a slight tilt. */

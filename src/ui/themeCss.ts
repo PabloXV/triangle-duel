@@ -17,23 +17,27 @@ const GLOSS = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="52" height=
 /** The 4-point sparkle (a mark: flat fill, ink line). */
 const SPARKLE = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14">${sparkleSVG(7, 7, 5, HALO, 1.6)}</svg>`);
 
-/** One white paint drip (with its block shadow) hanging off a panel's outline, `len` px long. */
-function drip(len: number): string {
+/** One paint drip hanging off a panel's outline, `len` px long, in `fill` (white paint, or its ink shadow). */
+function drip(len: number, fill: string): string {
   const x = 9;
   const w = 6;
   const d = `M${x - w / 2 - 4} 0Q${x - w / 2} 0 ${x - w / 2} 5V${len}a${w / 2 + 1.5} ${w / 2 + 1.5} 0 0 0 ${w + 3} 0V5Q${x + w / 2} 0 ${x + w / 2 + 4} 0Z`;
-  return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="30" height="${len + 22}"><path d="${d}" fill="${withAlpha(INK, 0.8)}" transform="translate(8 10)"/><path d="${d}" fill="${HALO}"/></svg>`);
+  return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="${len + 12}"><path d="${d}" fill="${fill}"/></svg>`);
 }
-/** Panel drips (§11, as approved in the menu mockup): five in two groups. */
-const DRIPS = [
-  [22, 46],
+/**
+ * Panel drips (§11: five in two groups). The white drips and their shadows
+ * are separate layers (theme.css puts all shadows behind all drips), so one
+ * drip's shadow never lands on its neighbor.
+ */
+const DRIP_SPOTS = [
+  [19, 46],
   [26, 22],
-  [30, 70],
-  [72, 30],
-  [76, 54],
-]
-  .map(([at, len]) => `${drip(len)} ${at}% 0 no-repeat`)
-  .join(", ");
+  [33, 70],
+  [70, 30],
+  [78, 54],
+];
+const DRIPS = DRIP_SPOTS.map(([at, len]) => `${drip(len, HALO)} ${at}% 0 no-repeat`).join(", ");
+const DRIP_SHADOWS = DRIP_SPOTS.map(([at, len]) => `${drip(len, withAlpha(INK, 0.8))} ${at}% 0 no-repeat`).join(", ");
 
 /** Publish the tokens as CSS custom properties, for the menus' styles. */
 export function applyTheme(root: HTMLElement = document.documentElement) {
@@ -60,6 +64,7 @@ export function applyTheme(root: HTMLElement = document.documentElement) {
     gloss: GLOSS,
     sparkle: SPARKLE,
     drips: DRIPS,
+    "drip-shadows": DRIP_SHADOWS,
     "font-title": FONTS.title,
     "font-label": FONTS.label,
     "font-body": FONTS.body,

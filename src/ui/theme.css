@@ -31,7 +31,9 @@ body {
   /* White outline (4 px), then the block shadow (it includes the outline). */
   box-shadow: 0 0 0 4px var(--halo), 8px 10px 0 4px color-mix(in srgb, var(--ink) 80%, transparent);
 }
-/* White paint dripping off the bottom of the outline. */
+/* White paint dripping off the bottom of the outline (::after), over all the
+   drips' shadows (::before, offset like the panel's own shadow). */
+.card::before,
 .card::after {
   content: "";
   position: absolute;
@@ -39,8 +41,14 @@ body {
   right: -9px;
   top: calc(100% + 2px);
   height: 96px;
-  background: var(--drips);
   pointer-events: none;
+}
+.card::before {
+  background: var(--drip-shadows);
+  transform: translate(8px, 10px);
+}
+.card::after {
+  background: var(--drips);
 }
 .card.wide {
   width: min(640px, 100%);
