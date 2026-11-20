@@ -25,6 +25,7 @@ export class NetClient implements MatchTransport {
   room = "";
   slot: number | null = null;
   roster: RosterEntry[] = [];
+  spectators: string[] = [];
   settings: RoomSettings = { ...DEFAULT_ROOM_SETTINGS };
   rttMs: number | null = null;
   error: string | null = null;
@@ -40,6 +41,8 @@ export class NetClient implements MatchTransport {
   onDesync?: (step: number) => void;
   /** The host ended the match (back to the lobby). */
   onLobby?: () => void;
+  /** You joined mid-match (or the room was full): watch, after catching up on `log`. */
+  onSpectate?: (setup: MatchSetup, names: string[], log: [number, [number, string][]][], next: number) => void;
   /** Mid-match: start driving these fighters too (bots inherited when the host left). */
   onDrive?: (fighters: number[]) => void;
   /** During a match: the lobby slot of each fighter. */
@@ -159,7 +162,14 @@ export class NetClient implements MatchTransport {
         break;
       case "roster":
         this.roster = m.players;
+        this.spectators = m.spectators;
         this.settings = m.settings;
+        break;
+      case "spectate":
+        this.phase = "match";
+        this.setup = m.setup;
+        this.you = null;
+        this.onSpectate?.(m.setup, m.names, m.log, m.next);
         break;
       case "kicked":
         this.error = "the host removed you from the room";
@@ -220,6 +230,7 @@ export class NetClient implements MatchTransport {
     this.phase = "offline";
     this.slot = null;
     this.roster = [];
+    this.spectators = [];
     this.you = null;
     this.setup = null;
     this.lastStep = -1;

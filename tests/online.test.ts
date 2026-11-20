@@ -158,3 +158,21 @@ describe("online rollback: leaving mid-match", () => {
     expect(leftSteps(a.recording(), 1)[0]).toBeGreaterThanOrEqual(LEAVE_AT);
   });
 });
+
+describe("online: spectators", () => {
+  it("joining mid-match: catches up, follows live, and ends with exactly the players' match", () => {
+    const { a, spectator, desyncs } = playOnline({ latency: [2, 4], jitter: 2, ticks: 1500, bots: 1, spectateAt: 600 });
+    expect(desyncs).toEqual([]);
+    expect(spectator).toBeDefined();
+    const s = spectator!;
+    expect(s.spectating).toBe(true);
+    expect(s.confirmedTick).toBe(a.confirmedTick);
+    expect(s.confirmedHash()).toBe(a.confirmedHash());
+    expect(s.stats.rollbacks).toBe(0); // spectators never guess, so never correct
+    // Its recording is the whole match, from the start (not just from when it joined).
+    const rec = s.recording();
+    expect(rec.ticks).toBe(a.confirmedTick);
+    expect(rec.inputs).toBe(a.recording().inputs);
+    expect(verifyRecording(rec).ok).toBe(true);
+  });
+});

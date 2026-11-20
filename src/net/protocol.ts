@@ -17,8 +17,10 @@ import type { Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { MatchOptions } from "../sim/sim";
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const MAX_PLAYERS = 4;
+/** Spectators per room (watching a match, or waiting for a free seat). */
+export const MAX_SPECTATORS = 8;
 export const MAX_MESSAGE_BYTES = 64 * 1024;
 /** Clients report a state fingerprint every this many steps. */
 export const HASH_EVERY = 60;
@@ -73,10 +75,16 @@ export type ClientMsg =
   | { type: "lobby" };
 
 export type ServerMsg =
-  /** You're in. `slot` = your seat in the lobby. */
-  | { type: "welcome"; room: string; slot: number }
-  /** Who's here and the room's settings, sent whenever either changes. */
-  | { type: "roster"; phase: "lobby" | "match"; players: RosterEntry[]; settings: RoomSettings }
+  /** You're in. `slot` = your seat, or null if you're spectating (match on, or room full). */
+  | { type: "welcome"; room: string; slot: number | null }
+  /** Who's here (seated players, and spectators by name) and the room's settings, sent whenever they change. */
+  | { type: "roster"; phase: "lobby" | "match"; players: RosterEntry[]; spectators: string[]; settings: RoomSettings }
+  /**
+   * You're spectating the current match. `log` = every input change so far
+   * ([step, changes], only steps with changes); steps before `next` are final.
+   * Replay it to catch up, then follow the live "tick"s. `names[i]` = fighter i.
+   */
+  | { type: "spectate"; setup: MatchSetup; names: string[]; log: [number, [number, string][]][]; next: number }
   /** You were removed from the room by the host. */
   | { type: "kicked" }
   /** Mid-match: you now also drive these fighters (bots whose driver, the old host, left). */

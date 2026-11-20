@@ -11,6 +11,7 @@ import {
   HASH_EVERY,
   MAX_INPUT_LEAD,
   MAX_PLAYERS,
+  MAX_SPECTATORS,
   PROTOCOL_VERSION,
   cleanName,
   parseClientMsg,
@@ -29,7 +30,9 @@ export interface Outgoing {
 
 interface Conn {
   name: string;
-  slot: number | null; // null until "hello"
+  joined: boolean; // said hello
+  joinedAt: number; // join order (spectators get seats in this order)
+  slot: number | null; // seat; null = not joined yet, or spectating
   fighter: number | null; // during a match: this player's own fighter
   drives: number[]; // during a match: fighters whose inputs this connection may send
 }
@@ -58,6 +61,10 @@ export class RoomCore {
   /** Reported fingerprints: step → fighter → hash. Only recent steps are kept. */
   private hashes = new Map<number, Map<number, string>>();
   private desyncReported = false;
+  /** The current match's input changes so far ([step, changes], only steps with changes), for spectators to catch up. */
+  private log: [number, [number, string][]][] = [];
+  private matchNames: string[] = []; // fighter names at the start of the match
+  private joins = 0;
 
   constructor(readonly code: string) {}
 
@@ -66,7 +73,7 @@ export class RoomCore {
   }
 
   connect(id: string): Outgoing[] {
-    this.conns.set(id, { name: "player", slot: null, fighter: null, drives: [] });
+    this.conns.set(id, { name: "player", joined: false, joinedAt: 0, slot: null, fighter: null, drives: [] });
     return [];
   }
 
@@ -88,7 +95,8 @@ export class RoomCore {
       }
     }
     if (this.conns.size === 0) this.reset();
-    return c.slot === null ? out : [...out, this.roster()];
+    else if (this.phase === "lobby") out.push(...this.seatSpectators()); // a seat may have freed up
+    return c.joined ? [...out, this.roster()] : out;
   }
 
   receive(id: string, raw: unknown): Outgoing[] {
@@ -96,18 +104,22 @@ export class RoomCore {
     if (!c) return [];
     const m = parseClientMsg(raw);
     if (!m) return [error(id, "malformed message")];
-    if (c.slot === null && m.type !== "hello") return [error(id, "say hello first")];
+    if (!c.joined && m.type !== "hello") return [error(id, "say hello first")];
 
     switch (m.type) {
       case "hello": {
-        if (c.slot !== null) return [error(id, "already joined")];
+        if (c.joined) return [error(id, "already joined")];
         if (m.version !== PROTOCOL_VERSION) return [error(id, `protocol version mismatch (relay ${PROTOCOL_VERSION})`, true)];
-        if (this.phase === "match") return [error(id, "a match is in progress in this room", true)];
-        const slot = this.freeSlot();
-        if (slot === null) return [error(id, `room is full (${MAX_PLAYERS} players)`, true)];
+        // Seat them if a match isn't on and there's room; otherwise they spectate.
+        const slot = this.phase === "lobby" ? this.freeSlot() : null;
+        if (slot === null && this.spectators().length >= MAX_SPECTATORS) return [error(id, "room is full", true)];
+        c.joined = true;
+        c.joinedAt = this.joins++;
         c.slot = slot;
         c.name = cleanName(m.name);
-        return [{ to: id, msg: { type: "welcome", room: this.code, slot } }, this.roster()];
+        const out: Outgoing[] = [{ to: id, msg: { type: "welcome", room: this.code, slot } }];
+        if (this.phase === "match") out.push({ to: id, msg: this.spectateMsg() });
+        return [...out, this.roster()];
       }
       case "start": {
         if (!this.isHost(id)) return [error(id, "only the host can start")];
@@ -122,6 +134,8 @@ export class RoomCore {
         this.inputs = seats.map(() => IDLE);
         this.hashes.clear();
         this.desyncReported = false;
+        this.log = [];
+        this.matchNames = seats.map((s) => s.name);
         // Fighter i = the i-th seat by slot. The host drives every bot.
         const fighters = seats.map((s) => s.slot);
         const botFighters = seats.flatMap((s, i) => (s.conn === null ? [i] : []));
@@ -133,6 +147,8 @@ export class RoomCore {
           conn.drives = s.conn === id ? [i, ...botFighters] : [i];
           out.push({ to: s.conn, msg: { type: "start", setup: this.setup!, fighters, you: i, drive: conn.drives } });
         });
+        // Anyone waiting for a seat watches.
+        for (const [sid] of this.spectators()) out.push({ to: sid, msg: this.spectateMsg() });
         return [...out, this.roster()];
       }
       case "input": {
@@ -180,7 +196,7 @@ export class RoomCore {
         if (seat.conn === null) {
           if (this.phase !== "lobby") return [error(id, "can't remove bots during a match")];
           this.bots.delete(seat.slot); // kicking a bot seat just removes the bot
-          return [this.roster()];
+          return [...this.seatSpectators(), this.roster()];
         }
         // Tell them, close their connection, and treat it as them leaving.
         return [{ to: seat.conn, msg: { type: "kicked" }, close: true }, ...this.disconnect(seat.conn)];
@@ -191,14 +207,14 @@ export class RoomCore {
         const last = Math.max(-1, ...this.bots.keys());
         if (last < 0) return [error(id, "there are no bots")];
         this.bots.delete(last);
-        return [this.roster()];
+        return [...this.seatSpectators(), this.roster()];
       }
       case "ping":
         return [{ to: id, msg: { type: "pong", id: m.id } }];
       case "lobby": {
         if (!this.isHost(id)) return [error(id, "only the host can end the match")];
         this.toLobby();
-        return [{ to: "all", msg: { type: "lobby" } }, this.roster()];
+        return [{ to: "all", msg: { type: "lobby" } }, ...this.seatSpectators(), this.roster()];
       }
     }
   }
@@ -216,6 +232,7 @@ export class RoomCore {
         changes.push([fighter, input]);
       }
     }
+    if (changes.length) this.log.push([t, changes]);
     const msg: ServerMsg = changes.length ? { type: "tick", t, c: changes } : { type: "tick", t };
     return [{ to: "all", msg }];
   }
@@ -231,6 +248,28 @@ export class RoomCore {
     const players: Seat[] = [...this.conns].flatMap(([id, c]) => (c.slot === null ? [] : [{ slot: c.slot, name: c.name, conn: id }]));
     const bots: Seat[] = [...this.bots].map(([slot, name]) => ({ slot, name, conn: null }));
     return [...players, ...bots].sort((a, b) => a.slot - b.slot);
+  }
+
+  /** Joined connections without a seat, in join order. */
+  private spectators(): [string, Conn][] {
+    return [...this.conns].filter(([, c]) => c.joined && c.slot === null).sort(([, a], [, b]) => a.joinedAt - b.joinedAt);
+  }
+
+  /** Lobby: give free seats to spectators, longest-waiting first. */
+  private seatSpectators(): Outgoing[] {
+    const out: Outgoing[] = [];
+    for (const [id, c] of this.spectators()) {
+      const slot = this.freeSlot();
+      if (slot === null) break;
+      c.slot = slot;
+      out.push({ to: id, msg: { type: "welcome", room: this.code, slot } });
+    }
+    return out;
+  }
+
+  /** Everything a spectator needs to catch up on the current match. */
+  private spectateMsg(): ServerMsg {
+    return { type: "spectate", setup: this.setup!, names: this.matchNames, log: this.log, next: this.nextStep };
   }
 
   /** The host is the player (not bot) in the lowest slot, so hosting passes on automatically. */
@@ -251,7 +290,8 @@ export class RoomCore {
   private roster(): Outgoing {
     const host = this.hostId();
     const players: RosterEntry[] = this.seats().map((s) => ({ slot: s.slot, name: s.name, host: s.conn !== null && s.conn === host, bot: s.conn === null }));
-    return { to: "all", msg: { type: "roster", phase: this.phase, players, settings: this.settings } };
+    const spectators = this.spectators().map(([, c]) => c.name);
+    return { to: "all", msg: { type: "roster", phase: this.phase, players, spectators, settings: this.settings } };
   }
 
   private toLobby() {
@@ -270,6 +310,7 @@ export class RoomCore {
     this.nextStep = 0;
     this.bots.clear();
     this.settings = { ...DEFAULT_ROOM_SETTINGS };
+    this.log = [];
   }
 }
 

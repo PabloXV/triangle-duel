@@ -26,6 +26,7 @@ export function playOnline(opts: {
   sample?: (s: OnlineSession) => void; // called for each client after every step
   bots?: number; // bot seats the host adds before starting (driven by client A, the host)
   leave?: { id: "a" | "b"; at: number }; // disconnect this client at this tick
+  spectateAt?: number; // a spectator ("s") joins at this tick (same latency as A)
 }) {
   let now = 0;
   let seed = 12345;
@@ -43,6 +44,7 @@ export function playOnline(opts: {
   };
 
   const ids = ["a", "b"];
+  const latencyOf = (id: string) => opts.latency[id === "b" ? 1 : 0];
   const room = new RoomCore("TEST");
   const sessions = new Map<string, OnlineSession>();
   const left = new Map<string, OnlineSession>(); // clients that disconnected (frozen)
@@ -51,6 +53,13 @@ export function playOnline(opts: {
   const toClient = (id: string, msg: ServerMsg) => {
     const s = sessions.get(id);
     if (msg.type === "tick") s?.receiveTick(msg.t, msg.c ?? []);
+    if (msg.type === "spectate") {
+      // Joined mid-match: watch, after catching up on everything so far.
+      const transport = { sendInput: () => {}, sendHash: (step: number, hash: string) => toRoom(id, { type: "hash", step, hash }) };
+      const spectator = new OnlineSession(msg.setup, -1, msg.names, new Map(), transport, "TEST", () => 2 * latencyOf(id) * (1000 / 60));
+      spectator.catchUp(msg.log, msg.next);
+      sessions.set(id, spectator);
+    }
     if (msg.type === "drive" && s) {
       // We inherited bots (the host left): run them from now on.
       for (const f of msg.fighters) s.takeOver(f, new BotSource(new HeuristicBot(f, { ...DEFAULT_BOT, seed: 50 + f }), DEFAULT_PARAMS));
@@ -64,12 +73,12 @@ export function playOnline(opts: {
     for (const o of out) {
       for (const id of o.to === "all" ? ids : [o.to]) {
         if (o.msg.type === "start") startClient(id, o.msg.setup, o.msg.you, o.msg.drive);
-        else send(`down-${id}`, opts.latency[ids.indexOf(id)], () => toClient(id, o.msg));
+        else send(`down-${id}`, latencyOf(id), () => toClient(id, o.msg));
       }
     }
   };
   const toRoom = (id: string, msg: object) =>
-    send(`up-${id}`, opts.latency[ids.indexOf(id)], () => route(room.receive(id, JSON.stringify(msg))));
+    send(`up-${id}`, latencyOf(id), () => route(room.receive(id, JSON.stringify(msg))));
 
   function startClient(id: string, setup: MatchSetup, you: number, drive: number[]) {
     const mySetup = id === "b" && opts.tamper ? opts.tamper(setup) : setup;
@@ -79,7 +88,7 @@ export function playOnline(opts: {
       sendInput: (step: number, input: string, fighter: number) => toRoom(id, { type: "input", tick: step, input, fighter }),
       sendHash: (step: number, hash: string) => toRoom(id, { type: "hash", step, hash }),
     };
-    const trueRtt = 2 * opts.latency[ids.indexOf(id)] * (1000 / 60);
+    const trueRtt = 2 * latencyOf(id) * (1000 / 60);
     const rtt = () => (opts.rttMs ? opts.rttMs(id) : trueRtt);
     sessions.set(id, new OnlineSession(mySetup, you, ["A", "B", "bot 1", "bot 2"], sources, transport, "TEST", rtt));
   }
@@ -97,6 +106,11 @@ export function playOnline(opts: {
   // client sends input and simulates, as the game loop would.
   for (; now < opts.ticks; now++) {
     flush();
+    if (opts.spectateAt === now) {
+      ids.push("s");
+      room.connect("s");
+      toRoom("s", { type: "hello", version: PROTOCOL_VERSION, name: "spectator" });
+    }
     if (opts.leave && now === opts.leave.at) {
       route(room.disconnect(opts.leave.id)); // they close the tab
       left.set(opts.leave.id, sessions.get(opts.leave.id)!);
@@ -114,6 +128,6 @@ export function playOnline(opts: {
     for (const s of sessions.values()) s.step();
   }
   const get = (id: string) => (sessions.get(id) ?? left.get(id))!;
-  return { a: get("a"), b: get("b"), desyncs };
+  return { a: get("a"), b: get("b"), spectator: sessions.get("s"), desyncs };
 }
 

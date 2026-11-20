@@ -121,6 +121,25 @@ export class OnlineSession implements Session {
     this.lastSent.set(fighter, this.lastOfficial[fighter] ?? IDLE);
   }
 
+  /** No fighters to drive: watching. A spectator stays on the confirmed timeline (no guessing). */
+  get spectating(): boolean {
+    return this.sources.size === 0;
+  }
+
+  /**
+   * Spectator joining mid-match: take every step so far (`log` = [step,
+   * changes] for steps with changes; steps before `next` are final) and
+   * simulate them all now, so we're caught up before the first frame.
+   */
+  catchUp(log: [number, [number, string][]][], next: number) {
+    const changesAt = new Map(log);
+    for (let t = 0; t < next; t++) this.receiveTick(t, changesAt.get(t) ?? []);
+    while (this.sim.tick <= this.newest) {
+      this.advance();
+      this.reconcile();
+    }
+  }
+
   // ---- per frame / per step ---------------------------------------------------
 
   /**
@@ -139,6 +158,7 @@ export class OnlineSession implements Session {
   }
 
   private aheadSteps(): number {
+    if (this.spectating) return 0; // nothing to make responsive: show only final steps
     const rtt = this.rtt() ?? DEFAULT_RTT_MS;
     return Math.ceil(rtt / STEP_MS) + MARGIN_STEPS;
   }
@@ -292,6 +312,7 @@ export class OnlineSession implements Session {
 
   status() {
     if (this.desync) return `ONLINE ${this.room} — DESYNC at step ${this.desync.step}`;
+    if (this.spectating) return `SPECTATING ${this.room}`;
     if (this.disconnected) return `ONLINE ${this.room} — disconnected (R to leave)`;
     const rtt = this.rtt();
     const ping = rtt === null ? "" : ` · ping ${Math.round(rtt)} ms`;

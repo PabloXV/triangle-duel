@@ -43,18 +43,17 @@ describe("room: joining", () => {
     ]);
   });
 
-  it("rejects a 5th player, a wrong protocol version, and joining mid-match", () => {
+  it("a 5th player waits as a spectator; a wrong protocol version is rejected", () => {
     const { room } = roomWith(4);
     room.connect("e");
-    expect(room.receive("e", hello())).toEqual([{ to: "e", msg: { type: "error", message: "room is full (4 players)" }, close: true }]);
+    const out = room.receive("e", hello("e"));
+    expect(out[0]).toEqual({ to: "e", msg: { type: "welcome", room: "ABCD", slot: null } });
+    expect(ofType(out, "roster")[0].spectators).toEqual(["e"]);
 
     const r2 = new RoomCore("WXYZ");
     r2.connect("x");
     expect(r2.receive("x", send({ type: "hello", version: 999, name: "x" }))[0]).toMatchObject({ close: true });
 
-    const { room: r3 } = started(2);
-    r3.connect("late");
-    expect(r3.receive("late", hello())[0].msg).toEqual({ type: "error", message: "a match is in progress in this room" });
   });
 
   it("ignores malformed messages and requires hello first", () => {
@@ -214,7 +213,7 @@ describe("room: bots", () => {
     room.receive("a", addBot); // 4 seats now
     expect(room.receive("a", addBot)[0].msg).toEqual({ type: "error", message: "room is full (4 players)" });
     room.connect("e");
-    expect(room.receive("e", hello())[0].msg).toMatchObject({ type: "error", message: "room is full (4 players)" });
+    expect(room.receive("e", hello())[0].msg).toEqual({ type: "welcome", room: "ABCD", slot: null }); // spectates
     const { room: r2 } = started(2);
     expect(r2.receive("a", addBot)[0].msg).toEqual({ type: "error", message: "can't change seats during a match" });
   });
@@ -336,5 +335,76 @@ describe("room: settings and kick", () => {
     room.disconnect("a");
     room.connect("z");
     expect(ofType(room.receive("z", hello("z")), "roster")[0].settings).toEqual({ stageId: "wings", stocks: 3 });
+  });
+});
+
+describe("room: spectators", () => {
+  it("joining mid-match: you spectate, with everything needed to catch up", () => {
+    const { room } = started(2);
+    room.receive("b", send({ type: "input", tick: 1, input: "2" }));
+    for (let i = 0; i < 5; i++) room.advance(); // steps 0..4 final
+    room.connect("s");
+    const out = room.receive("s", hello("Sam"));
+    expect(out[0]).toEqual({ to: "s", msg: { type: "welcome", room: "ABCD", slot: null } });
+    expect(out[1]).toEqual({ to: "s", msg: { type: "spectate", setup: setup(2), names: ["a", "b"], log: [[1, [[1, "2"]]]], next: 5 } });
+    expect(ofType(out, "roster")[0].spectators).toEqual(["Sam"]);
+  });
+
+  it("spectators get the live stream but can't play", () => {
+    const { room } = started(2);
+    room.connect("s");
+    room.receive("s", hello("Sam"));
+    expect(room.advance()[0].to).toBe("all"); // ticks go to everyone, spectators included
+    expect(room.receive("s", send({ type: "input", tick: 5, input: "2" }))).toEqual([]); // ignored
+    expect(room.receive("s", send({ type: "start", setup: setup(2) }))[0].msg).toMatchObject({ type: "error" });
+  });
+
+  it("when the match ends, spectators get seats (in join order) if there's room", () => {
+    const { room } = started(2);
+    room.connect("s1");
+    room.receive("s1", hello("S1"));
+    room.connect("s2");
+    room.receive("s2", hello("S2"));
+    const out = room.receive("a", send({ type: "lobby" }));
+    expect(out).toContainEqual({ to: "s1", msg: { type: "welcome", room: "ABCD", slot: 2 } });
+    expect(out).toContainEqual({ to: "s2", msg: { type: "welcome", room: "ABCD", slot: 3 } });
+    const roster = ofType(out, "roster")[0];
+    expect(roster.players.map((p) => p.name)).toEqual(["a", "b", "S1", "S2"]);
+    expect(roster.spectators).toEqual([]);
+  });
+
+  it("a full room: spectators wait, and get a seat as soon as one frees up", () => {
+    const { room } = roomWith(4);
+    room.connect("e");
+    room.receive("e", hello("E"));
+    const out = room.disconnect("d"); // a seat frees up
+    expect(out).toContainEqual({ to: "e", msg: { type: "welcome", room: "ABCD", slot: 3 } });
+    expect(ofType(out, "roster")[0].spectators).toEqual([]);
+  });
+
+  it("removing a bot frees its seat for a waiting spectator", () => {
+    const { room } = roomWith(3);
+    room.receive("a", send({ type: "addBot" })); // full: a, b, c, bot
+    room.connect("e");
+    room.receive("e", hello("E"));
+    expect(room.receive("a", send({ type: "removeBot" }))).toContainEqual({ to: "e", msg: { type: "welcome", room: "ABCD", slot: 3 } });
+  });
+
+  it("spectators waiting in a full lobby watch the next match", () => {
+    const { room } = roomWith(4);
+    room.connect("e");
+    room.receive("e", hello("E"));
+    const out = room.receive("a", send({ type: "start", setup: setup(4) }));
+    expect(out).toContainEqual({ to: "e", msg: { type: "spectate", setup: setup(4), names: ["a", "b", "c", "d"], log: [], next: 0 } });
+  });
+
+  it("at most 8 spectators", () => {
+    const { room } = started(2);
+    for (let i = 0; i < 8; i++) {
+      room.connect(`s${i}`);
+      room.receive(`s${i}`, hello());
+    }
+    room.connect("s9");
+    expect(room.receive("s9", hello())[0]).toEqual({ to: "s9", msg: { type: "error", message: "room is full" }, close: true });
   });
 });

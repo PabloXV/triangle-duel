@@ -155,6 +155,7 @@ export class Game {
       stocks: sim.match.stocks,
       platforms: sim.stage.platforms.length,
       eliminated: sim.view().map((f) => f.eliminated),
+      status: this.session.status(),
     };
   }
 
@@ -237,6 +238,12 @@ export class Game {
       }
       this.onlineParams = setup.params;
       this.begin("online", new OnlineSession(setup, you, names, sources, net, net.room, () => net.rttMs), names);
+    };
+    // Joined mid-match (or waiting in a full room): watch, caught up to now.
+    net.onSpectate = (setup, names, log, next) => {
+      const s = new OnlineSession(setup, -1, names, new Map(), net, net.room, () => net.rttMs);
+      s.catchUp(log, next);
+      this.begin("online", s, names);
     };
     // The host left mid-match and we're the new host: run their bots from now on.
     net.onDrive = (fighters) => {
@@ -325,7 +332,7 @@ export class Game {
 
   private controlHints(): string[] {
     const s = this.session;
-    if (s instanceof OnlineSession) return [`you (P${s.you + 1}): ${KEYS[0]}`];
+    if (s instanceof OnlineSession) return s.spectating ? ["spectating · Esc to leave"] : [`you (P${s.you + 1}): ${KEYS[0]}`];
     const players = Array.from({ length: s.sim.match.players }, (_, i) => i);
     return players.filter((i) => s.isHuman(i)).map((i) => `${this.names[i] ?? `P${i + 1}`}: ${KEYS[i]}`);
   }

@@ -175,11 +175,22 @@ async function onlineFlow() {
   const ib = await info(bo);
   check(ia.mode === "online" && ib.mode === "online" && ia.players === 3 && ia.platforms === 1, `both in the online match (3 fighters, Island)`);
   await shot(bo, "9-online-match");
+  // Cy (kicked earlier) joins mid-match: he spectates, caught up to now.
+  await cy.getByLabel("…or join one with its code").fill(code);
+  await cy.getByRole("button", { name: "Join" }).click();
+  await cy.waitForFunction(() => (window as any).triangleDuel.game.info.mode === "online", null, { timeout: 10_000 });
+  const [ic, ia2] = [await info(cy), await info(ana)];
+  check(ic.players === 3 && Math.abs(ic.tick - ia2.tick) < 60, `Cy joined mid-match and caught up (Cy at step ${ic.tick}, Ana at ${ia2.tick})`);
+  check(String(ic.status).startsWith("SPECTATING"), `Cy is spectating ("${ic.status}")`);
+  await shot(cy, "9b-spectating");
   await ana.keyboard.down("ArrowRight");
   await bo.keyboard.down("ArrowRight");
   await ana.locator("button.code").waitFor({ timeout: 60_000 });
   await bo.locator("button.code").waitFor({ timeout: 10_000 });
-  check(true, "match over → both back in the room automatically");
+  await cy.locator("button.code").waitFor({ timeout: 10_000 });
+  check(true, "match over → everyone back in the room automatically");
+  await ana.waitForTimeout(300);
+  check(JSON.stringify(await rosterNames(ana)) === JSON.stringify(["Ana", "bot 1", "Bo", "Cy"]), `the spectator got a seat: ${await rosterNames(ana)}`);
   await ana.keyboard.up("ArrowRight");
   await bo.keyboard.up("ArrowRight");
 
@@ -192,14 +203,17 @@ async function onlineFlow() {
   await bo.getByText("Ana left the match").waitFor({ timeout: 5000 });
   check(true, "Bo is told Ana left");
   const after = await info(bo);
-  check(after.mode === "online" && after.eliminated[0] === true && !after.eliminated[1], "Bo's match goes on; Ana's fighter is gone");
+  check(after.mode === "online" && after.players === 4 && after.eliminated[0] === true && !after.eliminated[2], "Bo's match goes on; Ana's fighter is gone");
   await shot(bo, "10-host-left");
-  // Bo walks off; the bot wins. Bo's browser is host now, so it sends everyone back.
+  // Bo and Cy walk off; the bot wins. Bo's browser is host now, so it sends everyone back.
   await bo.keyboard.down("ArrowRight");
+  await cy.keyboard.down("ArrowRight");
   await bo.locator("button.code").waitFor({ timeout: 60_000 });
+  await cy.locator("button.code").waitFor({ timeout: 10_000 });
   await bo.keyboard.up("ArrowRight");
+  await cy.keyboard.up("ArrowRight");
   check(await bo.getByRole("button", { name: "Start match" }).isVisible(), "the new host (Bo) ended the match: back in the room as host");
-  check(JSON.stringify(await rosterNames(bo)) === JSON.stringify(["bot 1", "Bo"]), "the bot stays in the room");
+  check(JSON.stringify(await rosterNames(bo)) === JSON.stringify(["bot 1", "Bo", "Cy"]), `the bot and Cy stay in the room: ${await rosterNames(bo)}`);
   await shot(bo, "11-new-host-room");
   check(errors.length === 0, `online: no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
 }

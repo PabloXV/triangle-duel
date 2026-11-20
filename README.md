@@ -245,6 +245,15 @@ their browser to drive the bots from then on (they idle for a moment in
 between). Online sessions report events from re-simulated steps too
 (`takeEvents`), since a leave or KO often first happens in a rollback.
 
+**Spectators:** joining a room mid-match (or a full room) makes you a
+spectator. The relay keeps a sparse log of the current match's input changes
+and sends it with the setup; the spectator's browser fast-forwards through
+the match so far, then follows live. Spectators show only confirmed steps
+(nothing to make responsive, so no guessing and no rollbacks), and their
+recording is the whole match. When the match ends, spectators get free seats
+in join order; in a full room they wait and get a seat as soon as one frees
+up (someone leaves, or a bot is removed). Up to 8 per room.
+
 **Bots online:** the host can add/remove bot seats in the lobby (Online →
 add bot). The host's browser runs them and sends their inputs through the
 relay like a player's (the relay only accepts bot inputs from the host); to

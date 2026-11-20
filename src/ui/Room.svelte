@@ -39,6 +39,9 @@
   </div>
 
   {#if $net.error}<p class="error" role="alert">{$net.error}</p>{/if}
+  {#if $net.slot === null}
+    <p class="note">The room is full, so you're watching. You'll get a seat as soon as one frees up.</p>
+  {/if}
 
   <fieldset>
     <legend>Players ({$net.roster.length}/{MAX_PLAYERS})</legend>
@@ -57,6 +60,7 @@
       {/each}
     </ul>
   </fieldset>
+  {#if $net.spectators.length}<p class="hint">Watching: {$net.spectators.join(", ")}</p>{/if}
 
   {#if host}
     <fieldset>
@@ -155,6 +159,12 @@
   }
   .waiting {
     align-self: center;
+  }
+  .note {
+    margin: 0 0 1rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius);
+    background: #2a2440;
   }
   .error {
     color: var(--accent);
