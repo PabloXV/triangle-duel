@@ -93,14 +93,15 @@ export const WINGS_STAGE: Stage = {
 /**
  * A short floor with three pass-through platforms, stacked like the classic
  * three-platform layout: the side ones a bit higher than Wings' wings, the top
- * one 4 m up (reach it from a side platform). Good for 3 to 4 players.
+ * one 3.6 m up (reach it from a side platform; tests/reach.test.ts). Good for
+ * 3 to 4 players.
  */
 export const OVERPASS_STAGE: Stage = {
   platforms: [
     { center: { x: 0, y: -0.5 }, halfWidth: 4.5, halfHeight: 0.5 },
     { center: { x: -3.6, y: 1.95 }, halfWidth: 1.5, halfHeight: 0.15, oneWay: true },
     { center: { x: 3.6, y: 1.95 }, halfWidth: 1.5, halfHeight: 0.15, oneWay: true },
-    { center: { x: 0, y: 3.85 }, halfWidth: 1.5, halfHeight: 0.15, oneWay: true },
+    { center: { x: 0, y: 3.45 }, halfWidth: 1.5, halfHeight: 0.15, oneWay: true },
   ],
   spawnLine: { minX: -4.5, maxX: 4.5, y: 0.001 },
   respawnY: 5,
@@ -109,20 +110,23 @@ export const OVERPASS_STAGE: Stage = {
 };
 
 /**
- * Two floors with a pit between them (a KO pit mid-stage) and a pass-through
- * bar over it. With 3 players, the middle one starts on the bar.
+ * Two floors with a 2 m pit between them (a KO pit mid-stage) and a long, low
+ * pass-through bar over it that overlaps both floor edges: hop up, walk across,
+ * drop down (or jump the pit outright, harder). With 3 players, the middle one
+ * starts on the bar. (A 3 m pit with a short, high bar was nearly uncrossable:
+ * tests/reach.test.ts.)
  */
 export const STATION_STAGE: Stage = {
   platforms: [
-    { center: { x: -5.25, y: -0.5 }, halfWidth: 3.75, halfHeight: 0.5 },
-    { center: { x: 5.25, y: -0.5 }, halfWidth: 3.75, halfHeight: 0.5 },
-    { center: { x: 0, y: 2.15 }, halfWidth: 1.4, halfHeight: 0.15, oneWay: true },
+    { center: { x: -5.25, y: -0.5 }, halfWidth: 4.25, halfHeight: 0.5 },
+    { center: { x: 5.25, y: -0.5 }, halfWidth: 4.25, halfHeight: 0.5 },
+    { center: { x: 0, y: 1.45 }, halfWidth: 2, halfHeight: 0.15, oneWay: true },
   ],
   spawnLine: { minX: -8, maxX: 8, y: 0.001 },
   spawns: {
     2: [{ x: -5.25, y: 0.001 }, { x: 5.25, y: 0.001 }],
-    3: [{ x: -5.25, y: 0.001 }, { x: 0, y: 2.301 }, { x: 5.25, y: 0.001 }],
-    4: [{ x: -6.75, y: 0.001 }, { x: -3.5, y: 0.001 }, { x: 3.5, y: 0.001 }, { x: 6.75, y: 0.001 }],
+    3: [{ x: -5.25, y: 0.001 }, { x: 0, y: 1.601 }, { x: 5.25, y: 0.001 }],
+    4: [{ x: -7, y: 0.001 }, { x: -3.5, y: 0.001 }, { x: 3.5, y: 0.001 }, { x: 7, y: 0.001 }],
   },
   respawnY: 3.5,
   blastZone: { minX: -20, maxX: 20, minY: -8, maxY: 20 },

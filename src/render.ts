@@ -37,7 +37,7 @@ export class Renderer {
   }
 
   private applyCamera(cam: CameraView) {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = canvasDpr();
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
     if (this.canvas.width !== w * dpr || this.canvas.height !== h * dpr) {
@@ -84,7 +84,7 @@ export class Renderer {
     fillTexture(ctx, "grain", ctx.getTransform(), 1, "multiply");
 
     if (opts.replay) this.drawLetterbox();
-    const screen = { w: this.canvas.clientWidth, h: this.canvas.clientHeight, dpr: window.devicePixelRatio || 1, scale: this.scale };
+    const screen = { w: this.canvas.clientWidth, h: this.canvas.clientHeight, dpr: canvasDpr(), scale: this.scale };
     drawHud(ctx, screen, cam, curr, result, opts);
   }
 
@@ -157,6 +157,15 @@ export class Renderer {
     ctx.fillRect(0, this.canvas.height - bar, this.canvas.width, bar);
     ctx.restore();
   }
+}
+
+/**
+ * Canvas pixels per CSS pixel: the screen's, capped at 2. Phones are often 3x;
+ * at their size 2x looks the same, and every frame fills 2.25x fewer pixels
+ * (the wall, grain and fades are full-screen fills).
+ */
+function canvasDpr(): number {
+  return Math.min(window.devicePixelRatio || 1, 2);
 }
 
 function lerpV(a: Vec2, b: Vec2, t: number): Vec2 {

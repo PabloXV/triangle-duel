@@ -355,6 +355,8 @@ export class Game {
   }
 
   private readonly touchScreen = isTouchDevice();
+  /** ?fps=1: show the frame rate (to check how a device copes). */
+  private fps = new FpsMeter(new URLSearchParams(location.search).get("fps") === "1");
   private lastCamera: CameraView | null = null;
 
   private controlHints(): string[] {
@@ -376,6 +378,7 @@ export class Game {
     // Schedule the next frame first, so an error in this one shows up in the
     // console instead of stopping the game loop for good.
     requestAnimationFrame((t) => this.frame(t));
+    this.fps.tick(now);
     const dt = Math.min((now - this.last) / 1000, 0.1);
     // Cap the catch-up so a backgrounded tab doesn't simulate seconds at once.
     this.accumulator += Math.min((now - this.last) / 1000, 0.25);
@@ -446,7 +449,21 @@ export class Game {
       colors: players.map((i) => playerColor(this.looks.colors[i] ?? i)),
       controls: hud && !this.state.ended ? this.controlHints() : [],
       totalStocks: sim.match.stocks,
-      status: session.status(),
+      status: [session.status(), this.fps.text()].filter(Boolean).join("  ·  "),
     });
+  }
+}
+
+/** Frames per second, averaged over the last second (shown only when enabled). */
+class FpsMeter {
+  private frames: number[] = [];
+  constructor(private enabled: boolean) {}
+  tick(now: number) {
+    if (!this.enabled) return;
+    this.frames.push(now);
+    while (this.frames.length && now - this.frames[0] > 1000) this.frames.shift();
+  }
+  text(): string {
+    return this.enabled ? `${this.frames.length} fps` : "";
   }
 }
