@@ -11,8 +11,8 @@
 
 import { BotSource, DEFAULT_BOT, HeuristicBot } from "./bots/heuristic";
 import { randomBotShape } from "./bots/shapes";
-import { CameraRig } from "./camera";
-import { KeyboardSource, installKeyboard } from "./input";
+import { CameraRig, type CameraView } from "./camera";
+import { KeyboardSource, installKeyboard, isTouchDevice } from "./input";
 import { FinalKoReplay, History } from "./koReplay";
 import { NetClient } from "./net/client";
 import { OnlineSession } from "./net/onlineSession";
@@ -51,6 +51,8 @@ export interface GameState {
   winnerName: string | null; // null = draw (when ended)
   /** A short message to show, e.g. "Bo left the match". */
   notice: string | null;
+  /** The fighter this screen controls (null: watching: menus backdrop, replay, spectating). */
+  me: number | null;
 }
 
 /** Presentation settings (the debug panel's "Juice" section edits these). */
@@ -88,7 +90,7 @@ export class Game {
   private attractRestartAt = 0; // when the attract match should restart (ms), after it ends
   private backToRoomAt = 0; // host: when to send the room back to the lobby after an online match (ms)
 
-  private state: GameState = { mode: "attract", paused: false, ended: false, winnerName: null, notice: null };
+  private state: GameState = { mode: "attract", paused: false, ended: false, winnerName: null, notice: null, me: null };
   private noticeUntil = 0;
   private announcedLeaves = new Set<number>(); // fighters whose leaving we've announced this match
   private onlineParams: Params | null = null; // the current online match's params (for inherited bots)
@@ -163,6 +165,14 @@ export class Game {
       stocks: sim.match.stocks,
       platforms: sim.stage.platforms.length,
       eliminated: sim.view().map((f) => f.eliminated),
+      me: this.state.me,
+      angles: sim.view().map((f) => f.angle),
+      ko: sim.view().map((f) => f.ko),
+      grounded: sim.view().map((f) => f.grounded),
+      charge: sim.view().map((f) => f.charge),
+      positions: sim.view().map((f) => ({ x: f.x, y: f.y })),
+      camera: this.lastCamera,
+      canvas: { width: this.renderer.canvasSize().width, height: this.renderer.canvasSize().height },
       // Each fighter's shape at a glance: height, width, area (= mass, since density is shared).
       shapes: sim.view().map((f) => {
         const xs = f.vertices.map((v) => v.x);
@@ -244,7 +254,8 @@ export class Game {
     this.attractRestartAt = 0;
     this.announcedLeaves.clear();
     this.backToRoomAt = 0;
-    this.update({ mode, paused: false, ended: false, winnerName: null, notice: null });
+    const me = mode === "local" ? 0 : next instanceof OnlineSession && !next.spectating ? next.you : null;
+    this.update({ mode, paused: false, ended: false, winnerName: null, notice: null, me });
   }
 
   private wireNet() {
@@ -303,6 +314,7 @@ export class Game {
         this.notify(`${this.names[e.fighter] ?? `P${e.fighter + 1}`} left the match`);
       } else if (e.type === "ko") {
         this.camera.shake(0.6);
+        if (e.fighter === this.state.me) navigator.vibrate?.(80); // a buzz when you're KO'd (where supported)
         if (e.final) final = true;
       }
     }
@@ -354,8 +366,13 @@ export class Game {
     }
   }
 
+  private readonly touchScreen = isTouchDevice();
+  private lastCamera: CameraView | null = null;
+
   private controlHints(): string[] {
     const s = this.session;
+    // On a touch screen the on-screen buttons are the hint.
+    if (this.touchScreen) return s instanceof OnlineSession && s.spectating ? ["spectating"] : [];
     if (s instanceof OnlineSession) return s.spectating ? ["spectating · Esc to leave"] : [`you (P${s.you + 1}): ${KEYS[0]}`];
     const players = Array.from({ length: s.sim.match.players }, (_, i) => i);
     return players.filter((i) => s.isHuman(i)).map((i) => `${this.names[i] ?? `P${i + 1}`}: ${KEYS[i]}`);
@@ -424,7 +441,11 @@ export class Game {
       ? this.koReplay.focus.map((i) => shown.curr[i])
       : shown.curr.filter((f) => !f.ko && !f.eliminated);
     const s = this.settings;
-    const cam = this.camera.update(inFrame, dt, this.renderer.aspect(), { follow: s.cameraFollow, shakeScale: s.shakeScale });
+    const cam = (this.lastCamera = this.camera.update(inFrame, dt, this.renderer.aspect(), {
+      follow: s.cameraFollow,
+      shakeScale: s.shakeScale,
+      focus: this.state.me !== null && !this.koReplay ? shown.curr[this.state.me] : undefined,
+    }));
     const players = Array.from({ length: sim.match.players }, (_, i) => i);
     const hud = this.state.mode !== "attract";
     this.renderer.draw(sim.stage, cam, shown.prev, shown.curr, shown.alpha, sim.result, {

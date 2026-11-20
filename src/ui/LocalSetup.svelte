@@ -2,6 +2,7 @@
   // Set up a match on this machine: map, bots, stocks, difficulty, 2nd player.
   import { untrack } from "svelte";
   import type { BotLevel, LocalSetup } from "../game";
+  import { isTouchDevice } from "../input";
   import MapPicker from "./MapPicker.svelte";
   import Stepper from "./Stepper.svelte";
 
@@ -13,7 +14,9 @@
   let bots = $state(init.bots);
   let stocks = $state(init.stocks);
   let botLevel = $state<BotLevel>(init.botLevel);
-  let secondPlayer = $state(init.secondPlayer);
+  // A second player needs a keyboard: not offered on touch screens.
+  const touchScreen = isTouchDevice();
+  let secondPlayer = $state(init.secondPlayer && !touchScreen);
 
   // 2–4 fighters in total: you (+ a 2nd player) + bots.
   const humans = $derived(secondPlayer ? 2 : 1);
@@ -55,16 +58,18 @@
     </fieldset>
   </div>
 
-  <label class="check">
-    <input type="checkbox" bind:checked={secondPlayer} />
-    Second player on this keyboard (A / D / S)
-  </label>
+  {#if !touchScreen}
+    <label class="check">
+      <input type="checkbox" bind:checked={secondPlayer} />
+      Second player on this keyboard (A / D / S)
+    </label>
+  {/if}
 
   <div class="actions">
     <button onclick={onBack}>Back</button>
     <button class="primary" onclick={start}>Start</button>
   </div>
-  <p class="hint">You: ← → rotate, ↓ charge · Esc: pause</p>
+  <p class="hint">{touchScreen ? "Left thumb: ◀ ▶ turn · right thumb: hold Charge" : "You: ← → rotate, ↓ charge · Esc: pause"}</p>
 </div>
 
 <style>

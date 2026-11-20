@@ -2,11 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Triangle Duel</title>
     <style>
-      html, body { margin: 0; height: 100%; background: #14121c; overflow: hidden; }
-      #app { position: relative; height: 100vh; }
+      :root { --pad-h: min(32vh, 270px); }
+      html, body { margin: 0; height: 100%; background: #14121c; overflow: hidden; overscroll-behavior: none; }
+      /* No double-tap zoom, long-press menus, or text selection while playing on touch. */
+      body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+      #app { position: relative; height: 100vh; height: 100dvh; }
+      canvas { touch-action: none; -webkit-user-select: none; user-select: none; }
+      /* Portrait touch play: the control pad sits below the game (TouchControls.svelte). */
+      body.pad-portrait canvas { height: calc(100% - var(--pad-h) - env(safe-area-inset-bottom)); }
       canvas { display: block; width: 100%; height: 100%; }
       /* Menus are layered over the game. */
       #ui { position: absolute; inset: 0; }

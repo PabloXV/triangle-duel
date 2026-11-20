@@ -29,6 +29,11 @@ export class Renderer {
     this.ctx = ctx;
   }
 
+  /** Canvas size in CSS px. */
+  canvasSize() {
+    return { width: this.canvas.clientWidth, height: this.canvas.clientHeight };
+  }
+
   /** Canvas width / height, for the camera to match. */
   aspect(): number {
     return this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight);
@@ -88,6 +93,7 @@ export class Renderer {
     });
 
     if (opts.replay) this.drawLetterbox();
+    if (opts.hud) this.drawOffscreen(cam, curr);
     this.drawHud(curr, result, opts);
   }
 
@@ -217,6 +223,43 @@ export class Renderer {
       }
     });
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * An arrow at the screen edge, in the fighter's color, pointing at each
+   * fighter outside the view (on tall screens the camera can't always fit
+   * everyone). Skips anyone below the stage: they're falling to a KO.
+   */
+  private drawOffscreen(cam: CameraView, fighters: FighterView[]) {
+    const ctx = this.ctx;
+    const w = this.canvas.clientWidth;
+    const h = this.canvas.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    const M = 18; // px from the edge
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    fighters.forEach((f, i) => {
+      if (f.ko || f.eliminated) return;
+      const sx = w / 2 + (f.x - cam.center.x) * this.scale;
+      const sy = h / 2 - (f.y - cam.center.y) * this.scale;
+      const inside = sx > -10 && sx < w + 10 && sy > -10 && sy < h + 10;
+      if (inside || sy > h) return;
+      const ex = Math.min(w - M, Math.max(M, sx));
+      const ey = Math.min(h - M, Math.max(M, sy));
+      const a = Math.atan2(sy - ey, sx - ex);
+      ctx.translate(ex, ey);
+      ctx.rotate(a);
+      ctx.beginPath();
+      ctx.moveTo(9, 0);
+      ctx.lineTo(-6, -7);
+      ctx.lineTo(-6, 7);
+      ctx.closePath();
+      ctx.fillStyle = COLORS[i % COLORS.length];
+      ctx.globalAlpha = 0.9;
+      ctx.fill();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    });
+    ctx.restore();
   }
 
   private drawHud(fighters: FighterView[], result: MatchResult, opts: RenderOptions) {

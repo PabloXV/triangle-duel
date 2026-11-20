@@ -273,6 +273,25 @@ step; on a rollback the host reuses the decision it already sent. If the host
 disconnects mid-match, their bots go idle. Bots change input ~5×/s (see "Bot").
 
 
+## Phones (touch controls)
+
+On a touch screen (or with `?touch=1`), matches get on-screen controls
+(`src/ui/TouchControls.svelte`): ◀ ▶ under the left thumb, Charge under the
+right, usable together (aim while charging), feeding the same input as the
+arrow keys, so they work locally and online. The zones are bigger than the
+labels; a thumb that starts on the turn side stays a turn thumb, so a drifting
+thumb can't start or drop a charge.
+
+- **Portrait:** a pad below the game (the canvas shrinks), so thumbs never
+  cover the action.
+- **Landscape:** full-screen game, faint zones over its bottom corners.
+
+The camera caps how much height it shows (never more than a 1.4:1 screen
+would): wide screens are unaffected, and on a tall one it zooms in to about
+landscape size, keeping your fighter in view, with edge arrows pointing at
+anyone outside it. A KO buzzes the phone where supported (not iOS). `npm run
+e2e` emulates a phone: taps with real multi-touch, both orientations.
+
 ## Custom fighters
 
 Main menu → Customize fighter: drag the two top corners, or slide the foot.

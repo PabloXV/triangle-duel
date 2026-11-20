@@ -17,6 +17,19 @@ export const BINDINGS: Binding[] = [
 ];
 
 const held = new Set<string>();
+
+/**
+ * On-screen touch controls (TouchControls.svelte) set this. They drive keyboard
+ * binding 0: P1 locally, and you online, same as the arrow keys.
+ */
+export const touch = { left: false, right: false, charge: false };
+
+/** Show touch controls? A touch-first device, or forced with ?touch=1 / ?touch=0. */
+export function isTouchDevice(): boolean {
+  const forced = new URLSearchParams(location.search).get("touch");
+  if (forced === "1" || forced === "0") return forced === "1";
+  return navigator.maxTouchPoints > 0 && matchMedia("(pointer: coarse)").matches;
+}
 const GAME_KEYS = new Set(BINDINGS.flatMap((b) => [b.left, b.right, b.charge]));
 
 export function installKeyboard(onKey: (code: string) => void) {
@@ -28,13 +41,17 @@ export function installKeyboard(onKey: (code: string) => void) {
   });
   window.addEventListener("keyup", (e) => held.delete(e.code));
   // Losing focus while holding a key would otherwise leave it stuck down.
-  window.addEventListener("blur", () => held.clear());
+  window.addEventListener("blur", () => {
+    held.clear();
+    touch.left = touch.right = touch.charge = false;
+  });
 }
 
 export function readInput(player: number): Input {
   const b = BINDINGS[player];
-  const turn = (held.has(b.right) ? 1 : 0) - (held.has(b.left) ? 1 : 0);
-  return { turn: turn as Input["turn"], charge: held.has(b.charge) };
+  const t = player === 0 ? touch : { left: false, right: false, charge: false };
+  const turn = (held.has(b.right) || t.right ? 1 : 0) - (held.has(b.left) || t.left ? 1 : 0);
+  return { turn: turn as Input["turn"], charge: held.has(b.charge) || t.charge };
 }
 
 /** A player driven by keyboard binding `binding` (0 = arrows, 1 = A/D/S). */

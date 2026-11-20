@@ -102,6 +102,7 @@ try {
   check(again.mode === "local" && again.tick < 60, "play again starts a fresh match");
 
   await customizeFlow(page);
+  await phoneFlow();
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
 
   await onlineFlow();
@@ -273,4 +274,114 @@ async function customizeFlow(page: Page) {
   await shot(page, "13-custom-in-game");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Leave to menu" }).click();
+}
+
+// ---- phone: touch controls (portrait pad, landscape zones), camera on a tall screen ----
+async function phoneFlow() {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const p = await ctx.newPage();
+  const errors: string[] = [];
+  p.on("pageerror", (e) => errors.push(e.message));
+  const cdp = await ctx.newCDPSession(p);
+  /** Put fingers down / lift them: `points` is every finger touching after this event. */
+  const touches = (type: "touchStart" | "touchEnd", points: { x: number; y: number; id: number }[]) =>
+    cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+  const pad = p.getByRole("group", { name: "touch controls" });
+  /** A spot on the pad: fraction across its width, middle of its height (or near the bottom). */
+  const spot = async (fx: number, id: number, fy = 0.5) => {
+    const b = (await pad.boundingBox())!;
+    return { x: b.x + b.width * fx, y: b.y + b.height * fy, id };
+  };
+  const me = async () => {
+    const i = await info(p);
+    return { angle: i.angles[0] as number, charge: i.charge[0] as number, ko: i.ko[0], grounded: i.grounded[0] as boolean, i };
+  };
+  /** Wait until my fighter is in play (not KO'd / respawning) and roughly upright. */
+  const ready = async () => {
+    for (let n = 0; n < 60; n++) {
+      const m = await me();
+      if (!m.ko && Math.abs(m.angle) < 0.4) return;
+      await p.waitForTimeout(100);
+    }
+  };
+
+  await p.goto(URL);
+  await p.getByLabel("What should we call you?").fill("Thumbs");
+  await p.getByRole("button", { name: "Continue" }).click();
+  await shot(p, "14-phone-menu");
+  await p.getByRole("button", { name: "Play locally" }).click();
+  await shot(p, "15-phone-setup");
+  await p.getByRole("button", { name: "Start" }).click();
+  await p.waitForTimeout(600);
+
+  // Portrait: a pad below the game; the game area shrinks to make room.
+  check(await pad.isVisible(), "phone portrait: touch controls shown");
+  const portrait = await info(p);
+  const padBox = (await pad.boundingBox())!;
+  check(portrait.canvas.height <= padBox.y + 1, `portrait: the game sits above the pad (canvas ${portrait.canvas.height}px tall, pad from y=${padBox.y})`);
+  check(!(await p.getByText(/rotate, ↓ charge/).isVisible().catch(() => false)), "no keyboard hints on a touch screen");
+
+  // Camera: zoomed in on a tall screen (not the whole 27 m stage), with me in view.
+  const cam = portrait.camera;
+  const pos = portrait.positions[0];
+  const inView = Math.abs(pos.x - cam.center.x) < cam.width / 2 && Math.abs(pos.y - cam.center.y) < cam.height / 2;
+  check(cam.width < 16 && inView, `portrait camera: ${cam.width.toFixed(1)} m wide (desktop shows up to 27.5), and I'm in view`);
+  const pxPerM = portrait.canvas.width / cam.width;
+  check(pxPerM > 24, `portrait: fighters drawn at ${pxPerM.toFixed(0)} px/m (was ~14 before)`);
+
+  // Hold ▶: I turn clockwise (angle goes down).
+  await ready();
+  let before = (await me()).angle;
+  await touches("touchStart", [await spot(0.375, 1)]);
+  await p.waitForTimeout(200);
+  await touches("touchEnd", []);
+  let after = (await me()).angle;
+  check(after < before - 0.1, `hold ▶: turned clockwise (${before.toFixed(2)} → ${after.toFixed(2)} rad)`);
+  await p.waitForTimeout(500);
+
+  // Aim while charging: hold Charge (right thumb) until planted, then nudge ◀
+  // (left thumb): the lean changes and the charge keeps building.
+  await ready();
+  const left = await spot(0.125, 2);
+  const charge = await spot(0.75, 3);
+  await touches("touchStart", [charge]);
+  let planted = await me();
+  for (let n = 0; n < 60 && planted.charge === 0; n++) {
+    await p.waitForTimeout(25);
+    planted = await me();
+  }
+  await touches("touchStart", [charge, left]);
+  await p.waitForTimeout(90);
+  await touches("touchEnd", [charge]); // ◀ up, still charging
+  const aimed = await me();
+  await shot(p, "16-phone-portrait");
+  await touches("touchEnd", []);
+  check(
+    planted.charge > 0 && aimed.charge > planted.charge && aimed.angle > planted.angle + 0.03,
+    `aim while charging: charge ${(planted.charge * 100).toFixed(0)}% → ${(aimed.charge * 100).toFixed(0)}% while leaning left (${planted.angle.toFixed(2)} → ${aimed.angle.toFixed(2)} rad)`,
+  );
+  check(await pad.getByText("Charge").isVisible(), "pad labels: ◀ ▶ Charge");
+
+  // Landscape: the game takes the full screen, controls are zones over it.
+  await p.setViewportSize({ width: 844, height: 390 });
+  await p.waitForTimeout(400);
+  const land = await info(p);
+  check((await pad.getAttribute("class"))!.includes("landscape") && land.canvas.height >= 389, `landscape: full-screen game (${land.canvas.width}×${land.canvas.height}), zones over it`);
+  await ready();
+  before = (await me()).angle;
+  await touches("touchStart", [await spot(0.1, 4, 0.7)]);
+  await p.waitForTimeout(200);
+  await touches("touchEnd", []);
+  after = (await me()).angle;
+  check(after > before + 0.1, `landscape hold ◀: turned counterclockwise (${before.toFixed(2)} → ${after.toFixed(2)} rad)`);
+  await shot(p, "17-phone-landscape");
+
+  // The pause menu hides the pad; resuming brings it back.
+  await p.getByRole("button", { name: "pause" }).click();
+  check(!(await pad.isVisible()), "paused: touch controls hidden");
+  await p.getByRole("button", { name: "Resume" }).click();
+  check(await pad.isVisible(), "resumed: touch controls back");
+
+  check(errors.length === 0, `phone: no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
+  await ctx.close();
 }

@@ -1,6 +1,8 @@
 <script lang="ts">
   // On top of a match: a pause/leave button, the pause menu, and end-of-match options.
   import type { Game, GameState } from "../game";
+  import { isTouchDevice } from "../input";
+  import TouchControls from "./TouchControls.svelte";
 
   let {
     game,
@@ -11,6 +13,18 @@
   }: { game: Game; gs: GameState; menuOpen?: boolean; onLeave: () => void; onChangeSetup: () => void } = $props();
 
   const canPause = $derived(gs.mode === "local" || gs.mode === "replay");
+
+  // Touch controls, when this screen is playing (not watching) a running match.
+  const touchScreen = isTouchDevice();
+  let vw = $state(0);
+  let vh = $state(0);
+  const layout = $derived(vh > vw ? "portrait" : "landscape");
+  const showPad = $derived(touchScreen && gs.me !== null && !gs.ended && !menuOpen);
+  // In portrait the pad sits below the game: shrink the canvas to make room.
+  $effect(() => {
+    document.body.classList.toggle("pad-portrait", showPad && layout === "portrait");
+    return () => document.body.classList.remove("pad-portrait");
+  });
 
   function openMenu() {
     menuOpen = true;
@@ -25,6 +39,10 @@
     game.playAgain();
   }
 </script>
+
+<svelte:window bind:innerWidth={vw} bind:innerHeight={vh} />
+
+{#if showPad}<TouchControls {layout} />{/if}
 
 {#if gs.notice}<div class="notice" role="status">{gs.notice}</div>{/if}
 

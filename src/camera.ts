@@ -16,12 +16,22 @@ export interface CameraView {
 export interface CameraSettings {
   follow: boolean; // false = fixed stage framing
   shakeScale: number; // 0 = no shake, 1 = default
+  /** The fighter this screen's player controls, kept in view when not everyone fits. */
+  focus?: FighterView;
 }
 
 const MIN_WIDTH = 11; // never zoom in tighter than this (m)
 const PAD_X = 3; // breathing room around the fighters (m)
 const PAD_BOTTOM = 1.5;
 const PAD_TOP = 2.5; // more above: that's where jumps go
+/**
+ * Never show more height than a screen this wide (relative to its height) would
+ * at full zoom-out. Wide screens are unaffected; on tall ones (a phone in
+ * portrait) showing the whole stage width would make everyone tiny, so the
+ * view zooms in and follows the action, keeping you in frame; edge arrows
+ * (render.ts) point to anyone outside it.
+ */
+const MAX_HEIGHT_ASPECT = 1.4;
 const PAN_RATE = 4; // 1/s: higher = snappier
 // Dead zones, so the camera ignores hop-sized motion (every fighter auto-hops
 // ~4.5 times a second; a camera framing their exact bounding box bobs and
@@ -79,13 +89,16 @@ export class CameraRig {
     this.time += dt;
     this.trauma = Math.max(0, this.trauma - TRAUMA_DECAY * dt);
 
-    const target = s.follow ? this.framing(fighters, aspect, dt) : this.stageFraming(aspect);
+    const target = s.follow ? this.framing(fighters, aspect, dt, s.focus) : this.stageFraming(aspect);
     // Frame-rate independent smoothing: close a fixed fraction of the gap per second.
     const ease = (rate: number) => 1 - Math.exp(-rate * dt);
     this.center.x += (target.center.x - this.center.x) * ease(PAN_RATE);
     this.center.y += (target.center.y - this.center.y) * ease(PAN_RATE);
     const zoomRate = target.width > this.width ? ZOOM_OUT_RATE : ZOOM_IN_RATE;
     this.width += (target.width - this.width) * ease(zoomRate);
+    // On a tall screen, never sit wider than allowed (e.g. at a match start, or
+    // after rotating the phone): snap in rather than ease from the stage width.
+    if (s.follow) this.width = Math.min(this.width, this.maxWidth(aspect));
 
     // Shake: smooth pseudo-noise (sums of sines at unrelated frequencies).
     const t = this.time;
@@ -112,7 +125,13 @@ export class CameraRig {
    *     enough to keep them in, plus a slow drift back toward the action;
    *   - horizontally, center on the action (sideways motion is deliberate).
    */
-  private framing(fighters: FighterView[], aspect: number, dt: number): { center: Vec2; width: number } {
+  /** The widest view allowed at this aspect (see MAX_HEIGHT_ASPECT). */
+  private maxWidth(aspect: number): number {
+    const full = this.stage.camera.width * 1.25;
+    return Math.min(full, (full / MAX_HEIGHT_ASPECT) * aspect);
+  }
+
+  private framing(fighters: FighterView[], aspect: number, dt: number, focus?: FighterView): { center: Vec2; width: number } {
     const cam = this.stage.camera;
     if (fighters.length === 0) return this.stageFraming(aspect);
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -134,10 +153,14 @@ export class CameraRig {
     minY = Math.max(minY, floorLimit);
     maxY = Math.max(maxY, minY + 1);
 
-    const maxWidth = cam.width * 1.25;
-    const needed = clamp(Math.max(maxX - minX, (maxY - minY) * aspect), MIN_WIDTH, maxWidth);
+    const maxWidth = this.maxWidth(aspect);
+    const needed = clamp(Math.max(maxX - minX, (maxY - minY) * aspect), Math.min(MIN_WIDTH, maxWidth), maxWidth);
     if (needed > this.targetWidth || needed < this.targetWidth * (1 - ZOOM_IN_BAND)) this.targetWidth = needed;
     const height = this.targetWidth / aspect;
+    // The view's lowest allowed bottom edge. On a tall screen the view is taller
+    // than the stage framing; put part of the extra below the stage, so the
+    // action sits mid-screen instead of at the bottom under a tall empty sky.
+    const viewFloor = floorLimit - Math.max(0, height - cam.height) * 0.4;
 
     // Vertical: drift slowly toward the action's center, then push just enough
     // to keep everyone inside the view.
@@ -146,14 +169,21 @@ export class CameraRig {
     if (minY < this.targetY - height / 2) this.targetY = minY + height / 2;
     if (maxY > this.targetY + height / 2) this.targetY = maxY - height / 2;
     // Keep the bottom of the view at or above the floor limit.
-    this.targetY = Math.max(this.targetY, floorLimit + height / 2);
+    this.targetY = Math.max(this.targetY, viewFloor + height / 2);
 
-    return { center: { x: (minX + maxX) / 2, y: this.targetY }, width: this.targetWidth };
+    // Center on the action; if it doesn't all fit, slide over to keep the focus fighter in view.
+    let x = (minX + maxX) / 2;
+    if (focus && !focus.ko) {
+      const fx = focus.vertices.map((v) => v.x);
+      const half = Math.max(0, this.targetWidth / 2 - PAD_X);
+      x = clamp(x, Math.max(...fx) - half, Math.min(...fx) + half);
+    }
+    return { center: { x, y: this.targetY }, width: this.targetWidth };
   }
 
   /** The stage's fixed framing, widened if needed to fit the screen's aspect. */
   private stageFraming(aspect: number): { center: Vec2; width: number } {
     const cam = this.stage.camera;
-    return { center: { ...cam.center }, width: Math.max(cam.width, cam.height * aspect) };
+    return { center: { ...cam.center }, width: Math.min(Math.max(cam.width, cam.height * aspect), this.maxWidth(aspect)) };
   }
 }
