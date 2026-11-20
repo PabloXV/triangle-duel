@@ -65,9 +65,13 @@ export class LiveSession implements Session {
     this.sources[player] = source;
   }
 
+  /** The inputs of the latest step (for tests and debugging). */
+  lastInputs: Input[] = [];
+
   step(): boolean {
     const view = this.sim.view();
     const inputs = this.sources.map((s) => s.next(view, this.sim));
+    this.lastInputs = inputs;
     this.recorder?.beforeStep(this.sim, inputs, this.params);
     this.sim.step(inputs);
     this.recorder?.afterStep(this.sim);

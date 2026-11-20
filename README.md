@@ -281,9 +281,14 @@ they work locally and online. Two schemes, switched in the pause menu and
 remembered per device:
 
 - **Stick (default):** a thumb down anywhere on the control area puts a stick
-  there; slide sideways to tilt, pull down to charge, diagonally for both
-  (aim while charging), like ← ↓ → under one hand. It follows the thumb past
-  its rim; dead zones have hysteresis; a second finger also charges.
+  there. It's analog (`src/aim.ts`, on top of the same digital inputs, so
+  online is unchanged): sideways sets your **speed** (centered = stop and
+  balance), because a held lean isn't stable here (leaning makes you hop ever
+  faster until a landing topples you), so like the bots it leans in
+  proportion to the speed error. Pulled down, you charge, and sideways sets
+  your **aim** (planted, a lean holds), approached gently so it can't
+  overshoot into a topple. Tested against the real physics
+  (`tests/aim.test.ts`).
 - **Buttons:** ◀ ▶ under the left thumb, Charge under the right. A thumb keeps
   the role it started with, so drifting can't start or drop a charge.
 

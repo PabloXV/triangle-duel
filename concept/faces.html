@@ -1,0 +1,652 @@
+<title>Triangle Face Shop</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Rubik:wght@400;500;700&display=swap">
+<style>
+/* Layout: spray-painted stage on the left, sticker-sheet pickers on the right; mood strip and random crew below. Single dark "purple brick wall" look on purpose. */
+:root {
+  --wall: #1e1b2e;
+  --wall-2: #2b2340;
+  --panel: #262038;
+  --line: #43385f;
+  --chalk: #f3eefc;
+  --muted: #b9b4c7;
+  --lilac: #c9b6ff;
+  --ink: #15101f;
+  --pop: #ffd93d;
+  --display: "Permanent Marker", "Marker Felt", "Comic Sans MS", cursive;
+  --body: "Rubik", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--wall);
+  color: var(--chalk);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+header h1 {
+  font-family: var(--display); font-weight: 400; font-size: clamp(36px, 6vw, 60px);
+  line-height: 1; margin: 0; letter-spacing: .01em; color: var(--pop);
+  text-shadow: 3px 3px 0 var(--ink), 0 0 18px #ffd93d55; transform: rotate(-2deg); transform-origin: left;
+}
+header p { margin: 10px 0 0; color: var(--muted); max-width: 62ch; }
+h2 {
+  font-family: var(--display); font-weight: 400; font-size: 20px; margin: 0 0 10px;
+  color: var(--lilac); letter-spacing: .02em;
+}
+.layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+.stage {
+  border: 3px solid var(--ink); border-radius: 6px; overflow: hidden;
+  background-color: var(--wall-2);
+  background-image:
+    radial-gradient(circle at 18% 22%, #ff6b6b22 0 60px, transparent 61px),
+    radial-gradient(circle at 82% 30%, #4ecdc422 0 80px, transparent 81px),
+    radial-gradient(circle at 60% 85%, #a78bfa22 0 90px, transparent 91px),
+    linear-gradient(transparent 0 46px, #ffffff0d 46px 48px),
+    linear-gradient(90deg, transparent 0 94px, #ffffff0d 94px 96px);
+  background-size: auto, auto, auto, 96px 48px, 96px 48px;
+  box-shadow: 6px 6px 0 var(--ink);
+}
+.stage svg { display: block; width: 100%; height: auto; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+.btn {
+  font: 500 14px/1 var(--body); color: var(--chalk); background: var(--panel);
+  border: 2px solid var(--line); border-radius: 999px; padding: 9px 14px; cursor: pointer;
+}
+.btn:hover { border-color: var(--lilac); }
+.btn[aria-pressed="true"] { background: var(--pop); color: var(--ink); border-color: var(--ink); }
+.btn:focus-visible, .opt:focus-visible, .card:focus-visible { outline: 3px solid var(--pop); outline-offset: 2px; }
+.code { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; color: var(--muted); font-size: 14px; }
+.code code { font-family: ui-monospace, Menlo, monospace; color: var(--chalk); background: var(--panel); padding: 4px 8px; border-radius: 4px; }
+
+.picker { display: grid; gap: 18px; }
+.opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 8px; }
+.opt {
+  background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 4px 4px 6px;
+  cursor: pointer; color: var(--muted); font: 500 12px/1.2 var(--body); display: grid; gap: 2px; justify-items: center;
+}
+.opt svg { width: 100%; height: auto; aspect-ratio: 1; display: block; }
+.opt:hover { border-color: var(--lilac); }
+.opt[aria-pressed="true"] { border-color: var(--pop); color: var(--chalk); box-shadow: 3px 3px 0 var(--ink); }
+.swatches { grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); }
+.swatch { aspect-ratio: 1; border-radius: 50%; border: 3px solid var(--ink); cursor: pointer; padding: 0; }
+.swatch[aria-pressed="true"] { outline: 3px solid var(--pop); outline-offset: 2px; }
+
+.stripGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) { .stripGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.cell { background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 6px; text-align: center; }
+.cell svg { width: 100%; height: auto; display: block; }
+.cell b { display: block; font-family: var(--display); font-weight: 400; color: var(--chalk); font-size: 16px; }
+.cell span { display: block; color: var(--muted); font-size: 12px; line-height: 1.3; }
+
+.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.crewGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.card {
+  background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 8px 8px 10px; cursor: pointer;
+  color: var(--chalk); text-align: left; font: inherit; display: grid; gap: 4px;
+}
+.card:hover { border-color: var(--lilac); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; align-items: end; }
+.pair svg { width: 100%; height: auto; display: block; }
+.card .nm { font-family: var(--display); font-size: 18px; line-height: 1.1; }
+.card .meta { color: var(--muted); font-size: 12px; }
+.hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+
+.notes { background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 16px 18px; }
+.notes ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 75ch; }
+.notes li { color: var(--muted); }
+.notes strong { color: var(--chalk); font-weight: 500; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="overspray" x="-40%" y="-40%" width="180%" height="180%">
+      <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="16" xChannelSelector="R" yChannelSelector="G"/>
+      <feGaussianBlur stdDeviation="2.2"/>
+    </filter>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="1" seed="3" result="t"/>
+      <feColorMatrix in="t" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -4 2.05" result="speck"/>
+      <feComponentTransfer in="speck" result="soft"><feFuncA type="linear" slope=".45"/></feComponentTransfer>
+      <feComposite in="soft" in2="SourceGraphic" operator="in" result="s2"/>
+      <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="s2"/></feMerge>
+    </filter>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header>
+    <h1>Face Shop</h1>
+    <p>Pick eyes, brows and a mouth. The face reacts by itself: it squints while charging, screams on a hop, sweats when tipping, and goes spiral-eyed on a KO.</p>
+  </header>
+
+  <main class="layout">
+    <section aria-label="Preview">
+      <div class="stage"><svg id="stage" viewBox="0 0 600 420" role="img" aria-label="Your fighter on the stage"></svg></div>
+      <div class="bar" id="moods" role="group" aria-label="Mood">
+        <button class="btn" id="loop" aria-pressed="true">▶ Loop</button>
+      </div>
+      <div class="code">
+        Face code <code id="code"></code>
+        <button class="btn" id="rand">Randomize</button>
+      </div>
+    </section>
+
+    <section class="picker" aria-label="Customize">
+      <div><h2>Shape</h2><div class="opts" id="opt-shape"></div></div>
+      <div><h2>Color</h2><div class="opts swatches" id="opt-color"></div></div>
+      <div><h2>Eyes</h2><div class="opts" id="opt-eyes"></div></div>
+      <div><h2>Brows</h2><div class="opts" id="opt-brows"></div></div>
+      <div><h2>Mouth</h2><div class="opts" id="opt-mouth"></div></div>
+    </section>
+  </main>
+
+  <section>
+    <h2>Same face, every mood</h2>
+    <div class="stripGrid" id="strip"></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Random crew</h2><button class="btn" id="reroll">Reroll crew</button></div>
+    <div class="crewGrid" id="crew"></div>
+    <p class="hint">Each card shows the fighter standing and KO'd. Tap one to load it into the editor.</p>
+  </section>
+
+  <section class="notes">
+    <h2>How it would plug into the game</h2>
+    <ul>
+      <li><strong>The player only picks three parts.</strong> A face is three small numbers (eyes, brows, mouth), sent once when you join a room. No art per combination.</li>
+      <li><strong>The mood comes from the sim, every frame.</strong> KO event → KO'd. Holding charge while grounded → Charge. Airborne → Hop. Tilted past about 45% of the way to tipping → Wobble. Otherwise Idle.</li>
+      <li><strong>Every part draws every mood.</strong> So a KO face keeps your style: googly eyes become spirals, shades crack, a gold grill loses a tooth.</li>
+      <li><strong>It's all vector paths.</strong> The same drawing code can run on the game canvas (Path2D), or be exported to PNG sprites.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+const INK = "#15101f";
+const PINK = "#ff7aa8";
+const GOLD = "#ffd23d";
+const f = n => Math.round(n * 100) / 100;
+
+const COLORS = [
+  { name: "Coral", c: "#ff6b6b" }, { name: "Teal", c: "#4ecdc4" },
+  { name: "Yellow", c: "#ffd93d" }, { name: "Lavender", c: "#a78bfa" },
+  { name: "Lime", c: "#9be15d" }, { name: "Hot pink", c: "#ff7ac6" },
+  { name: "Orange", c: "#ff9f43" }, { name: "Sky", c: "#5ab8ff" },
+];
+
+// Foot at (0,0), y down. Only proportions matter: every shape is scaled to the same area.
+const SHAPES = [
+  { id: "standard", name: "Standard", v: [[-0.6, -1], [0.6, -1]] },
+  { id: "spike", name: "Spike", v: [[-0.22, -1.6], [0.24, -1.5]] },
+  { id: "wedge", name: "Wedge", v: [[-1.2, -0.62], [1.1, -0.68]] },
+  { id: "lean", name: "Lean", v: [[-0.25, -1.35], [1.0, -0.75]] },
+  { id: "corner", name: "Corner", v: [[0, -1.3], [0.95, -1.3]] },
+  { id: "chunk", name: "Chunk", v: [[-0.95, -0.85], [0.75, -1.15]] },
+];
+const AREA = 7000;
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const geoCache = {};
+function geom(id) {
+  if (geoCache[id]) return geoCache[id];
+  const s = SHAPES.find(x => x.id === id);
+  const [l, r] = s.v;
+  const area = Math.abs(l[0] * r[1] - r[0] * l[1]) / 2;
+  const k = Math.sqrt(AREA / area);
+  const F = [0, 0], L = [l[0] * k, l[1] * k], R = [r[0] * k, r[1] * k];
+  const a = dist(L, R), b = dist(F, R), c = dist(F, L), p = a + b + c;
+  const I = [(a * F[0] + b * L[0] + c * R[0]) / p, (a * F[1] + b * L[1] + c * R[1]) / p];
+  const rad = 2 * AREA / p;
+  // KO: rotate about the foot until foot→L lies on the ground (tips left).
+  const th = Math.atan2(L[1], L[0]);
+  let ko = Math.PI - th;
+  while (ko > Math.PI) ko -= 2 * Math.PI;
+  while (ko < -Math.PI) ko += 2 * Math.PI;
+  return (geoCache[id] = { F, L, R, I, r: rad, s: rad * 1.05, koDeg: ko * 180 / Math.PI,
+    faceAng: Math.atan2(R[1] - L[1], R[0] - L[0]) * 180 / Math.PI });
+}
+
+function poseFor(mood, g) {
+  switch (mood) {
+    case "charge": return { tilt: 0, lift: 0, sx: 1.12, sy: 0.8 };
+    case "air": return { tilt: -12, lift: 60, sx: 0.95, sy: 1.06 };
+    case "wobble": return { tilt: g.koDeg * 0.45, lift: 0, sx: 1, sy: 1 };
+    case "ko": return { tilt: g.koDeg, lift: 0, sx: 1, sy: 1 };
+    default: return { tilt: 0, lift: 0, sx: 1, sy: 1 };
+  }
+}
+function xf(p, pose) {
+  const a = pose.tilt * Math.PI / 180, x = p[0] * pose.sx, y = p[1] * pose.sy;
+  return [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a) - pose.lift];
+}
+
+// ---------- face parts (face units: incircle radius ≈ 1, y down) ----------
+const circ = (cx, cy, r, fill, sw = 0.08) => `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="${fill}" stroke="${INK}" stroke-width="${sw}"/>`;
+const white = (cx, cy, R) => circ(cx, cy, R, "#fff");
+const pupil = (cx, cy, r) => `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="${INK}"/><circle cx="${f(cx - r * 0.35)}" cy="${f(cy - r * 0.35)}" r="${f(r * 0.3)}" fill="#fff"/>`;
+const xEye = (cx, cy, k = 0.15) => `<path d="M${f(cx - k)} ${f(cy - k)}L${f(cx + k)} ${f(cy + k)}M${f(cx + k)} ${f(cy - k)}L${f(cx - k)} ${f(cy + k)}" stroke="${INK}" stroke-width=".11" stroke-linecap="round"/>`;
+function spiral(cx, cy, R) {
+  const pts = [], turns = 3.2 * Math.PI;
+  for (let a = 0; a <= turns; a += 0.3) { const rr = R * a / turns; pts.push(f(cx + rr * Math.cos(a)) + "," + f(cy + rr * Math.sin(a))); }
+  return `<polyline points="${pts.join(" ")}" fill="none" stroke="${INK}" stroke-width=".07" stroke-linecap="round" stroke-linejoin="round"/>`;
+}
+// Eyelid: the part of the eye circle above a line at flatY, rotated about the eye centre.
+function lid(cx, cy, R, flatY, ang, color) {
+  const dy = flatY - cy;
+  if (dy <= -R) return "";
+  if (dy >= R) return circ(cx, cy, R, color, 0.07);
+  const w = Math.sqrt(R * R - dy * dy), large = dy > 0 ? 1 : 0;
+  return `<path d="M${f(cx - w)} ${f(flatY)}A${f(R)} ${f(R)} 0 ${large} 1 ${f(cx + w)} ${f(flatY)}Z" fill="${color}" stroke="${INK}" stroke-width=".07" stroke-linejoin="round" transform="rotate(${f(ang)} ${f(cx)} ${f(cy)})"/>`;
+}
+const SIDES = [-1, 1];
+
+const EYES = [
+  { id: "googly", name: "Googly", draw(m, col) {
+    let s = "";
+    for (const sd of SIDES) {
+      const cx = sd * 0.42, cy = -0.12;
+      if (m === "ko") { s += white(cx, cy, 0.3) + spiral(cx, cy, 0.22); continue; }
+      const R = m === "air" ? 0.34 : 0.3;
+      const pr = { idle: 0.13, charge: 0.11, air: 0.07, wobble: 0.1 }[m];
+      const look = { idle: [0.03, 0.05], charge: [0, 0.08], air: [0, 0], wobble: [-0.13, 0.06] }[m];
+      s += white(cx, cy, R) + pupil(cx + look[0], cy + look[1], pr);
+      if (m === "charge") s += lid(cx, cy, R, cy - 0.04, -sd * 22, col);
+      if (m === "wobble") s += lid(cx, cy, R, cy - 0.2, sd * 15, col);
+    }
+    return s;
+  } },
+  { id: "dots", name: "Dots", draw(m) {
+    let s = "";
+    for (const sd of SIDES) {
+      const cx = sd * 0.38, cy = -0.1;
+      if (m === "ko") { s += xEye(cx, cy); continue; }
+      if (m === "charge") { s += `<path d="M${f(cx + sd * 0.1)} ${f(cy - 0.11)}L${f(cx - sd * 0.08)} ${f(cy)}L${f(cx + sd * 0.1)} ${f(cy + 0.11)}" fill="none" stroke="${INK}" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round"/>`; continue; }
+      const [rx, ry, dx, dy] = { idle: [0.09, 0.13, 0, 0], air: [0.12, 0.18, 0, -0.02], wobble: [0.08, 0.11, -0.08, 0.03] }[m];
+      s += `<ellipse cx="${f(cx + dx)}" cy="${f(cy + dy)}" rx="${rx}" ry="${ry}" fill="${INK}"/><circle cx="${f(cx + dx - rx * 0.35)}" cy="${f(cy + dy - ry * 0.4)}" r="${f(rx * 0.35)}" fill="#fff"/>`;
+    }
+    return s;
+  } },
+  { id: "sleepy", name: "Sleepy", draw(m, col) {
+    let s = "";
+    for (const sd of SIDES) {
+      const cx = sd * 0.4, cy = -0.1;
+      if (m === "ko") { s += xEye(cx, cy); continue; }
+      if (m === "air") { s += white(cx, cy, 0.3) + pupil(cx, cy, 0.07); continue; }
+      const R = 0.26;
+      const [px, py, pr, fy, ang] = {
+        idle: [0, 0.1, 0.1, cy + 0.03, 0],
+        charge: [0, 0.07, 0.1, cy - 0.02, -sd * 18],
+        wobble: [-0.1, 0.08, 0.09, cy - 0.06, sd * 12],
+      }[m];
+      s += white(cx, cy, R) + pupil(cx + px, cy + py, pr) + lid(cx, cy, R, fy, ang, col);
+    }
+    return s;
+  } },
+  { id: "angry", name: "Grumpy", draw(m, col) {
+    let s = "";
+    for (const sd of SIDES) {
+      const cx = sd * 0.4, cy = -0.1;
+      if (m === "ko") { s += xEye(cx, cy); continue; }
+      const [R, px, py, pr, fy, ang] = {
+        idle: [0.27, 0.02, 0.06, 0.11, cy - 0.04, -sd * 20],
+        charge: [0.27, 0, 0.09, 0.1, cy + 0.03, -sd * 30],
+        air: [0.3, 0, 0, 0.08, cy - 0.2, -sd * 10],
+        wobble: [0.27, -0.1, 0.06, 0.1, cy - 0.12, sd * 14],
+      }[m];
+      s += white(cx, cy, R) + pupil(cx + px, cy + py, pr) + lid(cx, cy, R, fy, ang, col);
+    }
+    return s;
+  } },
+  { id: "cyclops", name: "Cyclops", draw(m, col) {
+    const cy = -0.12;
+    if (m === "ko") return white(0, cy, 0.42) + spiral(0, cy, 0.32);
+    const [R, px, py, pr, fy, ang] = {
+      idle: [0.42, 0.04, 0.07, 0.18, -9, 0],
+      charge: [0.42, 0, 0.1, 0.15, cy - 0.04, 0],
+      air: [0.46, 0, 0, 0.1, -9, 0],
+      wobble: [0.42, -0.16, 0.08, 0.15, cy - 0.3, 10],
+    }[m];
+    return white(0, cy, R) + pupil(px, cy + py, pr) + lid(0, cy, R, fy, ang, col);
+  } },
+  { id: "shades", name: "Shades", draw(m) {
+    const cy = -0.12;
+    const lenses = (dx, dy, rot, cracked) => {
+      let s = `<g transform="translate(${dx} ${dy}) rotate(${rot})">`;
+      s += `<path d="M-.47 ${f(cy - 0.06)}L-.62 ${f(cy - 0.1)}M.47 ${f(cy - 0.06)}L.62 ${f(cy - 0.1)}M-.05 ${f(cy - 0.06)}Q0 ${f(cy - 0.11)} .05 ${f(cy - 0.06)}" stroke="${INK}" stroke-width=".07" fill="none" stroke-linecap="round"/>`;
+      for (const sd of SIDES) {
+        const cx = sd * 0.26;
+        s += `<rect x="${f(cx - 0.22)}" y="${f(cy - 0.14)}" width=".44" height=".28" rx=".1" fill="${INK}"/>`;
+        s += cracked
+          ? `<path d="M${f(cx - 0.16)} ${f(cy - 0.08)}L${f(cx - 0.03)} ${f(cy + 0.02)}L${f(cx + 0.04)} ${f(cy - 0.06)}L${f(cx + 0.15)} ${f(cy + 0.08)}M${f(cx - 0.03)} ${f(cy + 0.02)}L${f(cx - 0.06)} ${f(cy + 0.12)}" stroke="#fff" stroke-width=".035" fill="none" stroke-linejoin="round"/>`
+          : `<path d="M${f(cx - 0.13)} ${f(cy + 0.03)}L${f(cx - 0.04)} ${f(cy - 0.08)}" stroke="#fff" stroke-width=".05" stroke-linecap="round" opacity=".9"/>`;
+      }
+      return s + "</g>";
+    };
+    if (m === "air") {
+      let s = "";
+      for (const sd of SIDES) s += white(sd * 0.26, -0.02, 0.15) + pupil(sd * 0.26, -0.02, 0.05);
+      return s + lenses(0, -0.32, 0, false);
+    }
+    if (m === "charge") return lenses(0, 0.03, 0, false) + `<path d="M.36 -.36L.4 -.26L.5 -.22L.4 -.18L.36 -.08L.32 -.18L.22 -.22L.32 -.26Z" fill="#fff" stroke="${INK}" stroke-width=".025"/>`;
+    if (m === "wobble") return lenses(0, 0.08, -9, false);
+    if (m === "ko") return lenses(0.05, 0.06, 14, true);
+    return lenses(0, 0, 0, false);
+  } },
+];
+
+const BROW_POSE = { idle: [0, 6], charge: [0.1, 28], air: [-0.16, -4], wobble: [-0.04, -22], ko: [0, -18] }; // [dy, inner end down (deg)]
+const BROWS = [
+  { id: "none", name: "None" },
+  { id: "thin", name: "Thin" },
+  { id: "thick", name: "Thick" },
+  { id: "bushy", name: "Bushy" },
+  { id: "uni", name: "Unibrow" },
+];
+function drawBrows(style, m, eyes) {
+  if (style === "none") return "";
+  const [dy, a] = BROW_POSE[m];
+  const by = -0.52 + dy;
+  if (style === "uni" || eyes === "cyclops") {
+    const w = { uni: 0.12, thin: 0.07, thick: 0.14, bushy: 0.17 }[style];
+    const half = eyes === "cyclops" ? 0.45 : 0.72;
+    const cOff = a * 0.006;
+    const by2 = eyes === "cyclops" ? by - 0.08 : by;
+    return `<path d="M${-half} ${f(by2)}Q0 ${f(by2 + cOff * 2)} ${half} ${f(by2)}" stroke="${INK}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
+  }
+  let s = "";
+  for (const sd of SIDES) {
+    const cx = sd * 0.4, rot = f(-sd * a), tr = `transform="rotate(${rot} ${f(cx)} ${f(by)})"`;
+    if (style === "thin") s += `<path d="M${f(cx - 0.17)} ${f(by)}L${f(cx + 0.17)} ${f(by)}" stroke="${INK}" stroke-width=".07" stroke-linecap="round" ${tr}/>`;
+    if (style === "thick") s += `<rect x="${f(cx - 0.19)}" y="${f(by - 0.065)}" width=".38" height=".13" rx=".065" fill="${INK}" ${tr}/>`;
+    if (style === "bushy") s += `<g ${tr}>${[-0.13, 0, 0.13].map(o => `<circle cx="${f(cx + o)}" cy="${f(by - (o === 0 ? 0.02 : 0))}" r=".085" fill="${INK}"/>`).join("")}</g>`;
+  }
+  return s;
+}
+
+const MOUTHS = [
+  { id: "grin", name: "Grin" }, { id: "smirk", name: "Smirk" }, { id: "fangs", name: "Fangs" },
+  { id: "grill", name: "Gold grill" }, { id: "tongue", name: "Tongue" }, { id: "tiny", name: "Tiny" },
+];
+const st = (d, w = 0.08) => `<path d="${d}" fill="none" stroke="${INK}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const fang = (x, y, len = 0.12, dir = 1) => `<path d="M${f(x - 0.05)} ${f(y)}L${f(x + 0.05)} ${f(y)}L${f(x)} ${f(y + len * dir)}Z" fill="#fff" stroke="${INK}" stroke-width=".035" stroke-linejoin="round"/>`;
+const tongueBlob = (x, y, rx, ry, rot = 0) => `<g transform="rotate(${rot} ${f(x)} ${f(y)})"><ellipse cx="${f(x)}" cy="${f(y)}" rx="${rx}" ry="${ry}" fill="${PINK}" stroke="${INK}" stroke-width=".05"/><path d="M${f(x)} ${f(y - ry * 0.5)}L${f(x)} ${f(y + ry * 0.5)}" stroke="${INK}" stroke-width=".03" opacity=".6"/></g>`;
+function smileY(x, w, y0, cy) { const t = (x / w + 1) / 2; return (1 - t) ** 2 * y0 + 2 * (1 - t) * t * cy + t * t * y0; }
+
+function drawMouth(style, m) {
+  if (m === "charge") {
+    const w = style === "tiny" ? 0.12 : 0.26, xo = style === "smirk" ? 0.05 : 0;
+    const fill = style === "grill" ? GOLD : "#fff";
+    let s = `<g transform="rotate(${style === "smirk" ? -8 : 0} 0 .44)"><rect x="${f(xo - w)}" y=".35" width="${f(2 * w)}" height=".17" rx=".06" fill="${fill}" stroke="${INK}" stroke-width=".07"/>`;
+    s += st(`M${f(xo - w)} .435L${f(xo + w)} .435` + [-1, 0, 1].map(k => `M${f(xo + k * w / 2)} .35L${f(xo + k * w / 2)} .52`).join(""), 0.04);
+    if (style === "fangs") s += fang(xo - 0.13, 0.52, 0.09) + fang(xo + 0.13, 0.52, 0.09);
+    return s + "</g>";
+  }
+  if (m === "air") {
+    const tiny = style === "tiny", rx = tiny ? 0.07 : 0.15, ry = tiny ? 0.09 : 0.19, cy = 0.48;
+    let s = `<ellipse cx="0" cy="${cy}" rx="${rx}" ry="${ry}" fill="${INK}"/><ellipse cx="0" cy="${f(cy + ry * 0.55)}" rx="${f(rx * 0.6)}" ry="${f(ry * 0.32)}" fill="${PINK}"/>`;
+    if (style === "fangs") s += fang(-0.07, cy - ry + 0.03, 0.08) + fang(0.07, cy - ry + 0.03, 0.08);
+    if (style === "grill") s += `<rect x="${f(-rx * 0.8)}" y="${f(cy - ry + 0.03)}" width="${f(rx * 1.6)}" height=".07" rx=".02" fill="${GOLD}" stroke="${INK}" stroke-width=".03"/>`;
+    if (style === "tongue") s += tongueBlob(0, cy + ry, 0.09, 0.1);
+    return s;
+  }
+  if (m === "wobble") {
+    const w = style === "tiny" ? 0.14 : 0.28, sg = w / 2;
+    let s = `<g transform="rotate(${style === "smirk" ? -8 : 0} 0 .45)">` + st(`M${f(-w)} .45q${f(sg / 2)} -.07 ${f(sg)} 0t${f(sg)} 0t${f(sg)} 0t${f(sg)} 0`, 0.07);
+    if (style === "fangs") s += fang(0.07, 0.45, 0.1);
+    if (style === "grill") s += `<rect x="-.05" y=".46" width=".1" height=".09" rx=".02" fill="${GOLD}" stroke="${INK}" stroke-width=".035"/>`;
+    if (style === "tongue") s += tongueBlob(0.13, 0.52, 0.07, 0.09, -15);
+    return s + "</g>";
+  }
+  if (m === "ko") {
+    const tiny = style === "tiny";
+    if (tiny) return st("M-.09 .5Q0 .42 .09 .5", 0.07) + tongueBlob(0.06, 0.55, 0.045, 0.065, -20);
+    let s = `<path d="M-.24 .52Q0 .3 .24 .52Q0 .6 -.24 .52Z" fill="${INK}" stroke="${INK}" stroke-width=".06" stroke-linejoin="round"/>`;
+    s += tongueBlob(0.13, 0.6, 0.08, 0.12, -20);
+    if (style === "fangs") s += fang(-0.1, 0.43, 0.1);
+    if (style === "grill") s += `<g transform="rotate(25 .44 .26)"><rect x=".4" y=".21" width=".08" height=".1" rx=".02" fill="${GOLD}" stroke="${INK}" stroke-width=".03"/></g>` + st("M.3 .2L.34 .22M.32 .3L.36 .29", 0.03);
+    return s;
+  }
+  // idle: the style's signature look
+  switch (style) {
+    case "grin": return `<path d="M-.3 .34Q0 .78 .3 .34Z" fill="${INK}" stroke="${INK}" stroke-width=".07" stroke-linejoin="round"/><path d="M-.26 .37L.26 .37Q.22 .44 .2 .45L-.2 .45Q-.22 .44 -.26 .37Z" fill="#fff"/><ellipse cx="0" cy=".5" rx=".09" ry=".04" fill="${PINK}"/>`;
+    case "smirk": return st("M-.22 .48Q.06 .52 .26 .34") + st("M.21 .29Q.3 .32 .3 .4", 0.05);
+    case "fangs": return st("M-.28 .38Q0 .6 .28 .38") + fang(-0.12, smileY(-0.12, 0.28, 0.38, 0.6)) + fang(0.12, smileY(0.12, 0.28, 0.38, 0.6));
+    case "grill": return `<path d="M-.3 .34Q0 .78 .3 .34Z" fill="${INK}" stroke="${INK}" stroke-width=".07" stroke-linejoin="round"/><path d="M-.26 .37L.26 .37Q.22 .45 .2 .46L-.2 .46Q-.22 .45 -.26 .37Z" fill="${GOLD}"/>` + st("M-.12 .37L-.12 .46M0 .37L0 .47M.12 .37L.12 .46", 0.03) + `<path d="M.04 .39L.08 .39" stroke="#fff" stroke-width=".025" stroke-linecap="round"/>`;
+    case "tongue": return `<path d="M-.24 .36Q0 .7 .24 .36Z" fill="${INK}" stroke="${INK}" stroke-width=".07" stroke-linejoin="round"/>` + tongueBlob(0.06, 0.6, 0.1, 0.14);
+    default: return st("M-.08 .44Q0 .5 .08 .44", 0.07);
+  }
+}
+const SWEAT = `<path d="M.68 -.68Q.79 -.47 .68 -.42Q.57 -.47 .68 -.68Z" fill="#9fe3ff" stroke="${INK}" stroke-width=".05"/><path d="M-.74 -.36Q-.67 -.22 -.74 -.19Q-.81 -.22 -.74 -.36Z" fill="#9fe3ff" stroke="${INK}" stroke-width=".04"/>`;
+
+// ---------- whole fighter ----------
+function face(cfg, mood, g) {
+  const col = COLORS[cfg.color].c;
+  const eyes = EYES.find(e => e.id === cfg.eyes).draw(mood, col);
+  return `<g transform="translate(${f(g.I[0])} ${f(g.I[1])}) rotate(${f(g.faceAng)}) scale(${f(g.s)})">` +
+    drawBrows(cfg.brows, mood, cfg.eyes) + eyes + drawMouth(cfg.mouth, mood) + (mood === "wobble" ? SWEAT : "") + "</g>";
+}
+
+function worldFx(mood, g, pose, col) {
+  if (mood === "charge") {
+    return `<ellipse cx="0" cy="3" rx="46" ry="9" fill="none" stroke="${col}" stroke-width="4" opacity=".85"/>` +
+      `<path d="M-30 -4L-54 -22M30 -4L54 -22M-42 4L-70 2M42 4L70 2" stroke="#fff" stroke-width="4" stroke-linecap="round"/>`;
+  }
+  if (mood === "air") {
+    const y = -pose.lift;
+    return `<path d="M-26 ${y + 22}Q0 ${y + 40} 26 ${y + 22}M-18 ${y + 38}Q0 ${y + 50} 18 ${y + 38}" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".7"/>` +
+      `<ellipse cx="0" cy="2" rx="30" ry="5" fill="#000" opacity=".25"/>`;
+  }
+  if (mood === "wobble") {
+    return `<path d="M-22 -26Q-34 -12 -22 2M22 -26Q34 -12 22 2" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".8"/>`;
+  }
+  if (mood === "ko") {
+    const c = xf(g.L, pose);
+    const pts = [];
+    for (let i = 0; i < 20; i++) { const a = i * Math.PI / 10, r = i % 2 ? 13 : 30; pts.push(f(c[0] + r * Math.cos(a)) + "," + f(c[1] - 4 + r * Math.sin(a) * 0.8)); }
+    const body = [g.F, g.L, g.R].map(p => xf(p, pose));
+    const tx = body.reduce((s, p) => s + p[0], 0) / 3, ty = Math.min(...body.map(p => p[1])) - 16;
+    return `<polygon points="${pts.join(" ")}" fill="#fff" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>` +
+      `<text x="${f(tx)}" y="${f(ty)}" text-anchor="middle" font-family="Permanent Marker, cursive" font-size="34" fill="${GOLD}" stroke="${INK}" stroke-width="5" paint-order="stroke" transform="rotate(-6 ${f(tx)} ${f(ty)})">K.O.!</text>`;
+  }
+  return "";
+}
+
+function fighter(cfg, mood, pose, opts = {}) {
+  const g = geom(cfg.shape), col = COLORS[cfg.color].c;
+  pose = pose || poseFor(mood, g);
+  const pts = [g.F, g.L, g.R].map(p => f(p[0]) + "," + f(p[1])).join(" ");
+  const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const h1 = lerp(lerp(g.F, g.L, 0.3), g.I, 0.16), h2 = lerp(lerp(g.F, g.L, 0.72), g.I, 0.16);
+  let s = "";
+  if (opts.fx !== false && mood !== "ko") s += worldFx(mood, g, pose, col);
+  s += `<g transform="translate(0 ${f(-pose.lift)}) rotate(${f(pose.tilt)}) scale(${pose.sx} ${pose.sy})">`;
+  if (!opts.lite) s += `<polygon points="${pts}" fill="${col}" stroke="${col}" stroke-width="18" stroke-linejoin="round" opacity=".35" filter="url(#overspray)"/>`;
+  s += `<polygon points="${pts}" fill="${col}" filter="url(#grain)"/>`;
+  s += `<path d="M${f(h1[0])} ${f(h1[1])}L${f(h2[0])} ${f(h2[1])}" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".45"/>`;
+  s += `<polygon points="${pts}" fill="none" stroke="${INK}" stroke-width="6" stroke-linejoin="round"/>`;
+  s += face(cfg, mood, g) + "</g>";
+  if (opts.fx !== false && mood === "ko") s += worldFx(mood, g, pose, col);
+  return s;
+}
+
+const MOODS = [
+  { id: "idle", name: "Idle", when: "Standing on its foot" },
+  { id: "charge", name: "Charge", when: "Holding charge on the ground" },
+  { id: "air", name: "Hop", when: "In the air" },
+  { id: "wobble", name: "Wobble", when: "Tilted close to tipping" },
+  { id: "ko", name: "KO'd", when: "Top corner hit the ground" },
+];
+
+// Bounding box of a shape across every mood (for small previews at one consistent scale).
+const boxCache = {};
+function moodBox(shapeId) {
+  if (boxCache[shapeId]) return boxCache[shapeId];
+  const g = geom(shapeId);
+  let x0 = -75, x1 = 75, y0 = 0, y1 = 14;
+  for (const m of MOODS) {
+    const pose = poseFor(m.id, g);
+    const body = [g.F, g.L, g.R].map(p => xf(p, pose));
+    for (const [x, y] of body) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    if (m.id === "ko") {
+      const tx = body.reduce((s, p) => s + p[0], 0) / 3, ty = Math.min(...body.map(p => p[1])) - 16;
+      x0 = Math.min(x0, tx - 50, body[1][0] - 32); x1 = Math.max(x1, tx + 50); y0 = Math.min(y0, ty - 32);
+    }
+  }
+  const pad = 14;
+  return (boxCache[shapeId] = [x0 - pad, y0 - pad, x1 - x0 + 2 * pad, y1 - y0 + 2 * pad]);
+}
+function groundLine(b) {
+  return `<path d="M${f(b[0])} 4H${f(b[0] + b[2])}" stroke="${INK}" stroke-width="10"/><path d="M${f(b[0])} 2H${f(b[0] + b[2])}" stroke="#c9b6ff" stroke-width="4"/>`;
+}
+function miniSVG(cfg, mood, label) {
+  const b = moodBox(cfg.shape);
+  return `<svg viewBox="${b.map(f).join(" ")}" role="img" aria-label="${label}">${groundLine(b)}${fighter(cfg, mood, null, { lite: true })}</svg>`;
+}
+
+// ---------- page state ----------
+const prefersReduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const state = { shape: "standard", color: 0, eyes: "googly", brows: "thick", mouth: "grin", mood: "idle", playing: !prefersReduced };
+const $ = id => document.getElementById(id);
+const cfgOf = () => ({ shape: state.shape, color: state.color, eyes: state.eyes, brows: state.brows, mouth: state.mouth });
+
+const PLATFORM = (() => {
+  let s = `<text x="300" y="150" text-anchor="middle" font-family="Permanent Marker, cursive" font-size="150" fill="none" stroke="#c9b6ff" stroke-width="3" opacity=".12" transform="rotate(-5 300 150)">DUEL</text>`;
+  s += `<path d="M62 330H538L516 362L470 380L410 372L360 398L300 386L236 402L180 378L118 384L84 360Z" fill="#4a3478" stroke="${INK}" stroke-width="5" stroke-linejoin="round"/>`;
+  for (const [x, h] of [[130, 26], [214, 40], [330, 22], [398, 34], [478, 18]]) {
+    s += `<path d="M${x - 5} 368V${368 + h}a5 5 0 0 0 10 0V368Z" fill="#4a3478"/>`;
+  }
+  s += `<path d="M62 330H538" stroke="#c9b6ff" stroke-width="7" stroke-linecap="round"/>`;
+  s += `<path d="M62 326H538" stroke="${INK}" stroke-width="2" opacity=".5"/>`;
+  return s;
+})();
+function drawStage(mood, pose) {
+  $("stage").innerHTML = PLATFORM + `<g transform="translate(300 330)">${fighter(cfgOf(), mood, pose)}</g>`;
+}
+
+// Scripted loop: idle → charge → hop → land → wobble → tip → KO.
+const PERIOD = 6.6;
+const ease = t => t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+const clamp01 = t => Math.max(0, Math.min(1, t));
+function poseAt(t, g) {
+  const P = (mood, tilt = 0, lift = 0, sx = 1, sy = 1) => ({ mood, pose: { tilt, lift, sx, sy } });
+  if (t < 1.4) return P("idle", Math.sin(t * 4) * 3);
+  if (t < 2.2) { const u = ease(clamp01((t - 1.4) / 0.6)); return P("charge", 0, 0, 1 + 0.12 * u, 1 - 0.2 * u); }
+  if (t < 3.0) { const u = (t - 2.2) / 0.8; return P("air", -14 * Math.sin(u * Math.PI), 4 * 70 * u * (1 - u), 1 - 0.05 * (1 - u), 1 + 0.06 * (1 - u)); }
+  if (t < 3.4) { const u = (t - 3.0) / 0.4; const k = Math.sin(u * Math.PI) * (1 - u); return P("idle", 0, 0, 1 + 0.1 * k, 1 - 0.12 * k); }
+  if (t < 4.7) { const u = ease(clamp01((t - 3.4) / 1.1)); const tilt = g.koDeg * 0.55 * u + Math.sin(t * 22) * 3 * u; return P(u > 0.25 ? "wobble" : "idle", tilt); }
+  if (t < 4.95) { const u = clamp01((t - 4.7) / 0.25); return P("wobble", g.koDeg * (0.55 + 0.45 * u * u)); }
+  return P("ko", g.koDeg);
+}
+let t0 = performance.now(), raf = 0;
+function frame(now) {
+  if (!state.playing) return;
+  const t = ((now - t0) / 1000) % PERIOD;
+  const { mood, pose } = poseAt(t, geom(state.shape));
+  drawStage(mood, pose);
+  raf = requestAnimationFrame(frame);
+}
+
+// ---------- pickers ----------
+function faceThumb(over, mood) {
+  const cfg = { ...cfgOf(), ...over }, g = geom(cfg.shape), k = g.s * 1.55;
+  return `<svg viewBox="${f(g.I[0] - k)} ${f(g.I[1] - k)} ${f(2 * k)} ${f(2 * k)}" aria-hidden="true">${fighter(cfg, mood, poseFor("idle", g), { lite: true, fx: false })}</svg>`;
+}
+function shapeThumb(id) {
+  const cfg = { ...cfgOf(), shape: id }, g = geom(id);
+  const xs = [g.F, g.L, g.R].map(p => p[0]), ys = [g.F, g.L, g.R].map(p => p[1]);
+  const x0 = Math.min(...xs) - 10, x1 = Math.max(...xs) + 10, y0 = Math.min(...ys) - 10, y1 = 10;
+  const side = Math.max(x1 - x0, y1 - y0), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  return `<svg viewBox="${f(cx - side / 2)} ${f(cy - side / 2)} ${f(side)} ${f(side)}" aria-hidden="true">${fighter(cfg, "idle", null, { lite: true, fx: false })}</svg>`;
+}
+function renderPickers() {
+  const pm = state.playing ? "idle" : state.mood;
+  $("opt-shape").innerHTML = SHAPES.map(s => `<button class="opt" data-k="shape" data-v="${s.id}" aria-pressed="${state.shape === s.id}">${shapeThumb(s.id)}${s.name}</button>`).join("");
+  $("opt-color").innerHTML = COLORS.map((c, i) => `<button class="swatch" data-k="color" data-v="${i}" aria-pressed="${state.color === i}" aria-label="${c.name}" title="${c.name}" style="background:${c.c}"></button>`).join("");
+  $("opt-eyes").innerHTML = EYES.map(e => `<button class="opt" data-k="eyes" data-v="${e.id}" aria-pressed="${state.eyes === e.id}">${faceThumb({ eyes: e.id }, pm)}${e.name}</button>`).join("");
+  $("opt-brows").innerHTML = BROWS.map(b => `<button class="opt" data-k="brows" data-v="${b.id}" aria-pressed="${state.brows === b.id}">${faceThumb({ brows: b.id }, pm)}${b.name}</button>`).join("");
+  $("opt-mouth").innerHTML = MOUTHS.map(m => `<button class="opt" data-k="mouth" data-v="${m.id}" aria-pressed="${state.mouth === m.id}">${faceThumb({ mouth: m.id }, pm)}${m.name}</button>`).join("");
+}
+function codeOf(cfg) {
+  return [SHAPES.findIndex(s => s.id === cfg.shape), cfg.color, EYES.findIndex(e => e.id === cfg.eyes),
+    BROWS.findIndex(b => b.id === cfg.brows), MOUTHS.findIndex(m => m.id === cfg.mouth)].join("-");
+}
+function renderStrip() {
+  const cfg = cfgOf();
+  $("strip").innerHTML = MOODS.map(m => `<div class="cell">${miniSVG(cfg, m.id, m.name)}<b>${m.name}</b><span>${m.when}</span></div>`).join("");
+}
+function renderMoodButtons() {
+  const bar = $("moods");
+  bar.querySelectorAll("[data-mood]").forEach(b => b.remove());
+  for (const m of MOODS) {
+    const b = document.createElement("button");
+    b.className = "btn"; b.dataset.mood = m.id; b.textContent = m.name;
+    b.setAttribute("aria-pressed", String(!state.playing && state.mood === m.id));
+    bar.appendChild(b);
+  }
+  $("loop").setAttribute("aria-pressed", String(state.playing));
+  $("loop").textContent = state.playing ? "❚❚ Loop" : "▶ Loop";
+}
+function renderAll() {
+  renderPickers(); renderStrip(); renderMoodButtons();
+  $("code").textContent = codeOf(cfgOf());
+  if (!state.playing) drawStage(state.mood);
+}
+
+// ---------- random crew ----------
+const NAMES = ["Tippy", "Pointdexter", "Wobbles", "Shard", "Dorito Dan", "Hypo", "Notch", "Scal", "Isosceles Ike", "Pyra", "Acutie", "Obtuse Otto", "Vertex", "Wedgie", "Spikey Mikey", "Trig", "Cornelius", "Pivot", "Lil Angle", "Big Hyp"];
+const pick = a => a[Math.floor(Math.random() * a.length)];
+let crew = [];
+function rollCrew() {
+  const names = [...NAMES].sort(() => Math.random() - 0.5);
+  crew = Array.from({ length: 8 }, (_, i) => ({
+    shape: pick(SHAPES).id, color: Math.floor(Math.random() * COLORS.length),
+    eyes: pick(EYES).id, brows: pick(BROWS).id, mouth: pick(MOUTHS).id, name: names[i],
+  }));
+  $("crew").innerHTML = crew.map((c, i) => `<button class="card" data-crew="${i}">
+    <div class="pair">${miniSVG(c, "idle", c.name + " standing")}${miniSVG(c, "ko", c.name + " KO'd")}</div>
+    <span class="nm">${c.name}</span>
+    <span class="meta">${SHAPES.find(s => s.id === c.shape).name} · ${EYES.find(e => e.id === c.eyes).name} · ${BROWS.find(b => b.id === c.brows).name} brows · ${MOUTHS.find(m => m.id === c.mouth).name}</span>
+  </button>`).join("");
+}
+
+// ---------- events ----------
+document.addEventListener("click", e => {
+  const opt = e.target.closest("[data-k]");
+  if (opt) {
+    const k = opt.dataset.k;
+    state[k] = k === "color" ? Number(opt.dataset.v) : opt.dataset.v;
+    renderAll(); return;
+  }
+  const mb = e.target.closest("[data-mood]");
+  if (mb) { state.playing = false; cancelAnimationFrame(raf); state.mood = mb.dataset.mood; renderAll(); return; }
+  const card = e.target.closest("[data-crew]");
+  if (card) { const c = crew[Number(card.dataset.crew)]; Object.assign(state, { shape: c.shape, color: c.color, eyes: c.eyes, brows: c.brows, mouth: c.mouth }); renderAll(); window.scrollTo({ top: 0, behavior: prefersReduced ? "auto" : "smooth" }); }
+});
+$("loop").addEventListener("click", () => {
+  state.playing = !state.playing;
+  if (state.playing) { t0 = performance.now(); raf = requestAnimationFrame(frame); }
+  else { cancelAnimationFrame(raf); state.mood = "idle"; }
+  renderAll();
+});
+$("rand").addEventListener("click", () => {
+  Object.assign(state, { shape: pick(SHAPES).id, color: Math.floor(Math.random() * COLORS.length), eyes: pick(EYES).id, brows: pick(BROWS).id, mouth: pick(MOUTHS).id });
+  renderAll();
+});
+$("reroll").addEventListener("click", rollCrew);
+
+renderAll();
+rollCrew();
+if (state.playing) raf = requestAnimationFrame(frame);
+else drawStage("idle");
+</script>

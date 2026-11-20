@@ -2,10 +2,10 @@
   // On-screen controls for touch screens. Two schemes (pause menu to switch):
   //
   //   stick (default): put a thumb down anywhere on the control area and a
-  //     stick appears there. Slide sideways to tilt, pull down to charge,
-  //     diagonally for both (aim while charging): ← ↓ → under one thumb, like
-  //     the keyboard. It follows the thumb past its edge, so reversing is
-  //     quick. A second finger anywhere also charges.
+  //     stick appears there. It's analog (src/aim.ts): sideways sets your
+  //     speed (centered = stop and balance); pulled down, you charge, and
+  //     sideways then sets your aim. It follows the thumb past its edge, so
+  //     reversing is quick. A second finger anywhere also charges.
   //   buttons: ◀ ▶ under the left thumb, Charge under the right. A thumb keeps
   //     the role it started with (it can slide between ◀ and ▶), so drifting
   //     can't start or drop a charge.
@@ -29,11 +29,12 @@
   }
 
   // ---- stick ----
-  const R = 56; // px: how far the knob travels; the base follows beyond this
-  const TURN_ON = 14; // px sideways to start tilting...
-  const TURN_OFF = 8; // ...and back within this to stop (hysteresis: no flicker)
-  const CHARGE_ON = 22; // px down to start charging
-  const CHARGE_OFF = 14;
+  // Analog: the sideways position (-1..1) goes to src/aim.ts, which turns it
+  // into a target speed (moving) or aim (charging). Pulling down charges.
+  const R = 64; // px of knob travel each way; past that the base follows the thumb
+  const CENTER = 0.12; // fraction of R: a dead zone at the center (= stop)
+  const CHARGE_ON = 22; // px down to start charging...
+  const CHARGE_OFF = 14; // ...and back above this to stop (hysteresis: no flicker)
   let stickId = $state<number | null>(null);
   let base = $state({ x: 0, y: 0 }); // where the stick is (px, in the pad)
   let knob = $state({ x: 0, y: 0 }); // offset from the base
@@ -45,11 +46,15 @@
   }
 
   function stickInput() {
-    const { x, y } = knob;
-    const t = pressed.right ? x > TURN_OFF : pressed.left ? false : x > TURN_ON;
-    const l = pressed.left ? x < -TURN_OFF : pressed.right ? false : x < -TURN_ON;
-    const stickCharge = stickId !== null && (pressed.charge ? y > CHARGE_OFF : y > CHARGE_ON);
-    set({ left: stickId !== null && l, right: stickId !== null && t, charge: stickCharge || extra.size > 0 });
+    if (stickId === null) {
+      touch.stickX = null;
+      set({ left: false, right: false, charge: extra.size > 0 });
+      return;
+    }
+    const raw = knob.x / R;
+    touch.stickX = Math.abs(raw) < CENTER ? 0 : (Math.sign(raw) * (Math.abs(raw) - CENTER)) / (1 - CENTER);
+    const charge = pressed.charge ? knob.y > CHARGE_OFF : knob.y > CHARGE_ON;
+    set({ left: false, right: false, charge: charge || extra.size > 0 });
   }
 
   function stickDown(e: PointerEvent) {
@@ -66,14 +71,17 @@
   function stickMove(e: PointerEvent) {
     if (e.pointerId !== stickId) return;
     const p = local(e);
+    // Each axis on its own (a square, not a circle), so pulling down to charge
+    // doesn't shrink how far you can aim sideways. Past the edge, the base follows.
     let dx = p.x - base.x;
     let dy = p.y - base.y;
-    const d = Math.hypot(dx, dy);
-    if (d > R) {
-      // Drag the base along, so the knob stays at the rim.
-      base = { x: p.x - (dx / d) * R, y: p.y - (dy / d) * R };
-      dx = (dx / d) * R;
-      dy = (dy / d) * R;
+    if (Math.abs(dx) > R) {
+      base = { ...base, x: p.x - Math.sign(dx) * R };
+      dx = Math.sign(dx) * R;
+    }
+    if (Math.abs(dy) > R) {
+      base = { ...base, y: p.y - Math.sign(dy) * R };
+      dy = Math.sign(dy) * R;
     }
     knob = { x: dx, y: dy };
     stickInput();
@@ -136,6 +144,7 @@
     extra.clear();
     stickId = null;
     knob = { x: 0, y: 0 };
+    touch.stickX = null;
     set({ left: false, right: false, charge: false });
   }
   // Switching schemes mid-match: start clean.
@@ -159,11 +168,11 @@
 >
   {#if scheme === "stick"}
     {#if stickId !== null}
-      <div class="base" style:left="{base.x}px" style:top="{base.y}px" style:width="{2 * R}px" style:height="{2 * R}px">
+      <div class="base" style:left="{base.x}px" style:top="{base.y}px" style:width="{2 * R}px" style:height="{2 * R}px" style:border-radius="22%">
         <div class="knob" class:charging={pressed.charge} style:transform="translate({knob.x}px, {knob.y}px)"></div>
       </div>
     {:else}
-      <p class="stick-hint">Thumb anywhere here · slide ◀ ▶ to tilt · pull ▼ to charge</p>
+      <p class="stick-hint">Thumb anywhere here · slide ◀ ▶ to move · pull ▼ to charge, then slide to aim</p>
     {/if}
   {:else}
     <div class="turns" style:width="{turnEnd * 100}%">

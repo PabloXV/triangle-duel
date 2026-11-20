@@ -136,7 +136,7 @@ export class Game {
     const names: string[] = [];
     for (let i = 0; i < players; i++) {
       if (i < humans) {
-        sources.push(new KeyboardSource(i));
+        sources.push(new KeyboardSource(i, i));
         names.push(i === 0 ? this.playerName : "player 2");
       } else {
         sources.push(this.bot(i, reaction));
@@ -169,8 +169,9 @@ export class Game {
       angles: sim.view().map((f) => f.angle),
       ko: sim.view().map((f) => f.ko),
       grounded: sim.view().map((f) => f.grounded),
+      lastInputs: (this.session as { lastInputs?: unknown }).lastInputs ?? null,
       charge: sim.view().map((f) => f.charge),
-      positions: sim.view().map((f) => ({ x: f.x, y: f.y })),
+      positions: sim.view().map((f) => ({ x: f.x, y: f.y, vx: f.vx })),
       camera: this.lastCamera,
       canvas: { width: this.renderer.canvasSize().width, height: this.renderer.canvasSize().height },
       // Each fighter's shape at a glance: height, width, area (= mass, since density is shared).
@@ -265,7 +266,7 @@ export class Game {
     // host, your browser also drives the room's bots.
     net.onStart = (setup, you, drive) => {
       const names = Array.from({ length: setup.match.players }, (_, i) => net.nameOf(i));
-      const sources = new Map<number, InputSource>([[you, new KeyboardSource(0)]]);
+      const sources = new Map<number, InputSource>([[you, new KeyboardSource(0, you)]]);
       for (const f of drive) {
         if (f === you) continue;
         const bot = new HeuristicBot(f, { ...DEFAULT_BOT, seed: this.matchNumber * 4 + f + 1 });

@@ -3,6 +3,7 @@
 
 import { mount } from "svelte";
 import { Game } from "./game";
+import { touch } from "./input";
 import { buildPanel } from "./panel";
 import { initPhysics } from "./sim/sim";
 import App from "./ui/App.svelte";
@@ -20,4 +21,4 @@ window.addEventListener("keydown", (e) => {
 });
 
 // Debug handle (browser console, and browser tests): what's running now.
-Object.assign(window, { triangleDuel: { game } });
+Object.assign(window, { triangleDuel: { game, touch } });
