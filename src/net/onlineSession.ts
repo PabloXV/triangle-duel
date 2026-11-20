@@ -66,7 +66,7 @@ export interface RollbackStats {
   maxDepth: number; // deepest single rollback (steps)
   maxCorrection: number; // largest visible jump of any fighter when the present was corrected (m)
   totalCorrection: number; // sum of those jumps (m), for averages
-  ownLate: number; // rollbacks caused by my own input arriving late (the relay moved it to a later step)
+  ownLate: number; // rollbacks caused by my own fighter's input arriving late (the relay moved it to a later step)
   stalls: number; // step() calls that ran no step (the present waited)
   bursts: number; // step() calls that ran 3+ steps at once (the present jumped)
 }
@@ -248,12 +248,16 @@ export class OnlineSession implements Session {
       }
     }
     if (mismatch !== null) {
-      // My own input changed there? Then it arrived late and the relay moved it.
+      // My own input changed there? Then it arrived late and the relay moved it:
+      // run further ahead from now on. Only my own fighter's input counts: room
+      // bots I drive (as host) change input every few steps, and widening the
+      // margin for them made everyone predict deeper (bots then jittered on the
+      // other screens) for no gain in feel.
       const used = this.used.get(mismatch)!;
       const official = this.official.get(mismatch)!;
-      if ([...this.sources.keys()].some((f) => used[f] !== official[f])) {
+      if (this.you >= 0 && used[this.you] !== official[this.you]) {
         this.stats.ownLate++;
-        this.margin = Math.min(MARGIN_MAX, this.margin + 1); // run further ahead from now on
+        this.margin = Math.min(MARGIN_MAX, this.margin + 1);
         this.lastLate = this.confirmed;
       }
       // Rewind to the first wrong step and redo everything up to the present.

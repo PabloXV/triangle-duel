@@ -15,9 +15,9 @@ const conditions: [string, number, number][] = [
   ["across an ocean (~100 ms)", 6, 3],
   ["bad wifi (~50 ms, very jittery)", 3, 8],
 ];
-console.log("per client, 40 s bot matches:");
+console.log("per client, 40 s matches, 2 players + 2 room bots (A hosts; bots stand in for the players too):");
 for (const [name, latency, jitter] of conditions) {
-  const { a, b, desyncs } = playOnline({ latency: [latency, latency], jitter, ticks: TICKS });
+  const { a, b, desyncs } = playOnline({ latency: [latency, latency], jitter, ticks: TICKS, bots: 2 }); // A hosts 2 room bots
   const secs = TICKS / 60;
   const row = [a, b].map((s) => {
     const st = s.stats;
