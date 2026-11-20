@@ -17,7 +17,7 @@ import type { FighterShape, Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { MatchOptions } from "../sim/sim";
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 export const MAX_PLAYERS = 4;
 /** Spectators per room (watching a match, or waiting for a free seat). */
 export const MAX_SPECTATORS = 8;
@@ -55,6 +55,8 @@ export interface RosterEntry {
   shape: FighterShape | null;
   /** Their eye style (an index into EYE_STYLES; cosmetic, not part of the sim). */
   eyes: number;
+  /** Their color (an index into PLAYER_COLORS); unique within the room. Cosmetic. */
+  color: number;
 }
 
 export type ClientMsg =
@@ -71,6 +73,8 @@ export type ClientMsg =
   | { type: "shape"; shape: FighterShape | null }
   /** My eye style for upcoming matches. */
   | { type: "eyes"; eyes: number }
+  /** The color I'd like (granted if free; a bot holding it swaps). */
+  | { type: "color"; color: number }
   /** Host, in the lobby: change the room's settings. */
   | { type: "settings"; settings: RoomSettings }
   /** Host: remove the player in `slot` from the room. */
@@ -154,6 +158,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case "kick":
       return isInt(m.slot) && m.slot >= 0 ? { type: "kick", slot: m.slot } : null;
+    case "color":
+      return isInt(m.color) ? { type: "color", color: m.color } : null; // RoomCore checks the range
     case "eyes":
       return isInt(m.eyes) ? { type: "eyes", eyes: m.eyes } : null; // RoomCore checks the range
     case "shape":

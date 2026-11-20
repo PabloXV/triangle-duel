@@ -49,6 +49,12 @@ export interface Stage {
   platforms: Platform[];
   /** Fighters spawn evenly spaced along this line (foot positions), see spawnPoints(). */
   spawnLine: { minX: number; maxX: number; y: number };
+  /**
+   * Fixed spawn points (foot positions) per player count, where one line
+   * can't work: a gap or steps would put someone over the pit or inside a
+   * block. Overrides spawnLine for those counts.
+   */
+  spawns?: Partial<Record<number, Vec2[]>>;
   /** Respawns drop in from this height (foot position), above the player's spawn x. */
   respawnY: number;
   /** Anything whose center leaves this box is KO'd (fell off / launched). */
@@ -84,8 +90,70 @@ export const WINGS_STAGE: Stage = {
   camera: { center: { x: 0, y: 2.5 }, width: 22, height: 11 },
 };
 
+/**
+ * A short floor with three pass-through platforms, stacked like the classic
+ * three-platform layout: the side ones a bit higher than Wings' wings, the top
+ * one 4 m up (reach it from a side platform). Good for 3 to 4 players.
+ */
+export const OVERPASS_STAGE: Stage = {
+  platforms: [
+    { center: { x: 0, y: -0.5 }, halfWidth: 4.5, halfHeight: 0.5 },
+    { center: { x: -3.6, y: 1.95 }, halfWidth: 1.5, halfHeight: 0.15, oneWay: true },
+    { center: { x: 3.6, y: 1.95 }, halfWidth: 1.5, halfHeight: 0.15, oneWay: true },
+    { center: { x: 0, y: 3.85 }, halfWidth: 1.5, halfHeight: 0.15, oneWay: true },
+  ],
+  spawnLine: { minX: -4.5, maxX: 4.5, y: 0.001 },
+  respawnY: 5,
+  blastZone: { minX: -16, maxX: 16, minY: -8, maxY: 20 },
+  camera: { center: { x: 0, y: 2.7 }, width: 20, height: 11 },
+};
+
+/**
+ * Two floors with a pit between them (a KO pit mid-stage) and a pass-through
+ * bar over it. With 3 players, the middle one starts on the bar.
+ */
+export const STATION_STAGE: Stage = {
+  platforms: [
+    { center: { x: -5.25, y: -0.5 }, halfWidth: 3.75, halfHeight: 0.5 },
+    { center: { x: 5.25, y: -0.5 }, halfWidth: 3.75, halfHeight: 0.5 },
+    { center: { x: 0, y: 2.15 }, halfWidth: 1.4, halfHeight: 0.15, oneWay: true },
+  ],
+  spawnLine: { minX: -8, maxX: 8, y: 0.001 },
+  spawns: {
+    2: [{ x: -5.25, y: 0.001 }, { x: 5.25, y: 0.001 }],
+    3: [{ x: -5.25, y: 0.001 }, { x: 0, y: 2.301 }, { x: 5.25, y: 0.001 }],
+    4: [{ x: -6.75, y: 0.001 }, { x: -3.5, y: 0.001 }, { x: 3.5, y: 0.001 }, { x: 6.75, y: 0.001 }],
+  },
+  respawnY: 3.5,
+  blastZone: { minX: -20, maxX: 20, minY: -8, maxY: 20 },
+  camera: { center: { x: 0, y: 2.4 }, width: 22, height: 11 },
+};
+
+/**
+ * A wide sidewalk with a two-step stoop in the middle. The steps are solid:
+ * the first stage where the ground isn't flat, so a corner can catch on an edge.
+ */
+export const STOOP_STAGE: Stage = {
+  platforms: [
+    { center: { x: 0, y: -0.5 }, halfWidth: 7, halfHeight: 0.5 },
+    { center: { x: 0, y: 0.25 }, halfWidth: 2.6, halfHeight: 0.25 },
+    { center: { x: 0, y: 0.75 }, halfWidth: 1.7, halfHeight: 0.25 },
+  ],
+  spawnLine: { minX: -7, maxX: 7, y: 0.001 },
+  spawns: {
+    2: [{ x: -4.5, y: 0.001 }, { x: 4.5, y: 0.001 }],
+    3: [{ x: -4.8, y: 0.001 }, { x: 0, y: 1.001 }, { x: 4.8, y: 0.001 }],
+    4: [{ x: -5.6, y: 0.001 }, { x: -3.5, y: 0.001 }, { x: 3.5, y: 0.001 }, { x: 5.6, y: 0.001 }],
+  },
+  respawnY: 3.5,
+  blastZone: { minX: -18, maxX: 18, minY: -8, maxY: 20 },
+  camera: { center: { x: 0, y: 2.3 }, width: 20, height: 10 },
+};
+
 /** n spawn points, evenly spaced: each player gets the middle of an equal slice of the line. */
 export function spawnPoints(stage: Stage, n: number): Vec2[] {
+  const fixed = stage.spawns?.[n];
+  if (fixed && fixed.length === n) return fixed.map((p) => ({ ...p }));
   const { minX, maxX, y } = stage.spawnLine;
   const slice = (maxX - minX) / n;
   return Array.from({ length: n }, (_, i) => ({ x: minX + (i + 0.5) * slice, y }));

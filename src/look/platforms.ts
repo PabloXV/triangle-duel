@@ -42,7 +42,14 @@ const SMALL = {
   glossy: false,
 };
 type Size = typeof BIG;
-const sizeOf = (p: Platform): Size => (p.oneWay ? SMALL : BIG);
+/**
+ * A thin solid block sitting on something (a stair step): shallow, as deep as
+ * its box, and no drips (they'd run over whatever is below).
+ */
+function stepSize(p: Platform): Size {
+  return { ...BIG, depth: p.halfHeight * 2, chamfer: 0.1, bevel: 0.12, cap: 0.12, drip: { ...BIG.drip, perCluster: 0 }, glossy: false };
+}
+const sizeOf = (p: Platform): Size => (p.oneWay ? SMALL : p.halfHeight < 0.5 ? stepSize(p) : BIG);
 
 /** A small seeded random source, so a platform's drips are the same every time. */
 function rng(seed: number) {

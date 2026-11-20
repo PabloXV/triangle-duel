@@ -22,6 +22,7 @@ export interface RenderOptions {
   replay: boolean; // showing the final-KO replay: letterbox, no banner yet
   status?: string; // shown at the top center (e.g. "REPLAY")
   eyes?: number[]; // per fighter: eye style (src/look/eyes.ts)
+  colors?: string[]; // per fighter: body color (default: by player number)
 }
 
 
@@ -87,14 +88,14 @@ export class Renderer {
       // Respawning teleports the body; don't draw a smear between the two spots.
       if (Math.abs(p.x - f.x) + Math.abs(p.y - f.y) > 1) p = f;
       const verts = f.vertices.map((v, k) => lerpV(p.vertices[k], v, alpha));
-      this.drawFighter(verts, f, playerColor(i), opts.eyes?.[i] ?? 0, opts.debug);
+      this.drawFighter(verts, f, colorOf(opts, i), opts.eyes?.[i] ?? 0, opts.debug);
     });
 
     // Paint grain over the whole scene (not the HUD: it must stay crisp).
     fillTexture(ctx, "grain", ctx.getTransform(), 1, "multiply");
 
     if (opts.replay) this.drawLetterbox();
-    if (opts.hud) this.drawOffscreen(cam, curr);
+    if (opts.hud) this.drawOffscreen(cam, curr, opts);
     this.drawHud(curr, result, opts);
   }
 
@@ -248,14 +249,14 @@ export class Renderer {
    * the full sticker look; lost lives fade out. All icons share one scale,
    * so relative sizes show. Screen pixels.
    */
-  private drawStocks(fighters: FighterView[], names: string[], eyes: number[], totalStocks: number, cx: number, y: number) {
+  private drawStocks(fighters: FighterView[], names: string[], eyes: number[], colors: string[], totalStocks: number, cx: number, y: number) {
     const ctx = this.ctx;
     const label = (i: number) => (names[i] ?? `P${i + 1}`).slice(0, 10);
     ctx.font = `15px ${FONTS.label}`;
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
     const labelW = Math.max(28, ...fighters.map((_, i) => ctx.measureText(label(i)).width + 10));
-    const icons = fighters.map((f, i) => hudIcon(f, playerColor(i), eyes[i] ?? 0));
+    const icons = fighters.map((f, i) => hudIcon(f, colors[i], eyes[i] ?? 0));
     const iconW = Math.max(...icons.map((ic) => ic?.w ?? 0), 16);
     const step = iconW + 2;
     const slot = labelW + totalStocks * step + 18; // px per player
@@ -266,7 +267,7 @@ export class Renderer {
       ctx.strokeStyle = INK;
       ctx.lineWidth = 4;
       ctx.strokeText(label(i), x0, y);
-      ctx.fillStyle = playerColor(i);
+      ctx.fillStyle = colors[i];
       ctx.fillText(label(i), x0, y);
       const ic = icons[i];
       if (!ic) return;
@@ -283,7 +284,7 @@ export class Renderer {
    * fighter outside the view (on tall screens the camera can't always fit
    * everyone). Skips anyone below the stage: they're falling to a KO.
    */
-  private drawOffscreen(cam: CameraView, fighters: FighterView[]) {
+  private drawOffscreen(cam: CameraView, fighters: FighterView[], opts: RenderOptions) {
     const ctx = this.ctx;
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
@@ -307,7 +308,7 @@ export class Renderer {
       ctx.lineTo(-7, -8);
       ctx.lineTo(-7, 8);
       ctx.closePath();
-      ctx.fillStyle = playerColor(i);
+      ctx.fillStyle = colorOf(opts, i);
       ctx.fill();
       ctx.strokeStyle = INK;
       ctx.lineWidth = 2.5;
@@ -338,7 +339,7 @@ export class Renderer {
           `grip   ${f.gripActive ? "on" : "off"}`,
           `charge ${(f.charge * 100).toFixed(0)}%`,
         ];
-        ctx.fillStyle = playerColor(i);
+        ctx.fillStyle = colorOf(opts, i);
         lines.forEach((l, k) => ctx.fillText(l, 12 + i * 220, 12 + k * 16));
       });
     }
@@ -348,7 +349,7 @@ export class Renderer {
       ctx.fillStyle = withAlpha(HALO, 0.6);
       ctx.textAlign = "center";
       ctx.fillText(opts.controls.join("   ·   "), w / 2, h - 28);
-      this.drawStocks(fighters, opts.names, opts.eyes ?? [], opts.totalStocks, w / 2, h - 52);
+      this.drawStocks(fighters, opts.names, opts.eyes ?? [], fighters.map((_, i) => colorOf(opts, i)), opts.totalStocks, w / 2, h - 52);
       ctx.textBaseline = "top";
     }
 
@@ -376,7 +377,7 @@ export class Renderer {
       ctx.strokeText(text, 6, 6);
       ctx.fillText(text, 6, 6);
       ctx.strokeText(text, 0, 0);
-      ctx.fillStyle = result.winner === null ? HALO : playerColor(result.winner);
+      ctx.fillStyle = result.winner === null ? HALO : colorOf(opts, result.winner);
       ctx.fillText(text, 0, 0);
       ctx.restore();
     }
@@ -403,4 +404,9 @@ function hudIcon(f: FighterView, color: string, eyes: number) {
   img.onload = () => hudIcons.set(key, { img, w: img.width / 2, h: img.height / 2 });
   img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
   return null;
+}
+
+/** Fighter i's body color: as chosen (opts.colors), else by player number. */
+function colorOf(opts: RenderOptions, i: number): string {
+  return opts.colors?.[i] ?? playerColor(i);
 }

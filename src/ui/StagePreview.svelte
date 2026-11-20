@@ -25,7 +25,7 @@
       x={p.center.x - p.halfWidth}
       y={-(p.center.y + p.halfHeight)}
       width={p.halfWidth * 2}
-      height={Math.max(p.halfHeight * 2, p.oneWay ? 0.36 : 1.32)}
+      height={p.oneWay ? 0.36 : p.halfHeight < 0.5 ? p.halfHeight * 2 : 1.32}
       rx="0.15"
       class="slab"
     />

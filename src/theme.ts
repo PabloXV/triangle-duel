@@ -21,11 +21,33 @@ export const TONGUE = "#ff7aa8";
 /** The thin volume line on white drips. */
 export const DRIP_SHADE = "#a99fcf";
 
-/** Fighters only, by player (P1..P4). */
-export const PLAYER_COLORS = ["#ff6b6b", "#4ecdc4", "#ffd93d", "#a78bfa"];
-/** Player `i`'s color (wraps around past four players). */
+/**
+ * Fighter colors (fighters only; never platforms). Players pick one; by
+ * default player i gets color i, so the first four are the classic P1..P4.
+ */
+export const PLAYER_COLORS = ["#ff6b6b", "#4ecdc4", "#ffd93d", "#a78bfa", "#9be15d", "#ff7ac6", "#ff9f43", "#5ab8ff"];
+export const PLAYER_COLOR_NAMES = ["Coral", "Teal", "Yellow", "Lavender", "Lime", "Hot pink", "Orange", "Sky"];
+/** Color number `i` (wraps around). */
 export function playerColor(i: number): string {
-  return PLAYER_COLORS[i % PLAYER_COLORS.length];
+  return PLAYER_COLORS[((i % PLAYER_COLORS.length) + PLAYER_COLORS.length) % PLAYER_COLORS.length];
+}
+/** A valid color number (anything else → 0). */
+export function colorIndex(n: unknown): number {
+  return Number.isInteger(n) && (n as number) >= 0 && (n as number) < PLAYER_COLORS.length ? (n as number) : 0;
+}
+/**
+ * Colors for a match: fighter i gets `wanted[i]` if given and still free,
+ * else the first free color, in order.
+ */
+export function assignColors(n: number, wanted: (number | null)[] = []): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const w = wanted[i];
+    const free = (c: number) => !out.includes(c) && !wanted.slice(i + 1).includes(c);
+    if (w !== null && w !== undefined && !out.includes(w)) out.push(w);
+    else out.push([...PLAYER_COLORS.keys()].find(free) ?? [...PLAYER_COLORS.keys()].find((c) => !out.includes(c)) ?? i);
+  }
+  return out;
 }
 /** Platforms: never a player color. */
 export const PLATFORM_COLORS = { violet: "#7b5cd6", slate: "#8a86a3", teal: "#2f9c95", plum: "#a1509f" };

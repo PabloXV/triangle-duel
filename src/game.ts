@@ -18,7 +18,7 @@ import { NetClient } from "./net/client";
 import { OnlineSession } from "./net/onlineSession";
 import { loadParams } from "./panel";
 import { Renderer } from "./render";
-import { playerColor } from "./theme";
+import { assignColors, colorIndex, playerColor } from "./theme";
 import { EYE_STYLES, eyeStyle } from "./look/eyes";
 import { facesReady, preloadFaces } from "./look/sticker";
 import { LiveSession, PlaybackSession, type InputSource, type Session } from "./session";
@@ -81,6 +81,10 @@ export class Game {
   playerEyes = 0;
   /** Each fighter's eye style, this match. */
   private eyes: number[] = [];
+  /** My color (an index into PLAYER_COLORS): mine locally; asked for online. */
+  myColor = 0;
+  /** Each fighter's color number, this match. */
+  private colors: number[] = [];
 
   private renderer: Renderer;
   private camera = new CameraRig(STAGES[0].stage);
@@ -132,7 +136,7 @@ export class Game {
     const sources = [0, 1, 2, 3].map((i) => this.bot(i, 12));
     const shapes = sources.map(() => randomBotShape(Math.random));
     const eyes = sources.map(() => randomEyes());
-    this.begin("attract", new LiveSession(stage, this.params, { players: 4, stocks: 2, shapes }, sources), ["", "", "", ""], eyes);
+    this.begin("attract", new LiveSession(stage, this.params, { players: 4, stocks: 2, shapes }, sources), ["", "", "", ""], eyes, assignColors(4));
   }
 
   playLocal(setup: LocalSetup) {
@@ -157,7 +161,9 @@ export class Game {
     const shapes = Array.from({ length: players }, (_, i) => (i === 0 ? this.playerShape : i < humans ? null : randomBotShape(Math.random)));
     // My eyes for me; a 2nd local player gets the default; bots, random ones.
     const eyes = Array.from({ length: players }, (_, i) => (i === 0 ? this.playerEyes : i < humans ? 0 : randomEyes()));
-    this.begin("local", new LiveSession(stage, this.params, { players, stocks: setup.stocks, shapes }, sources), names, eyes);
+    // My color for me; everyone else gets the first free ones.
+    const colors = assignColors(players, [this.myColor]);
+    this.begin("local", new LiveSession(stage, this.params, { players, stocks: setup.stocks, shapes }, sources), names, eyes, colors);
   }
 
   /** Same local setup again (R, or "play again"). */
@@ -180,6 +186,7 @@ export class Game {
       ko: sim.view().map((f) => f.ko),
       lives: sim.view().map((f) => f.stocks),
       eyes: this.eyes,
+      colors: this.colors,
       facesReady: facesReady(),
       grounded: sim.view().map((f) => f.grounded),
       lastInputs: (this.session as { lastInputs?: unknown }).lastInputs ?? null,
@@ -213,6 +220,12 @@ export class Game {
     net.start({ stage: stageById(net.settings.stageId).stage, match, params: structuredClone(this.params) });
   }
 
+  /** Set my color (an index into PLAYER_COLORS); also asks the room for it. */
+  setPlayerColor(color: number) {
+    this.myColor = colorIndex(color);
+    this.net.setColor(this.myColor);
+  }
+
   /** Set my eye style (src/look/eyes.ts); also tells the room if I'm in one. */
   setPlayerEyes(eyes: number) {
     this.playerEyes = eyeStyle(eyes);
@@ -238,7 +251,7 @@ export class Game {
   }
 
   watch(recording: Recording) {
-    this.begin("replay", new PlaybackSession(recording), [], []);
+    this.begin("replay", new PlaybackSession(recording), [], [], []);
   }
 
   /** "Last match" = the most recently ended one (falls back to the current one). */
@@ -266,13 +279,14 @@ export class Game {
   }
 
   /** Swap in a new session and reset everything that follows it. */
-  private begin(mode: GameMode, next: Session, names: string[], eyes: number[]) {
+  private begin(mode: GameMode, next: Session, names: string[], eyes: number[], colors: number[]) {
     if (this.session && this.state.mode !== "attract") this.lastRecording = this.session.recording() ?? this.lastRecording;
     this.session?.free();
     this.session = next;
     this.names = names;
     this.eyes = eyes;
-    preloadFaces(eyes.map((e, i) => ({ eyes: e, color: playerColor(i) })));
+    this.colors = colors;
+    preloadFaces(eyes.map((e, i) => ({ eyes: e, color: playerColor(colors[i] ?? i) })));
     this.matchNumber++;
     this.curr = next.sim.view();
     this.prev = this.curr;
@@ -302,13 +316,14 @@ export class Game {
       }
       this.onlineParams = setup.params;
       const eyes = Array.from({ length: setup.match.players }, (_, i) => net.eyesOf(i));
-      this.begin("online", new OnlineSession(setup, you, names, sources, net, net.room, () => net.rttMs), names, eyes);
+      const colors = names.map((_, i) => net.colorOf(i));
+      this.begin("online", new OnlineSession(setup, you, names, sources, net, net.room, () => net.rttMs), names, eyes, colors);
     };
     // Joined mid-match (or waiting in a full room): watch, caught up to now.
     net.onSpectate = (setup, names, log, next) => {
       const s = new OnlineSession(setup, -1, names, new Map(), net, net.room, () => net.rttMs);
       s.catchUp(log, next);
-      this.begin("online", s, names, names.map((_, i) => net.eyesOf(i)));
+      this.begin("online", s, names, names.map((_, i) => net.eyesOf(i)), names.map((_, i) => net.colorOf(i)));
     };
     // The host left mid-match and we're the new host: run their bots from now on.
     net.onDrive = (fighters) => {
@@ -485,6 +500,7 @@ export class Game {
       labels: players.map((i) => session.describe(i)),
       names: players.map((i) => this.names[i] ?? `P${i + 1}`),
       eyes: this.eyes,
+      colors: players.map((i) => playerColor(this.colors[i] ?? i)),
       controls: hud && !this.state.ended ? this.controlHints() : [],
       totalStocks: sim.match.stocks,
       status: session.status(),

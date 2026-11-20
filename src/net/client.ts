@@ -38,6 +38,8 @@ export class NetClient implements MatchTransport {
   shape: FighterShape | null = null;
   /** My eye style, sent after joining and whenever it changes. */
   eyes = 0;
+  /** The color I'd like (granted if free), sent after joining and whenever it changes. */
+  color: number | null = null;
   rttMs: number | null = null;
   error: string | null = null;
   /** During a match: my fighter index, and the latest official step and inputs. */
@@ -91,6 +93,7 @@ export class NetClient implements MatchTransport {
       this.send({ type: "hello", version: PROTOCOL_VERSION, name });
       if (this.shape) this.send({ type: "shape", shape: this.shape });
       if (this.eyes) this.send({ type: "eyes", eyes: this.eyes });
+      if (this.color !== null) this.send({ type: "color", color: this.color });
       this.pingTimer = setInterval(() => this.ping(), 1000);
     };
     ws.onmessage = (e) => {
@@ -120,6 +123,12 @@ export class NetClient implements MatchTransport {
   /** Host, in the lobby: change the room's settings. */
   setSettings(settings: RoomSettings) {
     this.send({ type: "settings", settings });
+  }
+
+  /** Ask for a color (sent now if connected, else after joining). */
+  setColor(color: number) {
+    this.color = color;
+    this.send({ type: "color", color });
   }
 
   /** Change my eye style (sent now if connected, else after joining). */
@@ -169,6 +178,11 @@ export class NetClient implements MatchTransport {
   }
 
   /** Display name of fighter `i` in the current match. */
+  /** Fighter i's color number (the room keeps them unique). */
+  colorOf(i: number): number {
+    return this.roster.find((p) => p.slot === this.fighters[i])?.color ?? i;
+  }
+
   eyesOf(i: number): number {
     return this.roster.find((p) => p.slot === this.fighters[i])?.eyes ?? 0;
   }

@@ -6,6 +6,7 @@
   import type { FighterShape } from "../sim/geometry";
   import { shapeIssue } from "../sim/shapes";
   import { eyeStyle } from "../look/eyes";
+  import { colorIndex } from "../theme";
   import { KEYS, load, loadJSON, save, saveJSON } from "../storage";
   import { ROOM_CODE } from "../net/protocol";
   import InGame from "./InGame.svelte";
@@ -60,15 +61,25 @@
   })();
   let shape = $state<FighterShape | null>(savedShape);
   untrack(() => game.setPlayerShape(savedShape));
-  // My eye style (re-checked on load: anything unknown → the default).
+  // My eye style and color (re-checked on load: anything unknown → the default).
   let eyes = $state(eyeStyle(Number(load(KEYS.eyes) ?? 0)));
   untrack(() => game.setPlayerEyes(eyes));
+  let color = $state(colorIndex(Number(load(KEYS.color) ?? 0)));
+  untrack(() => game.setPlayerColor(color));
 
-  function saveFighter(s: FighterShape | null, e: number) {
+  /** My color: from Customize, or picked in a room (asks the room; remembered either way). */
+  function setColor(c: number) {
+    color = c;
+    game.setPlayerColor(c);
+    save(KEYS.color, String(c));
+  }
+
+  function saveFighter(s: FighterShape | null, e: number, c: number) {
     shape = s;
     eyes = e;
     game.setPlayerShape(s);
     game.setPlayerEyes(e);
+    setColor(c);
     saveJSON(KEYS.shape, s);
     save(KEYS.eyes, String(e));
     screen = "menu";
@@ -132,6 +143,7 @@
     <CustomizeScreen
       initial={shape}
       initialEyes={eyes}
+      initialColor={color}
       standardArea={(game.params.triWidth * game.params.triHeight) / 2}
       onSave={saveFighter}
       onBack={() => (screen = "menu")}
@@ -141,7 +153,7 @@
   {:else if screen === "online"}
     <OnlineMenu {net} {name} onBack={() => (screen = "menu")} />
   {:else if screen === "room"}
-    <Room {net} onStart={() => game.startOnline()} onLeave={() => net.leave()} />
+    <Room {net} onStart={() => game.startOnline()} onLeave={() => net.leave()} onColor={setColor} />
   {:else if screen === "game"}
     <InGame {game} gs={$game} bind:menuOpen onLeave={leave} onChangeSetup={() => { game.leaveToMenu(); screen = "local"; }} />
   {/if}

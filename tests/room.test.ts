@@ -5,6 +5,7 @@ import { WINGS_STAGE } from "../src/sim/geometry";
 import { DEFAULT_PARAMS } from "../src/sim/params";
 import { balanceShape, shapeIssue } from "../src/sim/shapes";
 import { EYE_STYLES } from "../src/look/eyes";
+import { PLAYER_COLORS } from "../src/theme";
 import { LEFT } from "../src/sim/inputCodec";
 import { DEFAULT_MATCH } from "../src/sim/types";
 
@@ -40,8 +41,8 @@ describe("room: joining", () => {
     room.connect("b");
     const out = room.receive("b", hello("Bo"));
     expect(ofType(out, "roster")[0].players).toEqual([
-      { slot: 0, name: "Ana", host: true, bot: false, shape: null, eyes: 0 },
-      { slot: 1, name: "Bo", host: false, bot: false, shape: null, eyes: 0 },
+      { slot: 0, name: "Ana", host: true, bot: false, shape: null, eyes: 0, color: 0 },
+      { slot: 1, name: "Bo", host: false, bot: false, shape: null, eyes: 0, color: 1 },
     ]);
   });
 
@@ -203,7 +204,7 @@ describe("room: bots", () => {
     const { room } = roomWith(1);
     const out = room.receive("a", addBot);
     const [human, bot] = ofType(out, "roster")[0].players;
-    expect(human).toEqual({ slot: 0, name: "a", host: true, bot: false, shape: null, eyes: 0 });
+    expect(human).toEqual({ slot: 0, name: "a", host: true, bot: false, shape: null, eyes: 0, color: 0 });
     expect(bot).toMatchObject({ slot: 1, name: "bot 1", host: false, bot: true });
     expect(bot.shape).not.toBeNull();
     expect(shapeIssue(bot.shape!)).toBeNull();
@@ -472,5 +473,41 @@ describe("room: eye styles", () => {
       expect(ofType(out, "roster")).toHaveLength(0);
     }
     expect(ofType(room.receive("a", send({ type: "eyes", eyes: 99 })), "error")[0].message).toMatch(/eye style/);
+  });
+});
+
+describe("room: colors", () => {
+  const colors = (out: ReturnType<RoomCore["receive"]>) => ofType(out, "roster")[0].players.map((p) => p.color);
+
+  it("everyone gets a different color, in order by default (bots too)", () => {
+    const { room } = roomWith(2);
+    expect(colors(room.receive("a", send({ type: "addBot" })))).toEqual([0, 1, 2]);
+  });
+
+  it("asking for a free color gets it", () => {
+    const { room } = roomWith(2);
+    expect(colors(room.receive("b", send({ type: "color", color: 6 })))).toEqual([0, 6]);
+  });
+
+  it("a color another player has is refused (no change); one a bot has is swapped", () => {
+    const { room } = roomWith(2);
+    room.receive("a", send({ type: "addBot" })); // bot: color 2
+    expect(colors(room.receive("b", send({ type: "color", color: 0 })))).toEqual([0, 1, 2]);
+    expect(colors(room.receive("b", send({ type: "color", color: 2 })))).toEqual([0, 2, 1]);
+  });
+
+  it("a spectator's wish applies when they get a seat, if still free", () => {
+    const { room } = roomWith(4);
+    room.connect("e");
+    room.receive("e", hello("e")); // full: spectating
+    room.receive("e", send({ type: "color", color: 5 }));
+    const out = room.disconnect("b"); // a seat frees up
+    const roster = ofType(out, "roster")[0].players;
+    expect(roster.find((p) => p.name === "e")?.color).toBe(5);
+  });
+
+  it("unknown colors are refused", () => {
+    const { room } = roomWith(1);
+    for (const color of [-1, PLAYER_COLORS.length, 1.5]) expect(ofType(room.receive("a", send({ type: "color", color })), "roster")).toHaveLength(0);
   });
 });

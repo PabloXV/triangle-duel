@@ -9,25 +9,30 @@
   import { playerColor } from "../theme";
   import { EYE_MOODS, EYE_STYLES, type EyeMood } from "../look/eyes";
   import { stickerInWorld, stickerSVG } from "../look/stickerSVG";
+  import ColorPicker from "./ColorPicker.svelte";
 
   const MOOD_NAMES: Record<EyeMood, string> = { idle: "Idle", charge: "Charge", wobble: "Wobble", ko: "KO'd" };
 
   let {
     initial,
     initialEyes = 0,
+    initialColor = 0,
     standardArea,
     onSave,
     onBack,
   }: {
     initial: FighterShape | null;
     initialEyes?: number;
+    initialColor?: number;
     standardArea: number;
-    onSave: (shape: FighterShape | null, eyes: number) => void;
+    onSave: (shape: FighterShape | null, eyes: number, color: number) => void;
     onBack: () => void;
   } = $props();
 
   // Eyes: one of the eye sheet's styles (src/look/eyes.ts).
   let eyes = $state(untrack(() => initialEyes));
+  // Color: your pick (in a room you get it if nobody else has it).
+  let color = $state(untrack(() => initialColor));
   let previewMood = $state<EyeMood>("idle");
 
   const k = untrack(() => Math.sqrt(standardArea)); // unit shape → meters
@@ -139,13 +144,13 @@
     if (!b || shapeIssue(b)) return;
     // The standard shape counts as "no custom shape".
     const isStandard = b.vertices.every((v, i) => Math.abs(v.x - STANDARD_SHAPE.vertices[i].x) + Math.abs(v.y - STANDARD_SHAPE.vertices[i].y) < 1e-6);
-    onSave(isStandard ? null : b, eyes);
+    onSave(isStandard ? null : b, eyes, color);
   }
 
   const poly = (p: Vec2[]) => p.map((v) => `${v.x},${-v.y}`).join(" ");
 
   /** Your fighter exactly as it looks in a match (same drawing as the game: look/stickerSVG.ts), at true size. */
-  const fighterSvg = $derived(triangleArea(pts) > 1e-6 ? stickerInWorld(pts, FOOT, playerColor(0), eyes, previewMood) : "");
+  const fighterSvg = $derived(triangleArea(pts) > 1e-6 ? stickerInWorld(pts, FOOT, playerColor(color), eyes, previewMood) : "");
   // Eye thumbnails use the standard fighter: on a skinny custom shape the faces
   // get too small to tell apart. (The editor above shows them on your shape.)
   const thumbShape = STANDARD_SHAPE;
@@ -184,18 +189,23 @@
 
   {#if size}
     <div class="stats">
-      <span><span class="key mine-key"></span> yours: {size.height.toFixed(2)} m tall, {size.width.toFixed(2)} m wide</span>
+      <span><span class="key mine-key" style:background={playerColor(color)}></span> yours: {size.height.toFixed(2)} m tall, {size.width.toFixed(2)} m wide</span>
       <span><span class="key std-key"></span> standard: {standardSize.height.toFixed(2)} × {standardSize.width.toFixed(2)} m</span>
       <span class="hint">({pct(size.height, standardSize.height)} height, {pct(size.width, standardSize.width)} width, same mass)</span>
     </div>
   {/if}
+
+  <fieldset>
+    <legend>Color</legend>
+    <ColorPicker value={color} onPick={(c) => (color = c)} />
+  </fieldset>
 
   <fieldset class="eyes">
     <legend>Eyes</legend>
     <div class="eye-grid">
       {#each EYE_STYLES as style, i}
         <button class="eye" class:selected={eyes === i} aria-pressed={eyes === i} aria-label="eyes: {style.name}" title={style.vibe} onclick={() => (eyes = i)}>
-          <span class="thumb">{@html stickerSVG(thumbShape, playerColor(0), i, previewMood)}</span>
+          <span class="thumb">{@html stickerSVG(thumbShape, playerColor(color), i, previewMood)}</span>
           <span class="nm">{style.name}</span>
         </button>
       {/each}

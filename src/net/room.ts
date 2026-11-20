@@ -9,6 +9,7 @@ import type { FighterShape } from "../sim/geometry";
 import { shapeIssue } from "../sim/shapes";
 import { randomBotShape } from "../bots/shapes";
 import { EYE_STYLES } from "../look/eyes";
+import { PLAYER_COLORS } from "../theme";
 import { NO_INPUT } from "../sim/types";
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -41,6 +42,8 @@ interface Conn {
   drives: number[]; // during a match: fighters whose inputs this connection may send
   shape: FighterShape | null; // their custom fighter (null = standard)
   eyes: number; // their eye style
+  color: number; // their color while seated (unique in the room)
+  wantColor: number | null; // the color they asked for
 }
 
 /** A seat in the room: a connected player, or a bot (no connection; the host drives it). */
@@ -50,13 +53,14 @@ interface Seat {
   conn: string | null; // null = bot
   shape: FighterShape | null;
   eyes: number;
+  color: number;
 }
 
 const IDLE = encodeInput(NO_INPUT);
 
 export class RoomCore {
   private conns = new Map<string, Conn>();
-  private bots = new Map<number, { name: string; shape: FighterShape; eyes: number }>(); // slot → bot
+  private bots = new Map<number, { name: string; shape: FighterShape; eyes: number; color: number }>(); // slot → bot
   private settings: RoomSettings = { ...DEFAULT_ROOM_SETTINGS };
   phase: "lobby" | "match" = "lobby";
   private setup: MatchSetup | null = null;
@@ -85,7 +89,7 @@ export class RoomCore {
   }
 
   connect(id: string): Outgoing[] {
-    this.conns.set(id, { name: "player", joined: false, joinedAt: 0, slot: null, fighter: null, drives: [], shape: null, eyes: 0 });
+    this.conns.set(id, { name: "player", joined: false, joinedAt: 0, slot: null, fighter: null, drives: [], shape: null, eyes: 0, color: 0, wantColor: null });
     return [];
   }
 
@@ -127,6 +131,7 @@ export class RoomCore {
         if (slot === null && this.spectators().length >= MAX_SPECTATORS) return [error(id, "room is full", true)];
         c.joined = true;
         c.joinedAt = this.joins++;
+        if (slot !== null) c.color = this.freeColor(null, id);
         c.slot = slot;
         c.name = cleanName(m.name);
         const out: Outgoing[] = [{ to: id, msg: { type: "welcome", room: this.code, slot } }];
@@ -193,7 +198,17 @@ export class RoomCore {
         const slot = this.freeSlot();
         if (slot === null) return [error(id, `room is full (${MAX_PLAYERS} players)`)];
         // Each bot gets a random shape near the standard one, kept for as long as it's seated.
-        this.bots.set(slot, { name: `bot ${this.bots.size + 1}`, shape: randomBotShape(this.random), eyes: Math.floor(this.random() * EYE_STYLES.length) });
+        this.bots.set(slot, { name: `bot ${this.bots.size + 1}`, shape: randomBotShape(this.random), eyes: Math.floor(this.random() * EYE_STYLES.length), color: this.freeColor(null) });
+        return [this.roster()];
+      }
+      case "color": {
+        if (!Number.isInteger(m.color) || m.color < 0 || m.color >= PLAYER_COLORS.length) return [error(id, "unknown color")];
+        c.wantColor = m.color;
+        if (c.slot === null) return []; // applied when they get a seat
+        const holder = this.seats().find((s) => s.color === m.color && s.conn !== id);
+        if (holder?.conn) return [this.roster()]; // another player has it: no change
+        if (holder) this.bots.get(holder.slot)!.color = c.color; // a bot has it: swap
+        c.color = m.color;
         return [this.roster()];
       }
       case "eyes": {
@@ -270,8 +285,8 @@ export class RoomCore {
 
   /** Every seat (joined players and bots), in slot order. */
   private seats(): Seat[] {
-    const players: Seat[] = [...this.conns].flatMap(([id, c]) => (c.slot === null ? [] : [{ slot: c.slot, name: c.name, conn: id, shape: c.shape, eyes: c.eyes }]));
-    const bots: Seat[] = [...this.bots].map(([slot, b]) => ({ slot, name: b.name, conn: null, shape: b.shape, eyes: b.eyes }));
+    const players: Seat[] = [...this.conns].flatMap(([id, c]) => (c.slot === null ? [] : [{ slot: c.slot, name: c.name, conn: id, shape: c.shape, eyes: c.eyes, color: c.color }]));
+    const bots: Seat[] = [...this.bots].map(([slot, b]) => ({ slot, name: b.name, conn: null, shape: b.shape, eyes: b.eyes, color: b.color }));
     return [...players, ...bots].sort((a, b) => a.slot - b.slot);
   }
 
@@ -286,6 +301,7 @@ export class RoomCore {
     for (const [id, c] of this.spectators()) {
       const slot = this.freeSlot();
       if (slot === null) break;
+      c.color = this.freeColor(c.wantColor, id);
       c.slot = slot;
       out.push({ to: id, msg: { type: "welcome", room: this.code, slot } });
     }
@@ -306,6 +322,13 @@ export class RoomCore {
     return this.hostId() === id;
   }
 
+  /** `prefer` if no other seat has it, else the first color nobody (but `self`) has. */
+  private freeColor(prefer: number | null, self?: string): number {
+    const taken = new Set(this.seats().filter((s) => s.conn !== self || self === undefined).map((s) => s.color));
+    if (prefer !== null && !taken.has(prefer)) return prefer;
+    return [...PLAYER_COLORS.keys()].find((c) => !taken.has(c)) ?? 0;
+  }
+
   private freeSlot(): number | null {
     const taken = new Set(this.seats().map((s) => s.slot));
     for (let s = 0; s < MAX_PLAYERS; s++) if (!taken.has(s)) return s;
@@ -314,7 +337,7 @@ export class RoomCore {
 
   private roster(): Outgoing {
     const host = this.hostId();
-    const players: RosterEntry[] = this.seats().map((s) => ({ slot: s.slot, name: s.name, host: s.conn !== null && s.conn === host, bot: s.conn === null, shape: s.shape, eyes: s.eyes }));
+    const players: RosterEntry[] = this.seats().map((s) => ({ slot: s.slot, name: s.name, host: s.conn !== null && s.conn === host, bot: s.conn === null, shape: s.shape, eyes: s.eyes, color: s.color }));
     const spectators = this.spectators().map(([, c]) => c.name);
     return { to: "all", msg: { type: "roster", phase: this.phase, players, spectators, settings: this.settings } };
   }

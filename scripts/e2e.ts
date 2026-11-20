@@ -111,6 +111,7 @@ async function onlineFlow() {
   await ana.getByRole("button", { name: "Create a room" }).click();
   const code = (await ana.locator("button.code").textContent({ timeout: 10_000 }))!.trim();
   check(/^[A-Z]{4}$/.test(code), `room created: ${code}`);
+  check((await ana.locator("button.map").count()) === 5, "all five maps are offered");
   await ana.getByRole("button", { name: /Island/ }).click();
   await ana.getByRole("button", { name: "fewer stocks" }).click();
   await ana.getByRole("button", { name: "fewer stocks" }).click();
@@ -123,6 +124,11 @@ async function onlineFlow() {
   await bo.waitForTimeout(400);
   check(JSON.stringify(await rosterNames(bo)) === JSON.stringify(["Ana", "bot 1", "Bo"]), `Bo sees the roster: ${await rosterNames(bo)}`);
   check((await bo.getByRole("button", { name: /Island/ }).getAttribute("aria-pressed")) === "true", "Bo sees the host's map (Island)");
+  // Colors are unique in a room: Ana picks Lime; Bo sees it taken.
+  await ana.getByRole("radio", { name: "color: Lime" }).click();
+  await bo.waitForTimeout(300);
+  check((await ana.getByRole("radio", { name: "color: Lime" }).getAttribute("aria-checked")) === "true", "room: Ana picks Lime");
+  check(await bo.getByRole("radio", { name: "color: Lime (taken by Ana)" }).isDisabled(), "Bo sees Lime as taken by Ana");
   check((await bo.getByLabel("stocks", { exact: true }).textContent()) === "1", "Bo sees the host's stocks (1)");
   check(await bo.getByText("Waiting for the host to start").isVisible(), "Bo (not host) waits");
   check((await bo.getByRole("button", { name: "Start match" }).count()) === 0, "Bo has no start button");
@@ -228,6 +234,8 @@ async function customizeFlow(page: Page) {
   await shot(page, "12-customize");
 
   // Eyes: pick a style from the sheet; the editor's triangle wears it.
+  await page.getByRole("radio", { name: "color: Sky" }).click();
+  check((await page.getByRole("radio", { name: "color: Sky" }).getAttribute("aria-checked")) === "true", "color picker: Sky selected (the preview wears it)");
   await page.getByRole("button", { name: "eyes: Cat" }).click();
   check((await page.getByRole("button", { name: "eyes: Cat" }).getAttribute("aria-pressed")) === "true", "eye picker: Cat selected");
   check((await page.locator("svg.editor .face").count()) === 1, "the editor's fighter shows the chosen eyes");
@@ -242,6 +250,7 @@ async function customizeFlow(page: Page) {
   const same = after.every((p, i) => Math.abs(p.x - v[i].x) < 1e-3 && Math.abs(p.y - v[i].y) < 1e-3);
   check(same, "after reload: the saved shape is remembered");
   check((await page.getByRole("button", { name: "eyes: Cat" }).getAttribute("aria-pressed")) === "true", "after reload: the eye style is remembered");
+  check((await page.getByRole("radio", { name: "color: Sky" }).getAttribute("aria-checked")) === "true", "after reload: the color is remembered");
   await page.getByRole("button", { name: "Back" }).click();
 
   // 4. In a local match, my fighter has that shape, at the standard fighter's mass (area).
@@ -255,6 +264,7 @@ async function customizeFlow(page: Page) {
   await page.waitForTimeout(500);
   const look = await info(page);
   check(look.eyes[0] === 10 && look.facesReady >= 4, `in the match: my fighter wears the Cat eyes (styles ${JSON.stringify(look.eyes)}, ${look.facesReady} face images ready)`);
+  check(look.colors[0] === 7 && new Set(look.colors).size === look.colors.length, `in the match: I'm Sky, everyone has a different color (${JSON.stringify(look.colors)})`);
   await shot(page, "13-custom-in-game");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Leave to menu" }).click();

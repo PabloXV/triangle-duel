@@ -5,11 +5,16 @@
   import { MAX_PLAYERS, MAX_STOCKS } from "../net/protocol";
   import { playerColor } from "../theme";
   import { isTouchDevice } from "../input";
+  import ColorPicker from "./ColorPicker.svelte";
   import FighterIcon from "./FighterIcon.svelte";
   import MapPicker from "./MapPicker.svelte";
   import Stepper from "./Stepper.svelte";
 
-  let { net, onStart, onLeave }: { net: NetClient; onStart: () => void; onLeave: () => void } = $props();
+  let { net, onStart, onLeave, onColor }: { net: NetClient; onStart: () => void; onLeave: () => void; onColor: (color: number) => void } = $props();
+
+  // My color, and who has the others (colors are unique in a room).
+  const me = $derived($net.roster.find((p) => p.slot === $net.slot));
+  const takenColors = $derived(new Map($net.roster.filter((p) => p.slot !== $net.slot).map((p) => [p.color, p.name] as [number, string])));
 
   const host = $derived($net.isHost);
   const bots = $derived($net.roster.filter((p) => p.bot).length);
@@ -68,9 +73,9 @@
   <fieldset>
     <legend>Players ({$net.roster.length}/{MAX_PLAYERS})</legend>
     <ul class="roster">
-      {#each $net.roster as p, i (p.slot)}
+      {#each $net.roster as p (p.slot)}
         <li>
-          <FighterIcon shape={p.shape} color={playerColor(i)} eyes={p.eyes} size={30} />
+          <FighterIcon shape={p.shape} color={playerColor(p.color)} eyes={p.eyes} size={30} />
           <span class="name">{p.name}</span>
           {#if p.host}<span class="tag">host</span>{/if}
           {#if p.bot}<span class="tag">bot</span>{/if}
@@ -83,6 +88,13 @@
     </ul>
   </fieldset>
   {#if $net.spectators.length}<p class="hint">Watching: {$net.spectators.join(", ")}</p>{/if}
+
+  {#if me}
+    <fieldset>
+      <legend>Your color</legend>
+      <ColorPicker value={me.color} taken={takenColors} onPick={onColor} />
+    </fieldset>
+  {/if}
 
   {#if host}
     <fieldset>

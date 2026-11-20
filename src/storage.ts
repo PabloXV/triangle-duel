@@ -8,6 +8,7 @@ export const KEYS = {
   localSetup: "triangle-duel.localSetup",
   shape: "triangle-duel.shape",
   eyes: "triangle-duel.eyes",
+  color: "triangle-duel.color",
   touchScheme: "triangle-duel.touchScheme",
   params: "triangle-duel.params.v1", // debug panel tuning
 } as const;
