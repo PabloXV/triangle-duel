@@ -231,7 +231,7 @@ async function customizeFlow(page: Page) {
   /** Handle positions in world units (from the SVG attributes). */
   const corners = () =>
     page.evaluate(() =>
-      [...document.querySelectorAll("svg.editor circle")].map((c) => ({ x: +c.getAttribute("cx")!, y: -+c.getAttribute("cy")! })),
+      [...document.querySelectorAll("svg.editor circle.handle")].map((c) => ({ x: +c.getAttribute("cx")!, y: -+c.getAttribute("cy")! })),
     );
   const drag = async (name: string, dx: number, dy: number) => {
     const c = await center(name);
@@ -255,6 +255,13 @@ async function customizeFlow(page: Page) {
   check(Math.abs(cx - v[0].x) < 0.01, `after letting go: balanced (center of mass x ${cx.toFixed(3)} above foot x ${v[0].x.toFixed(3)})`);
   await shot(page, "12-customize");
 
+  // Eyes: pick a style from the sheet; the editor's triangle wears it.
+  await page.getByRole("button", { name: "eyes: Cat" }).click();
+  check((await page.getByRole("button", { name: "eyes: Cat" }).getAttribute("aria-pressed")) === "true", "eye picker: Cat selected");
+  check((await page.locator("svg.editor .face").count()) === 1, "the editor's fighter shows the chosen eyes");
+  await page.getByRole("button", { name: "Charge", exact: true }).click(); // preview a mood
+  await shot(page, "12b-customize-eyes");
+
   // 3. Save; reload; it's remembered.
   await page.getByRole("button", { name: "Save" }).click();
   await page.reload();
@@ -262,6 +269,7 @@ async function customizeFlow(page: Page) {
   const after = await corners();
   const same = after.every((p, i) => Math.abs(p.x - v[i].x) < 1e-3 && Math.abs(p.y - v[i].y) < 1e-3);
   check(same, "after reload: the saved shape is remembered");
+  check((await page.getByRole("button", { name: "eyes: Cat" }).getAttribute("aria-pressed")) === "true", "after reload: the eye style is remembered");
   await page.getByRole("button", { name: "Back" }).click();
 
   // 4. In a local match, my fighter has that shape, at the standard fighter's mass (area).
@@ -272,6 +280,9 @@ async function customizeFlow(page: Page) {
   const [mine, bot] = shapes;
   check(Math.abs(mine.height - bot.height) > 0.05 || Math.abs(mine.width - bot.width) > 0.05, `my fighter is my shape (${mine.height.toFixed(2)}×${mine.width.toFixed(2)} vs standard ${bot.height.toFixed(2)}×${bot.width.toFixed(2)})`);
   check(Math.abs(mine.area - bot.area) < 1e-3, `same mass as the standard fighter (area ${mine.area.toFixed(4)} vs ${bot.area.toFixed(4)})`);
+  await page.waitForTimeout(500);
+  const look = await info(page);
+  check(look.eyes[0] === 10 && look.facesReady >= 4, `in the match: my fighter wears the Cat eyes (styles ${JSON.stringify(look.eyes)}, ${look.facesReady} face images ready)`);
   await shot(page, "13-custom-in-game");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Leave to menu" }).click();

@@ -70,7 +70,7 @@
     <ul class="roster">
       {#each $net.roster as p, i (p.slot)}
         <li>
-          <FighterIcon shape={p.shape} color={COLORS[i % COLORS.length]} />
+          <FighterIcon shape={p.shape} color={COLORS[i % COLORS.length]} eyes={p.eyes} size={30} />
           <span class="name">{p.name}</span>
           {#if p.host}<span class="tag">host</span>{/if}
           {#if p.bot}<span class="tag">bot</span>{/if}

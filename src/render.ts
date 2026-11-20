@@ -1,5 +1,6 @@
 // Canvas 2D renderer. Reads sim state, never writes it.
 
+import { drawSticker, moodOf } from "./look/sticker";
 import type { CameraView } from "./camera";
 import type { Platform, Stage, Vec2 } from "./sim/geometry";
 import type { FighterView, MatchResult } from "./sim/sim";
@@ -16,6 +17,7 @@ export interface RenderOptions {
   totalStocks: number; // stocks each player started with
   replay: boolean; // showing the final-KO replay: letterbox, no banner yet
   status?: string; // shown at the top center (e.g. "REPLAY")
+  eyes?: number[]; // per fighter: eye style (src/look/eyes.ts)
 }
 
 
@@ -89,7 +91,7 @@ export class Renderer {
       // Respawning teleports the body; don't draw a smear between the two spots.
       if (Math.abs(p.x - f.x) + Math.abs(p.y - f.y) > 1) p = f;
       const verts = f.vertices.map((v, k) => lerpV(p.vertices[k], v, alpha));
-      this.drawFighter(verts, f, COLORS[i % COLORS.length]);
+      this.drawFighter(verts, f, COLORS[i % COLORS.length], opts.eyes?.[i] ?? 0, opts.debug);
     });
 
     if (opts.replay) this.drawLetterbox();
@@ -121,24 +123,56 @@ export class Renderer {
     }
   }
 
-  private drawFighter(verts: Vec2[], f: FighterView, color: string) {
+  private drawFighter(verts: Vec2[], f: FighterView, color: string, eyes: number, debug: boolean) {
     const ctx = this.ctx;
     const px = 1 / this.scale; // one screen pixel in meters
     // Dead: faded. Ghost (just respawned): blinking.
     const blink = Math.floor(performance.now() / 100) % 2 === 0;
-    ctx.globalAlpha = f.ko ? 0.4 : f.ghost ? (blink ? 0.3 : 0.75) : 1;
+    const alpha = f.ko ? 0.6 : f.ghost ? (blink ? 0.35 : 0.8) : 1;
+    if (alpha < 1) {
+      // Fade the fighter as a whole: drawn layer by layer at partial opacity,
+      // its shadow and outline would show through the body.
+      const layer = this.fadeLayer();
+      layer.setTransform(ctx.getTransform());
+      drawSticker(layer, verts, f.footIndex, { color, eyes }, moodOf(f));
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(layer.canvas, 0, 0);
+      ctx.restore();
+      layer.setTransform(1, 0, 0, 1, 0, 0);
+      layer.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+    } else drawSticker(ctx, verts, f.footIndex, { color, eyes }, moodOf(f));
+    ctx.globalAlpha = alpha;
 
-    ctx.beginPath();
-    ctx.moveTo(verts[0].x, verts[0].y);
-    ctx.lineTo(verts[1].x, verts[1].y);
-    ctx.lineTo(verts[2].x, verts[2].y);
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.lineWidth = 3 * px;
-    ctx.strokeStyle = "#0008";
-    ctx.stroke();
+    if (debug) this.drawFootMarker(verts, f, px);
 
+    // Jump charge bar above the fighter.
+    if (f.charge > 0) {
+      const top = Math.max(verts[0].y, verts[1].y, verts[2].y) + 0.35;
+      const cx = (verts[0].x + verts[1].x + verts[2].x) / 3;
+      ctx.fillStyle = "#15101fcc";
+      ctx.fillRect(cx - 0.52, top - 0.02, 1.04, 0.16);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(cx - 0.5, top, f.charge, 0.12);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private layer: CanvasRenderingContext2D | null = null;
+  /** A scratch canvas the size of the game canvas, for fading a fighter as one piece. */
+  private fadeLayer(): CanvasRenderingContext2D {
+    if (!this.layer) this.layer = document.createElement("canvas").getContext("2d")!;
+    const c = this.layer.canvas;
+    if (c.width !== this.canvas.width || c.height !== this.canvas.height) {
+      c.width = this.canvas.width;
+      c.height = this.canvas.height;
+    }
+    return this.layer;
+  }
+
+  private drawFootMarker(verts: Vec2[], f: FighterView, px: number) {
+    const ctx = this.ctx;
     // Foot marker: green = grounded, yellow = coyote time, grey = airborne.
     const foot = verts[f.footIndex];
     ctx.beginPath();
@@ -152,17 +186,6 @@ export class Renderer {
       ctx.lineWidth = 2 * px;
       ctx.stroke();
     }
-
-    // Jump charge bar above the fighter.
-    if (f.charge > 0) {
-      const top = Math.max(verts[0].y, verts[1].y, verts[2].y) + 0.25;
-      const cx = (verts[0].x + verts[1].x + verts[2].x) / 3;
-      ctx.fillStyle = "#0006";
-      ctx.fillRect(cx - 0.5, top, 1, 0.12);
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(cx - 0.5, top, f.charge, 0.12);
-    }
-    ctx.globalAlpha = 1;
   }
 
   /** Cinematic bars during the final-KO replay. */

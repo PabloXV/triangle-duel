@@ -7,13 +7,28 @@
   import type { FighterShape, Vec2 } from "../sim/geometry";
   import { STANDARD_SHAPE, balanceShape, shapeIssue, shapeSize } from "../sim/shapes";
   import { COLORS } from "../render";
+  import { EYE_MOODS, EYE_STYLES, eyesMarkup, type EyeMood } from "../look/eyes";
+  import { stickerSVG } from "../look/stickerSVG";
+
+  const MOOD_NAMES: Record<EyeMood, string> = { idle: "Idle", charge: "Charge", wobble: "Wobble", ko: "KO'd" };
 
   let {
     initial,
+    initialEyes = 0,
     standardArea,
     onSave,
     onBack,
-  }: { initial: FighterShape | null; standardArea: number; onSave: (shape: FighterShape | null) => void; onBack: () => void } = $props();
+  }: {
+    initial: FighterShape | null;
+    initialEyes?: number;
+    standardArea: number;
+    onSave: (shape: FighterShape | null, eyes: number) => void;
+    onBack: () => void;
+  } = $props();
+
+  // Eyes: one of the eye sheet's styles (src/look/eyes.ts).
+  let eyes = $state(untrack(() => initialEyes));
+  let previewMood = $state<EyeMood>("idle");
 
   const k = untrack(() => Math.sqrt(standardArea)); // unit shape → meters
   const FOOT = 0;
@@ -124,10 +139,30 @@
     if (!b || shapeIssue(b)) return;
     // The standard shape counts as "no custom shape".
     const isStandard = b.vertices.every((v, i) => Math.abs(v.x - STANDARD_SHAPE.vertices[i].x) + Math.abs(v.y - STANDARD_SHAPE.vertices[i].y) < 1e-6);
-    onSave(isStandard ? null : b);
+    onSave(isStandard ? null : b, eyes);
   }
 
   const poly = (p: Vec2[]) => p.map((v) => `${v.x},${-v.y}`).join(" ");
+
+  /** The face on the editor's triangle: at its incircle, along its top edge (SVG coordinates). */
+  const faceAt = $derived.by(() => {
+    const [F, A, B] = pts.map((v) => ({ x: v.x, y: -v.y }));
+    const [L, R] = A.x <= B.x ? [A, B] : [B, A];
+    const a = Math.hypot(L.x - R.x, L.y - R.y);
+    const b = Math.hypot(F.x - R.x, F.y - R.y);
+    const c = Math.hypot(F.x - L.x, F.y - L.y);
+    const per = a + b + c;
+    const area = Math.abs((L.x - F.x) * (R.y - F.y) - (L.y - F.y) * (R.x - F.x)) / 2;
+    if (!(per > 0)) return null;
+    const x = (a * F.x + b * L.x + c * R.x) / per;
+    const y = (a * F.y + b * L.y + c * R.y) / per;
+    const deg = (Math.atan2(R.y - L.y, R.x - L.x) * 180) / Math.PI;
+    return `translate(${x} ${y}) rotate(${deg}) scale(${((2 * area) / per) * 1.38})`;
+  });
+  const faceSvg = $derived(eyesMarkup(eyes, previewMood, COLORS[0]));
+  // Eye thumbnails use the standard fighter: on a skinny custom shape the faces
+  // get too small to tell apart. (The editor above shows them on your shape.)
+  const thumbShape = STANDARD_SHAPE;
   const pct = (a: number, b: number) => `${Math.round((a / b) * 100)}%`;
 </script>
 
@@ -141,6 +176,7 @@
     <line x1="-2.6" y1="0" x2="2.6" y2="0" class="ground" />
     <polygon points={poly(outline)} class="standard" />
     <polygon points={poly(pts)} fill={COLORS[0]} class="mine" />
+    {#if faceAt}<g transform={faceAt} class="face">{@html faceSvg}</g>{/if}
     {#each pts as p, i}
       <circle
         cx={p.x}
@@ -166,6 +202,23 @@
       <span class="hint">({pct(size.height, standardSize.height)} height, {pct(size.width, standardSize.width)} width, same mass)</span>
     </div>
   {/if}
+
+  <fieldset class="eyes">
+    <legend>Eyes</legend>
+    <div class="eye-grid">
+      {#each EYE_STYLES as style, i}
+        <button class="eye" class:selected={eyes === i} aria-pressed={eyes === i} aria-label="eyes: {style.name}" title={style.vibe} onclick={() => (eyes = i)}>
+          <span class="thumb">{@html stickerSVG(thumbShape, COLORS[0], i, previewMood)}</span>
+          <span class="nm">{style.name}</span>
+        </button>
+      {/each}
+    </div>
+    <div class="moods" role="group" aria-label="preview mood">
+      {#each EYE_MOODS as m}
+        <button class:selected={previewMood === m} aria-pressed={previewMood === m} onclick={() => (previewMood = m)}>{MOOD_NAMES[m]}</button>
+      {/each}
+    </div>
+  </fieldset>
 
   <div class="actions">
     <button onclick={onBack}>Back</button>
@@ -243,5 +296,47 @@
   .row {
     display: flex;
     gap: 0.6rem;
+  }
+  .face {
+    pointer-events: none;
+  }
+  .eyes {
+    margin-top: 0.25rem;
+  }
+  .eye-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+    gap: 0.4rem;
+  }
+  .card button.eye {
+    display: grid;
+    justify-items: center;
+    gap: 0.15rem;
+    padding: 0.35rem 0.2rem 0.3rem;
+    font-size: 0.75rem;
+  }
+  .thumb {
+    width: 54px;
+    height: 54px;
+    display: block;
+  }
+  .thumb :global(svg) {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .nm {
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .moods {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .card .moods button {
+    padding: 0.35rem 0.7rem;
+    font-size: 0.85rem;
   }
 </style>

@@ -273,6 +273,24 @@ step; on a rollback the host reuses the decision it already sent. If the host
 disconnects mid-match, their bots go idle. Bots change input ~5×/s (see "Bot").
 
 
+## Fighter look (eyes, sticker style)
+
+From the concept eye sheet (`concept/eyes.html`, local only): a sticker-style
+body (white outline, black block shadow, gradient, ink line, shine marks) and
+14 eye styles, each with four moods picked from the sim every frame: KO'd,
+Charge (charging), Wobble (leaning close to tipping), otherwise Idle.
+
+- `src/look/eyes.ts`: the sheet's eye code, ported (SVG markup).
+- `src/look/sticker.ts`: draws fighters on the canvas; each (style, mood,
+  color) face is rasterized once. The drawing sits inside the physics body
+  (the white outline's outer edge is the body's edge) with a thinner outline
+  and shadow than the sheet, so what looks like a collision is one.
+- `src/look/stickerSVG.ts`: the same fighter as SVG, for menus.
+
+Players pick eyes in Customize fighter (saved in the browser); bots get
+random ones. Online, rooms carry each player's eye style (protocol v8, the
+relay checks the range); it's cosmetic, not part of the sim.
+
 ## Phones (touch controls)
 
 On a touch screen (or with `?touch=1`), matches get on-screen controls

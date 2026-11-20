@@ -1,17 +1,22 @@
 <script lang="ts">
-  // A small drawing of a fighter's shape (a custom one, or the standard one).
+  // A small drawing of a fighter: its shape (custom or standard), color and eyes.
   import type { FighterShape } from "../sim/geometry";
-  import { STANDARD_SHAPE } from "../sim/shapes";
+  import { stickerSVG } from "../look/stickerSVG";
 
-  let { shape, color, size = 18 }: { shape: FighterShape | null; color: string; size?: number } = $props();
-  const s = $derived(shape ?? STANDARD_SHAPE);
-  const xs = $derived(s.vertices.map((v) => v.x));
-  const ys = $derived(s.vertices.map((v) => -v.y)); // SVG y points down
-  const pad = 0.1;
-  const viewBox = $derived(`${Math.min(...xs) - pad} ${Math.min(...ys) - pad} ${Math.max(...xs) - Math.min(...xs) + 2 * pad} ${Math.max(...ys) - Math.min(...ys) + 2 * pad}`);
-  const points = $derived(s.vertices.map((v) => `${v.x},${-v.y}`).join(" "));
+  let { shape, color, eyes = 0, size = 18 }: { shape: FighterShape | null; color: string; eyes?: number; size?: number } = $props();
+  const svg = $derived(stickerSVG(shape, color, eyes));
 </script>
 
-<svg {viewBox} width={size} height={size} aria-hidden="true">
-  <polygon {points} fill={color} />
-</svg>
+<span class="icon" style:width="{size}px" style:height="{size}px" aria-hidden="true">{@html svg}</span>
+
+<style>
+  .icon {
+    display: inline-block;
+    flex: none;
+  }
+  .icon :global(svg) {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+</style>

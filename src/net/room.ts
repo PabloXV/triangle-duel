@@ -8,6 +8,7 @@ import { LEFT, encodeInput } from "../sim/inputCodec";
 import type { FighterShape } from "../sim/geometry";
 import { shapeIssue } from "../sim/shapes";
 import { randomBotShape } from "../bots/shapes";
+import { EYE_STYLES } from "../look/eyes";
 import { NO_INPUT } from "../sim/types";
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -39,6 +40,7 @@ interface Conn {
   fighter: number | null; // during a match: this player's own fighter
   drives: number[]; // during a match: fighters whose inputs this connection may send
   shape: FighterShape | null; // their custom fighter (null = standard)
+  eyes: number; // their eye style
 }
 
 /** A seat in the room: a connected player, or a bot (no connection; the host drives it). */
@@ -47,13 +49,14 @@ interface Seat {
   name: string;
   conn: string | null; // null = bot
   shape: FighterShape | null;
+  eyes: number;
 }
 
 const IDLE = encodeInput(NO_INPUT);
 
 export class RoomCore {
   private conns = new Map<string, Conn>();
-  private bots = new Map<number, { name: string; shape: FighterShape }>(); // slot → bot
+  private bots = new Map<number, { name: string; shape: FighterShape; eyes: number }>(); // slot → bot
   private settings: RoomSettings = { ...DEFAULT_ROOM_SETTINGS };
   phase: "lobby" | "match" = "lobby";
   private setup: MatchSetup | null = null;
@@ -82,7 +85,7 @@ export class RoomCore {
   }
 
   connect(id: string): Outgoing[] {
-    this.conns.set(id, { name: "player", joined: false, joinedAt: 0, slot: null, fighter: null, drives: [], shape: null });
+    this.conns.set(id, { name: "player", joined: false, joinedAt: 0, slot: null, fighter: null, drives: [], shape: null, eyes: 0 });
     return [];
   }
 
@@ -190,8 +193,13 @@ export class RoomCore {
         const slot = this.freeSlot();
         if (slot === null) return [error(id, `room is full (${MAX_PLAYERS} players)`)];
         // Each bot gets a random shape near the standard one, kept for as long as it's seated.
-        this.bots.set(slot, { name: `bot ${this.bots.size + 1}`, shape: randomBotShape(this.random) });
+        this.bots.set(slot, { name: `bot ${this.bots.size + 1}`, shape: randomBotShape(this.random), eyes: Math.floor(this.random() * EYE_STYLES.length) });
         return [this.roster()];
+      }
+      case "eyes": {
+        if (!Number.isInteger(m.eyes) || m.eyes < 0 || m.eyes >= EYE_STYLES.length) return [error(id, "unknown eye style")];
+        c.eyes = m.eyes;
+        return c.slot === null ? [] : [this.roster()];
       }
       case "shape": {
         const issue = m.shape && shapeIssue(m.shape);
@@ -262,8 +270,8 @@ export class RoomCore {
 
   /** Every seat (joined players and bots), in slot order. */
   private seats(): Seat[] {
-    const players: Seat[] = [...this.conns].flatMap(([id, c]) => (c.slot === null ? [] : [{ slot: c.slot, name: c.name, conn: id, shape: c.shape }]));
-    const bots: Seat[] = [...this.bots].map(([slot, b]) => ({ slot, name: b.name, conn: null, shape: b.shape }));
+    const players: Seat[] = [...this.conns].flatMap(([id, c]) => (c.slot === null ? [] : [{ slot: c.slot, name: c.name, conn: id, shape: c.shape, eyes: c.eyes }]));
+    const bots: Seat[] = [...this.bots].map(([slot, b]) => ({ slot, name: b.name, conn: null, shape: b.shape, eyes: b.eyes }));
     return [...players, ...bots].sort((a, b) => a.slot - b.slot);
   }
 
@@ -306,7 +314,7 @@ export class RoomCore {
 
   private roster(): Outgoing {
     const host = this.hostId();
-    const players: RosterEntry[] = this.seats().map((s) => ({ slot: s.slot, name: s.name, host: s.conn !== null && s.conn === host, bot: s.conn === null, shape: s.shape }));
+    const players: RosterEntry[] = this.seats().map((s) => ({ slot: s.slot, name: s.name, host: s.conn !== null && s.conn === host, bot: s.conn === null, shape: s.shape, eyes: s.eyes }));
     const spectators = this.spectators().map(([, c]) => c.name);
     return { to: "all", msg: { type: "roster", phase: this.phase, players, spectators, settings: this.settings } };
   }

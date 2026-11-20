@@ -4,6 +4,7 @@ import { RoomCore, type Outgoing } from "../src/net/room";
 import { WINGS_STAGE } from "../src/sim/geometry";
 import { DEFAULT_PARAMS } from "../src/sim/params";
 import { balanceShape, shapeIssue } from "../src/sim/shapes";
+import { EYE_STYLES } from "../src/look/eyes";
 import { LEFT } from "../src/sim/inputCodec";
 import { DEFAULT_MATCH } from "../src/sim/types";
 
@@ -39,8 +40,8 @@ describe("room: joining", () => {
     room.connect("b");
     const out = room.receive("b", hello("Bo"));
     expect(ofType(out, "roster")[0].players).toEqual([
-      { slot: 0, name: "Ana", host: true, bot: false, shape: null },
-      { slot: 1, name: "Bo", host: false, bot: false, shape: null },
+      { slot: 0, name: "Ana", host: true, bot: false, shape: null, eyes: 0 },
+      { slot: 1, name: "Bo", host: false, bot: false, shape: null, eyes: 0 },
     ]);
   });
 
@@ -202,7 +203,7 @@ describe("room: bots", () => {
     const { room } = roomWith(1);
     const out = room.receive("a", addBot);
     const [human, bot] = ofType(out, "roster")[0].players;
-    expect(human).toEqual({ slot: 0, name: "a", host: true, bot: false, shape: null });
+    expect(human).toEqual({ slot: 0, name: "a", host: true, bot: false, shape: null, eyes: 0 });
     expect(bot).toMatchObject({ slot: 1, name: "bot 1", host: false, bot: true });
     expect(bot.shape).not.toBeNull();
     expect(shapeIssue(bot.shape!)).toBeNull();
@@ -451,5 +452,25 @@ describe("room: fighter shapes", () => {
     expect(room.receive("a", send({ type: "start", setup: bad }))[0].msg).toEqual({ type: "error", message: "the setup has an invalid fighter shape" });
     const ok = { ...setup(2), match: { ...setup(2).match, shapes: [custom, null] } };
     expect(ofType(room.receive("a", send({ type: "start", setup: ok })), "start")).toHaveLength(2);
+  });
+});
+
+describe("room: eye styles", () => {
+  it("a player's eye style shows in the roster; bots get one too", () => {
+    const { room } = roomWith(1);
+    const out = room.receive("a", send({ type: "eyes", eyes: 5 }));
+    expect(ofType(out, "roster")[0].players[0].eyes).toBe(5);
+    const bot = ofType(room.receive("a", send({ type: "addBot" })), "roster")[0].players[1];
+    expect(bot.eyes).toBeGreaterThanOrEqual(0);
+    expect(bot.eyes).toBeLessThan(EYE_STYLES.length);
+  });
+
+  it("unknown eye styles are refused", () => {
+    const { room } = roomWith(1);
+    for (const eyes of [-1, EYE_STYLES.length, 2.5]) {
+      const out = room.receive("a", send({ type: "eyes", eyes }));
+      expect(ofType(out, "roster")).toHaveLength(0);
+    }
+    expect(ofType(room.receive("a", send({ type: "eyes", eyes: 99 })), "error")[0].message).toMatch(/eye style/);
   });
 });

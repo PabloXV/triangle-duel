@@ -5,6 +5,7 @@
   import { DEFAULT_LOCAL_SETUP, type Game, type LocalSetup } from "../game";
   import type { FighterShape } from "../sim/geometry";
   import { shapeIssue } from "../sim/shapes";
+  import { eyeStyle } from "../look/eyes";
   import { ROOM_CODE } from "../net/protocol";
   import InGame from "./InGame.svelte";
   import LocalSetupScreen from "./LocalSetup.svelte";
@@ -19,6 +20,7 @@
   const NAME_KEY = "triangle-duel.name";
   const SETUP_KEY = "triangle-duel.localSetup";
   const SHAPE_KEY = "triangle-duel.shape";
+  const EYES_KEY = "triangle-duel.eyes";
   const load = (key: string) => {
     try {
       return localStorage.getItem(key);
@@ -85,11 +87,17 @@
   })();
   let shape = $state<FighterShape | null>(savedShape);
   untrack(() => game.setPlayerShape(savedShape));
+  // My eye style (re-checked on load: anything unknown → the default).
+  let eyes = $state(eyeStyle(Number(load(EYES_KEY) ?? 0)));
+  untrack(() => game.setPlayerEyes(eyes));
 
-  function saveShape(s: FighterShape | null) {
+  function saveFighter(s: FighterShape | null, e: number) {
     shape = s;
+    eyes = e;
     game.setPlayerShape(s);
+    game.setPlayerEyes(e);
     save(SHAPE_KEY, JSON.stringify(s));
+    save(EYES_KEY, String(e));
     screen = "menu";
   }
 
@@ -150,8 +158,9 @@
   {:else if screen === "customize"}
     <CustomizeScreen
       initial={shape}
+      initialEyes={eyes}
       standardArea={(game.params.triWidth * game.params.triHeight) / 2}
-      onSave={saveShape}
+      onSave={saveFighter}
       onBack={() => (screen = "menu")}
     />
   {:else if screen === "local"}

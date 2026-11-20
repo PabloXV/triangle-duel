@@ -36,6 +36,8 @@ export class NetClient implements MatchTransport {
   settings: RoomSettings = { ...DEFAULT_ROOM_SETTINGS };
   /** My fighter shape (null = standard), sent after joining and whenever it changes. */
   shape: FighterShape | null = null;
+  /** My eye style, sent after joining and whenever it changes. */
+  eyes = 0;
   rttMs: number | null = null;
   error: string | null = null;
   /** During a match: my fighter index, and the latest official step and inputs. */
@@ -88,6 +90,7 @@ export class NetClient implements MatchTransport {
     ws.onopen = () => {
       this.send({ type: "hello", version: PROTOCOL_VERSION, name });
       if (this.shape) this.send({ type: "shape", shape: this.shape });
+      if (this.eyes) this.send({ type: "eyes", eyes: this.eyes });
       this.pingTimer = setInterval(() => this.ping(), 1000);
     };
     ws.onmessage = (e) => {
@@ -117,6 +120,12 @@ export class NetClient implements MatchTransport {
   /** Host, in the lobby: change the room's settings. */
   setSettings(settings: RoomSettings) {
     this.send({ type: "settings", settings });
+  }
+
+  /** Change my eye style (sent now if connected, else after joining). */
+  setEyes(eyes: number) {
+    this.eyes = eyes;
+    this.send({ type: "eyes", eyes });
   }
 
   /** Change my fighter shape (sent now if connected, else after joining). */
@@ -160,6 +169,10 @@ export class NetClient implements MatchTransport {
   }
 
   /** Display name of fighter `i` in the current match. */
+  eyesOf(i: number): number {
+    return this.roster.find((p) => p.slot === this.fighters[i])?.eyes ?? 0;
+  }
+
   nameOf(i: number): string {
     return this.roster.find((p) => p.slot === this.fighters[i])?.name ?? `P${i + 1}`;
   }

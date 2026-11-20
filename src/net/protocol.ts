@@ -17,7 +17,7 @@ import type { FighterShape, Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { MatchOptions } from "../sim/sim";
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 export const MAX_PLAYERS = 4;
 /** Spectators per room (watching a match, or waiting for a free seat). */
 export const MAX_SPECTATORS = 8;
@@ -53,6 +53,8 @@ export interface RosterEntry {
   bot: boolean; // a bot seat, driven by the host's browser
   /** Their custom fighter shape (balanced, unit area), or null for the standard fighter. */
   shape: FighterShape | null;
+  /** Their eye style (an index into EYE_STYLES; cosmetic, not part of the sim). */
+  eyes: number;
 }
 
 export type ClientMsg =
@@ -67,6 +69,8 @@ export type ClientMsg =
   | { type: "removeBot" }
   /** My fighter shape for upcoming matches (null = the standard fighter). The relay validates it. */
   | { type: "shape"; shape: FighterShape | null }
+  /** My eye style for upcoming matches. */
+  | { type: "eyes"; eyes: number }
   /** Host, in the lobby: change the room's settings. */
   | { type: "settings"; settings: RoomSettings }
   /** Host: remove the player in `slot` from the room. */
@@ -150,6 +154,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case "kick":
       return isInt(m.slot) && m.slot >= 0 ? { type: "kick", slot: m.slot } : null;
+    case "eyes":
+      return isInt(m.eyes) ? { type: "eyes", eyes: m.eyes } : null; // RoomCore checks the range
     case "shape":
       if (m.shape === null) return { type: "shape", shape: null };
       return isObj(m.shape) && Array.isArray(m.shape.vertices) ? { type: "shape", shape: m.shape as unknown as FighterShape } : null; // RoomCore checks the geometry
