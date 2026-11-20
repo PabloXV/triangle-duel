@@ -75,7 +75,9 @@
     save(KEYS.color, String(c));
   }
 
-  function saveFighter(s: FighterShape | null, e: number, c: number) {
+  function saveFighter(n: string, s: FighterShape | null, e: number, c: number) {
+    name = n;
+    save(KEYS.name, n);
     shape = s;
     eyes = e;
     game.setPlayerShape(s);
@@ -135,14 +137,17 @@
   {:else if screen === "menu"}
     <MainMenu
       {name}
+      {shape}
+      {eyes}
+      {color}
       onLocal={() => (screen = "local")}
       onOnline={() => (screen = "online")}
-      onRename={() => (screen = "name")}
       onCustomize={() => (screen = "customize")}
     />
   {:else if screen === "customize"}
     <CustomizeScreen
       initial={shape}
+      initialName={name}
       initialEyes={eyes}
       initialColor={color}
       standardArea={(game.params.triWidth * game.params.triHeight) / 2}

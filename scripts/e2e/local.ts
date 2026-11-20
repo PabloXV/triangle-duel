@@ -8,8 +8,8 @@ export async function localFlow(page: Page) {
   await page.getByLabel(NAME_FIELD).waitFor();
   await shot(page, "1-name");
   await enterName(page, "Pablo");
-  check(await page.getByText("Playing as").isVisible(), "name accepted → main menu");
-  check((await page.locator("strong", { hasText: "Pablo" }).count()) > 0, "menu shows the name");
+  check(await page.getByRole("button", { name: "edit your fighter" }).isVisible(), "name accepted → main menu");
+  check((await page.locator("button.me .name").textContent()) === "Pablo", "menu shows the name (on your fighter card)");
   check((await info(page)).mode === "attract", "a bot match plays behind the menu");
   await shot(page, "2-menu");
 
@@ -61,8 +61,8 @@ export async function localFlow(page: Page) {
 
   // 5. Reload: name and setup are remembered.
   await page.reload();
-  await page.getByText("Playing as").waitFor();
-  check((await page.locator("strong", { hasText: "Pablo" }).count()) > 0, "after reload: name remembered");
+  await page.getByRole("button", { name: "edit your fighter" }).waitFor();
+  check((await page.locator("button.me .name").textContent()) === "Pablo", "after reload: name remembered");
   await page.getByRole("button", { name: "Play locally" }).click();
   check((await page.getByRole("button", { name: /Island/ }).getAttribute("aria-pressed")) === "true", "after reload: map choice remembered");
   check((await page.locator("output").first().textContent()) === "2", "after reload: bot count remembered");

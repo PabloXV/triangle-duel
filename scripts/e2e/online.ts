@@ -27,7 +27,7 @@ export async function onlineFlow() {
   await ana.getByRole("button", { name: "more bots" }).click();
 
   // Bo joins and sees the same room.
-  await bo.getByLabel("…or join one with its code").fill(code.toLowerCase()); // lowercase is fine
+  await bo.getByLabel("Got a code from a friend?").fill(code.toLowerCase()); // lowercase is fine
   await bo.getByRole("button", { name: "Join" }).click();
   await bo.locator("button.code").waitFor();
   await bo.waitForTimeout(400);
@@ -45,7 +45,7 @@ export async function onlineFlow() {
   await shot(bo, "8-room-guest");
 
   // Cy joins; Ana kicks him.
-  await cy.getByLabel("…or join one with its code").fill(code);
+  await cy.getByLabel("Got a code from a friend?").fill(code);
   await cy.getByRole("button", { name: "Join" }).click();
   await cy.locator("button.code").waitFor();
   await ana.getByRole("button", { name: "kick Cy" }).click();
@@ -62,7 +62,7 @@ export async function onlineFlow() {
   check(ia.mode === "online" && ib.mode === "online" && ia.players === 3 && ia.platforms === 1, `both in the online match (3 fighters, Island)`);
   await shot(bo, "9-online-match");
   // Cy (kicked earlier) joins mid-match: he spectates, caught up to now.
-  await cy.getByLabel("…or join one with its code").fill(code);
+  await cy.getByLabel("Got a code from a friend?").fill(code);
   await cy.getByRole("button", { name: "Join" }).click();
   await cy.waitForFunction(() => (window as any).triangleDuel.game.info.mode === "online", null, { timeout: 10_000 });
   const [ic, ia2] = [await info(cy), await info(ana)];

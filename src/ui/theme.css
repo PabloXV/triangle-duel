@@ -112,6 +112,7 @@ body {
    small ones (steppers, kick/remove chips) it would run into the label. */
 .card .stack button::before,
 .card .actions button::before,
+.card .panel-footer button::before,
 .card button.primary::before,
 .sticker::before {
   content: "";
@@ -221,4 +222,49 @@ body {
 .muted {
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+/* ---- panels: the shared screen layout (Panel.svelte) ---- */
+.panel {
+  display: flex;
+  flex-direction: column;
+  /* Fit the window (the menu area pads 24 px above and leaves room below for drips). */
+  max-height: calc(100dvh - 150px);
+}
+.panel > h2 {
+  flex-shrink: 0;
+}
+.panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Room for the stickers' outlines and shadows inside the scroll area. */
+  margin: 0 -0.9rem;
+  padding: 0.3rem 0.9rem 0.9rem;
+}
+.panel-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.4rem -1.75rem -1.5rem;
+  padding: 1rem 1.75rem 1.2rem;
+  border-top: 3px solid var(--ink);
+  border-radius: 0 0 9px 9px;
+  background: color-mix(in srgb, var(--panel) 72%, var(--ink));
+}
+/* A section heading with something on its right (e.g. "Players 2/4 ... Bots − 1 +"). */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.5rem;
+}
+.label {
+  font: 400 1rem var(--font-label);
+  color: var(--muted);
+  margin: 0;
 }

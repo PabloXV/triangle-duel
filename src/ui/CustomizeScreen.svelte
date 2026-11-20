@@ -5,16 +5,17 @@
   // Shapes breaking the limits get pushed back toward where you started.
   import { untrack } from "svelte";
   import type { FighterShape, Vec2 } from "../sim/geometry";
-  import { STANDARD_SHAPE, balanceShape, shapeIssue, shapeSize, triangleArea } from "../sim/shapes";
+  import { STANDARD_SHAPE, balanceShape, shapeIssue, triangleArea } from "../sim/shapes";
   import { playerColor } from "../theme";
-  import type { EyeMood } from "../look/eyes";
   import { stickerInWorld } from "../look/stickerSVG";
   import EyePicker from "./EyePicker.svelte";
   import ColorPicker from "./ColorPicker.svelte";
+  import Panel from "./Panel.svelte";
 
 
   let {
     initial,
+    initialName = "",
     initialEyes = 0,
     initialColor = 0,
     standardArea,
@@ -22,10 +23,11 @@
     onBack,
   }: {
     initial: FighterShape | null;
+    initialName?: string;
     initialEyes?: number;
     initialColor?: number;
     standardArea: number;
-    onSave: (shape: FighterShape | null, eyes: number, color: number) => void;
+    onSave: (name: string, shape: FighterShape | null, eyes: number, color: number) => void;
     onBack: () => void;
   } = $props();
 
@@ -33,7 +35,8 @@
   let eyes = $state(untrack(() => initialEyes));
   // Color: your pick (in a room you get it if nobody else has it).
   let color = $state(untrack(() => initialColor));
-  let previewMood = $state<EyeMood>("idle");
+  let name = $state(untrack(() => initialName));
+  const cleanName = $derived(name.trim().slice(0, 16));
 
   const k = untrack(() => Math.sqrt(standardArea)); // unit shape → meters
   const FOOT = 0;
@@ -52,8 +55,6 @@
   let svg: SVGSVGElement;
 
   const balanced = $derived(balanceShape(pts, FOOT));
-  const size = $derived(balanced ? shapeSize(balanced, standardArea) : null);
-  const standardSize = shapeSize(STANDARD_SHAPE, untrack(() => standardArea));
   const outline = $derived(place(STANDARD_SHAPE, pts[FOOT].x)); // the standard fighter, on the same foot spot
 
   const issueOf = (p: Vec2[]) => {
@@ -144,22 +145,22 @@
     if (!b || shapeIssue(b)) return;
     // The standard shape counts as "no custom shape".
     const isStandard = b.vertices.every((v, i) => Math.abs(v.x - STANDARD_SHAPE.vertices[i].x) + Math.abs(v.y - STANDARD_SHAPE.vertices[i].y) < 1e-6);
-    onSave(isStandard ? null : b, eyes, color);
+    if (cleanName) onSave(cleanName, isStandard ? null : b, eyes, color);
   }
 
   const poly = (p: Vec2[]) => p.map((v) => `${v.x},${-v.y}`).join(" ");
 
   /** Your fighter exactly as it looks in a match (same drawing as the game: look/stickerSVG.ts), at true size. */
-  const fighterSvg = $derived(triangleArea(pts) > 1e-6 ? stickerInWorld(pts, FOOT, playerColor(color), eyes, previewMood) : "");
-  const pct = (a: number, b: number) => `${Math.round((a / b) * 100)}%`;
+  const fighterSvg = $derived(triangleArea(pts) > 1e-6 ? stickerInWorld(pts, FOOT, playerColor(color), eyes) : "");
 </script>
 
 <svelte:window onpointermove={onMove} onpointerup={onUp} />
 
-<div class="card wide">
-  <h2>Customize fighter</h2>
-  <p class="hint">Drag the top corners, or slide the foot. Let go and it settles into balance at the same mass as everyone else.</p>
+<Panel size="wide" title="Your fighter">
+  <label class="label" for="fighter-name">Name</label>
+  <input id="fighter-name" bind:value={name} maxlength="16" placeholder="your name" autocomplete="off" />
 
+  <p class="label">Shape</p>
   <svg bind:this={svg} viewBox="-2.6 -3.3 5.2 3.7" class="editor" role="application" aria-label="fighter shape editor">
     <!-- The floor, like a platform top: slab, ink line, ground line on the top edge. -->
     <rect x="-2.7" y="0" width="5.4" height="0.6" class="slab" />
@@ -183,35 +184,33 @@
     {/each}
     {#if notice}<text x="0" y="-3.05" class="notice">{notice}</text>{/if}
   </svg>
+  <p class="hint">Drag the white corners or slide the green foot. Every shape weighs the same; tall and skinny or short and wide is up to you.</p>
 
-  {#if size}
-    <div class="stats">
-      <span><span class="key mine-key" style:background={playerColor(color)}></span> yours: {size.height.toFixed(2)} m tall, {size.width.toFixed(2)} m wide</span>
-      <span><span class="key std-key"></span> standard: {standardSize.height.toFixed(2)} × {standardSize.width.toFixed(2)} m</span>
-      <span class="hint">({pct(size.height, standardSize.height)} height, {pct(size.width, standardSize.width)} width, same mass)</span>
-    </div>
-  {/if}
+  <p class="label">Color</p>
+  <ColorPicker value={color} onPick={(c) => (color = c)} />
 
-  <fieldset>
-    <legend>Color</legend>
-    <ColorPicker value={color} onPick={(c) => (color = c)} />
-  </fieldset>
+  <p class="label">Eyes</p>
+  <EyePicker value={eyes} color={playerColor(color)} onPick={(e) => (eyes = e)} />
 
-  <fieldset class="eyes">
-    <legend>Eyes</legend>
-    <EyePicker value={eyes} color={playerColor(color)} bind:mood={previewMood} onPick={(e) => (eyes = e)} />
-  </fieldset>
-
-  <div class="actions">
+  {#snippet footer()}
     <button onclick={onBack}>Back</button>
     <span class="row">
-      <button onclick={reset}>Reset to standard</button>
-      <button class="primary" onclick={save} disabled={animating || dragging !== null}>Save</button>
+      <button onclick={reset}>Reset shape</button>
+      <button class="primary" onclick={save} disabled={!cleanName || animating || dragging !== null}>Save</button>
     </span>
-  </div>
-</div>
+  {/snippet}
+</Panel>
 
 <style>
+  .label {
+    margin: 1rem 0 0.4rem;
+  }
+  .label:first-child {
+    margin-top: 0;
+  }
+  #fighter-name {
+    margin: 0;
+  }
   .editor {
     width: 100%;
     display: block;
@@ -264,34 +263,11 @@
     font: 600 0.16px system-ui, sans-serif;
     text-anchor: middle;
   }
-  .stats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem 1rem;
-    margin: 0.75rem 0;
-    font-size: 0.9rem;
-  }
-  .key {
-    display: inline-block;
-    width: 0.8rem;
-    height: 0.8rem;
-    vertical-align: -0.1rem;
-    margin-right: 0.2rem;
-  }
-  .mine-key {
-    background: var(--accent);
-  }
-  .std-key {
-    border: 1px dashed color-mix(in srgb, var(--halo) 55%, transparent);
-  }
   .row {
     display: flex;
     gap: 0.6rem;
   }
   .face {
     pointer-events: none;
-  }
-  .eyes {
-    margin-top: 0.25rem;
   }
 </style>

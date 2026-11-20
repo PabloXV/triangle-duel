@@ -7,7 +7,7 @@ export async function customizeFlow(page: Page) {
   if (await page.getByLabel(NAME_FIELD).isVisible().catch(() => false)) await enterName(page, "Pablo");
   await page.keyboard.press("Escape").catch(() => {});
   if (await page.getByRole("button", { name: "Menu" }).isVisible().catch(() => false)) await page.getByRole("button", { name: "Menu" }).click();
-  await page.getByRole("button", { name: "Customize fighter" }).click();
+  await page.getByRole("button", { name: "edit your fighter" }).click();
   const handle = (name: string) => page.getByRole("slider", { name });
   const center = async (name: string) => {
     const b = (await handle(name).boundingBox())!;
@@ -30,7 +30,7 @@ export async function customizeFlow(page: Page) {
   await drag("corner 1", 40, -600);
   check(await page.getByText(/pushed back/).isVisible(), "a too-far drag is pushed back, with a notice");
   await page.waitForTimeout(500);
-  check(await page.getByText(/yours: .* m tall/).isVisible(), "the pushed-back shape is still legal (stats shown)");
+  check(!(await page.getByRole("button", { name: "Save" }).isDisabled()), "the pushed-back shape is still legal (Save enabled)");
 
   // 2. A lopsided drag, then let go: it settles so the center of mass is straight above the foot.
   await drag("corner 2", -60, 40);
@@ -46,13 +46,12 @@ export async function customizeFlow(page: Page) {
   await page.getByRole("button", { name: "eyes: Cat" }).click();
   check((await page.getByRole("button", { name: "eyes: Cat" }).getAttribute("aria-pressed")) === "true", "eye picker: Cat selected");
   check((await page.locator("svg.editor .face").count()) === 1, "the editor's fighter shows the chosen eyes");
-  await page.getByRole("button", { name: "Charge", exact: true }).click(); // preview a mood
   await shot(page, "12b-customize-eyes");
 
   // 3. Save; reload; it's remembered.
   await page.getByRole("button", { name: "Save" }).click();
   await page.reload();
-  await page.getByRole("button", { name: "Customize fighter" }).click();
+  await page.getByRole("button", { name: "edit your fighter" }).click();
   const after = await corners();
   const same = after.every((p, i) => Math.abs(p.x - v[i].x) < 1e-3 && Math.abs(p.y - v[i].y) < 1e-3);
   check(same, "after reload: the saved shape is remembered");
