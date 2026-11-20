@@ -1,14 +1,15 @@
 <script lang="ts">
   // On-screen controls for touch screens. Two schemes (pause menu to switch):
   //
-  //   stick (default): put a thumb down anywhere on the control area and a
-  //     stick appears there. It's analog (src/aim.ts): sideways sets your
-  //     speed (centered = stop and balance); pulled down, you charge, and
-  //     sideways then sets your aim. It follows the thumb past its edge, so
-  //     reversing is quick. A second finger anywhere also charges.
-  //   buttons: ◀ ▶ under the left thumb, Charge under the right. A thumb keeps
-  //     the role it started with (it can slide between ◀ and ▶), so drifting
-  //     can't start or drop a charge.
+  //   buttons (default): ◀ on the left flank, ▶ on the right, Charge in the
+  //     middle; each thumb tilts its own side and either can reach Charge, so
+  //     you can charge with one thumb and aim with the other. A finger keeps
+  //     the zone it landed on (no sliding into another), so drifting can't
+  //     start or drop a charge.
+  //   stick: put a thumb down anywhere on the control area and a stick
+  //     appears there. It's analog (src/aim.ts): sideways sets your speed
+  //     (centered = stop and balance); pulled down, you charge, and sideways
+  //     then sets your aim. A second finger anywhere also charges.
   //
   //   portrait:  a pad below the game (the canvas shrinks to make room), so
   //              thumbs never cover the action;
@@ -98,13 +99,13 @@
   // ---- buttons ----
   type Zone = "left" | "right" | "charge";
   const zones = new Map<number, Zone>();
-  const fx = (e: PointerEvent) => {
+  /** Flanks: ◀ on the outer left, ▶ on the outer right, Charge in between. */
+  const FLANK = 0.3;
+  function zoneAt(e: PointerEvent): Zone {
     const r = el.getBoundingClientRect();
-    return (e.clientX - r.left) / r.width;
-  };
-  // Landscape leaves a dead strip in the middle; portrait splits the pad in half.
-  const turnEnd = $derived(layout === "portrait" ? 0.5 : 0.42);
-  const chargeStart = $derived(layout === "portrait" ? 0.5 : 0.58);
+    const fx = (e.clientX - r.left) / r.width;
+    return fx < FLANK ? "left" : fx > 1 - FLANK ? "right" : "charge";
+  }
 
   function syncZones() {
     const z = [...zones.values()];
@@ -112,23 +113,14 @@
   }
 
   function buttonsDown(e: PointerEvent) {
-    const x = fx(e);
-    const zone: Zone | null = x < turnEnd ? (x < turnEnd / 2 ? "left" : "right") : x >= chargeStart ? "charge" : null;
-    if (!zone) return;
     e.preventDefault();
     el.setPointerCapture(e.pointerId);
-    zones.set(e.pointerId, zone);
+    zones.set(e.pointerId, zoneAt(e));
     syncZones();
   }
 
-  function buttonsMove(e: PointerEvent) {
-    const zone = zones.get(e.pointerId);
-    if (zone === undefined || zone === "charge") return;
-    const next = fx(e) < turnEnd / 2 ? "left" : "right";
-    if (next !== zone) {
-      zones.set(e.pointerId, next);
-      syncZones();
-    }
+  function buttonsMove(_e: PointerEvent) {
+    // A finger keeps the zone it landed on.
   }
 
   function buttonsUp(e: PointerEvent) {
@@ -175,13 +167,9 @@
       <p class="stick-hint">Thumb anywhere here · slide ◀ ▶ to move · pull ▼ to charge, then slide to aim</p>
     {/if}
   {:else}
-    <div class="turns" style:width="{turnEnd * 100}%">
-      <div class="btn" class:on={pressed.left} data-zone="left">◀</div>
-      <div class="btn" class:on={pressed.right} data-zone="right">▶</div>
-    </div>
-    <div class="charge-side" style:width="{(1 - chargeStart) * 100}%">
-      <div class="btn charge" class:on={pressed.charge} data-zone="charge">Charge</div>
-    </div>
+    <div class="zone" style:width="{FLANK * 100}%"><div class="btn" class:on={pressed.left} data-zone="left">◀</div></div>
+    <div class="zone" style:width="{(1 - 2 * FLANK) * 100}%"><div class="btn charge" class:on={pressed.charge} data-zone="charge">Charge</div></div>
+    <div class="zone" style:width="{FLANK * 100}%"><div class="btn" class:on={pressed.right} data-zone="right">▶</div></div>
   {/if}
 </div>
 
@@ -251,15 +239,13 @@
   }
 
   /* buttons */
-  .turns,
-  .charge-side {
+  .zone {
     display: flex;
     align-items: center;
-    justify-content: space-evenly;
+    justify-content: center;
     pointer-events: none; /* labels only: the pad itself takes the touches */
   }
-  .landscape .turns,
-  .landscape .charge-side {
+  .landscape .zone {
     align-items: flex-end;
     padding-bottom: 1.2rem;
   }

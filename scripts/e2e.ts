@@ -315,6 +315,7 @@ async function phoneFlow() {
   await shot(p, "15-phone-setup");
   // Plenty of lives, so the test's own moves can't end the match early.
   for (let n = 0; n < 4; n++) await p.getByRole("button", { name: "more stocks" }).click().catch(() => {});
+  await p.getByRole("button", { name: "easy" }).click(); // a passive test fighter shouldn't lose every life mid-test
   await p.getByRole("button", { name: "Start" }).click();
   await p.waitForTimeout(600);
 
@@ -360,7 +361,49 @@ async function phoneFlow() {
   };
   const leanMax = (xs: { angle: number }[]) => Math.max(...xs.map((m) => Math.abs(m.angle)));
 
-  // Stick (the default) is analog: sideways sets your speed.
+  // Buttons (the default): ◀ on the left flank, ▶ on the right, Charge in the middle.
+  check(await pad.getByText("Charge").isVisible() && !(await p.getByText(/slide ◀ ▶ to move/).isVisible()), "default touch controls: buttons (◀ | Charge | ▶)");
+  const holdTurn = async (fx: number, id: number) => {
+    await ready();
+    const before = (await me()).angle;
+    await touches("touchStart", [await spot(fx, id)]);
+    const held = await watch(160); // (held much longer, you tip onto a corner: a KO)
+    await touches("touchEnd", []);
+    const angles = held.map((m) => m.angle);
+    await p.waitForTimeout(500);
+    return { before, max: Math.max(...angles), min: Math.min(...angles) };
+  };
+  const l = await holdTurn(0.12, 11);
+  check(l.max > l.before + 0.1, `buttons, hold ◀ (left flank): turned counterclockwise (${l.before.toFixed(2)} → up to ${l.max.toFixed(2)} rad)`);
+  const r = await holdTurn(0.88, 12);
+  check(r.min < r.before - 0.1, `buttons, hold ▶ (right flank): turned clockwise (${r.before.toFixed(2)} → down to ${r.min.toFixed(2)} rad)`);
+  // Charge with one thumb (middle), aim with the other (▶).
+  await ready();
+  const chargeSpot = await spot(0.5, 13);
+  await touches("touchStart", [chargeSpot]);
+  const plantedB = await untilPlanted();
+  await touches("touchStart", [chargeSpot, await spot(0.88, 14)]);
+  await p.waitForTimeout(90);
+  await touches("touchEnd", [chargeSpot]);
+  const aimedB = await me();
+  await shot(p, "16a-phone-buttons");
+  await touches("touchEnd", []);
+  check(
+    plantedB.charge > 0 && aimedB.charge > plantedB.charge && aimedB.angle < plantedB.angle - 0.03,
+    `buttons, Charge + ▶: charge ${(plantedB.charge * 100).toFixed(0)}% → ${(aimedB.charge * 100).toFixed(0)}% while leaning right (${plantedB.angle.toFixed(2)} → ${aimedB.angle.toFixed(2)} rad)`,
+  );
+  await p.waitForTimeout(1200);
+
+  // Switch to the stick (pause menu).
+  await p.getByRole("button", { name: "pause" }).click();
+  await p.getByRole("button", { name: "Touch controls: buttons" }).click();
+  check(await p.getByRole("button", { name: "Touch controls: stick" }).isVisible(), "pause menu: switched to the stick");
+  // Restart: each section starts with full lives at the spawn (the bot scores
+  // KOs on a test fighter that mostly stands still while being measured).
+  await p.getByRole("button", { name: "Restart" }).click();
+  await p.waitForTimeout(600);
+
+  // The stick is analog: sideways sets your speed.
   check(await p.getByText(/slide ◀ ▶ to move/).isVisible(), "stick: idle hint shown");
   // A small nudge right: a small, controlled move right, no flipping over.
   await ready();
@@ -372,17 +415,39 @@ async function phoneFlow() {
   check(x1 > x0 + 0.2 && leanMax(seen) < 0.3 && !seen.some((m) => m.ko), `stick nudge right: moved right ${(x1 - x0).toFixed(2)} m, leaning at most ${leanMax(seen).toFixed(2)} rad (no flip)`);
   await p.waitForTimeout(600);
 
-  // Full left: runs left, still upright enough to stay in control. (Movement
-  // comes from hops: the next landing after leaning launches you sideways.)
-  await ready();
-  x0 = (await me()).i.positions[0].x;
-  await drag(await spot(0.5, 2), [[-20, 0], [-45, 0], [-70, 0]]);
-  seen = await watch(1200);
-  await touches("touchEnd", []);
-  x1 = (await me()).i.positions[0].x;
-  const top = Math.max(...seen.map((m) => -m.i.positions[0].vx));
-  check(x1 < x0 - 0.5 && leanMax(seen) < 0.6, `stick full left: ran left ${(x0 - x1).toFixed(2)} m (up to ${top.toFixed(1)} m/s), leaning at most ${leanMax(seen).toFixed(2)} rad`);
-  await p.waitForTimeout(800);
+  // Full left, then back to center: runs, then brakes to a stop. (Left: the bot
+  // walks in from the right. Braking keeps us off the left edge.) Movement
+  // comes from hops: the next landing after leaning launches you sideways. If
+  // the bot reaches us mid-run, its shove isn't the stick's doing: restart and
+  // try once more.
+  const runAndBrake = async () => {
+    await ready();
+    const start = (await me()).i.positions[0].x;
+    const o = await spot(0.5, 2);
+    await drag(o, [[-20, 0], [-45, 0], [-70, 0]]);
+    const running = await watch(900);
+    const end = (await me()).i.positions[0].x;
+    await touches("touchMove", [{ ...o, x: o.x - 6 }]); // back to center (within the dead zone)
+    const braking = await watch(1000);
+    await touches("touchEnd", []);
+    const all = [...running, ...braking];
+    const nearBot = Math.min(...all.map((m) => Math.abs(m.i.positions[1].x - m.i.positions[0].x)));
+    return { start, end, running, braking, all, bumped: nearBot < 1.8 || all.some((m) => m.ko) };
+  };
+  let run = await runAndBrake();
+  if (run.bumped) {
+    await p.getByRole("button", { name: "pause" }).click();
+    await p.getByRole("button", { name: "Restart" }).click();
+    await p.waitForTimeout(600);
+    run = await runAndBrake();
+  }
+  const top = Math.max(...run.running.map((m) => -m.i.positions[0].vx));
+  const endVx = Math.abs(run.braking[run.braking.length - 1].i.positions[0].vx);
+  check(
+    !run.bumped && run.end < run.start - 0.5 && leanMax(run.all) < 0.6 && endVx < 1,
+    `stick full left: ran ${(run.start - run.end).toFixed(2)} m (up to ${top.toFixed(1)} m/s), then centered: braked to ${endVx.toFixed(1)} m/s; leaning at most ${leanMax(run.all).toFixed(2)} rad${run.bumped ? " (the bot got in the way twice)" : ""}`,
+  );
+  await p.waitForTimeout(500);
 
   // Charge and aim, one thumb: pull down (charge), then slide left (aim left).
   await ready();
@@ -402,6 +467,8 @@ async function phoneFlow() {
   await p.waitForTimeout(1200);
 
   // Landscape: the game takes the full screen; the stick works anywhere on it.
+  await p.getByRole("button", { name: "pause" }).click();
+  await p.getByRole("button", { name: "Restart" }).click();
   await p.setViewportSize({ width: 844, height: 390 });
   await p.waitForTimeout(400);
   const land = await info(p);

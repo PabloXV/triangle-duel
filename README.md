@@ -280,17 +280,18 @@ On a touch screen (or with `?touch=1`), matches get on-screen controls
 they work locally and online. Two schemes, switched in the pause menu and
 remembered per device:
 
-- **Stick (default):** a thumb down anywhere on the control area puts a stick
-  there. It's analog (`src/aim.ts`, on top of the same digital inputs, so
-  online is unchanged): sideways sets your **speed** (centered = stop and
-  balance), because a held lean isn't stable here (leaning makes you hop ever
-  faster until a landing topples you), so like the bots it leans in
-  proportion to the speed error. Pulled down, you charge, and sideways sets
-  your **aim** (planted, a lean holds), approached gently so it can't
-  overshoot into a topple. Tested against the real physics
-  (`tests/aim.test.ts`).
-- **Buttons:** ◀ ▶ under the left thumb, Charge under the right. A thumb keeps
-  the role it started with, so drifting can't start or drop a charge.
+- **Buttons (default):** ◀ on the left flank, ▶ on the right, Charge in the
+  middle: each thumb tilts its own side and either can reach Charge, so you
+  can charge with one thumb and aim with the other. A finger keeps the zone
+  it landed on, so drifting can't start or drop a charge.
+- **Stick:** a thumb down anywhere on the control area puts a stick there.
+  It's analog (`src/aim.ts`, on top of the same digital inputs, so online is
+  unchanged): sideways sets your **speed** (centered = stop and balance),
+  because a held lean isn't stable here (leaning makes you hop ever faster
+  until a landing topples you), so like the bots it leans in proportion to
+  the speed error. Pulled down, you charge, and sideways sets your **aim**
+  (planted, a lean holds), approached gently so it can't overshoot into a
+  topple. Tested against the real physics (`tests/aim.test.ts`).
 
 Portrait puts the controls on a pad below the game (the canvas shrinks), so
 thumbs never cover the action; landscape puts them over a full-screen game.

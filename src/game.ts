@@ -168,6 +168,7 @@ export class Game {
       me: this.state.me,
       angles: sim.view().map((f) => f.angle),
       ko: sim.view().map((f) => f.ko),
+      lives: sim.view().map((f) => f.stocks),
       grounded: sim.view().map((f) => f.grounded),
       lastInputs: (this.session as { lastInputs?: unknown }).lastInputs ?? null,
       charge: sim.view().map((f) => f.charge),

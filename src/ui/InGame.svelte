@@ -20,9 +20,9 @@
   const SCHEME_KEY = "triangle-duel.touchScheme";
   let scheme = $state<TouchScheme>((() => {
     try {
-      return localStorage.getItem(SCHEME_KEY) === "buttons" ? "buttons" : "stick";
+      return localStorage.getItem(SCHEME_KEY) === "stick" ? "stick" : "buttons";
     } catch {
-      return "stick";
+      return "buttons";
     }
   })());
   function toggleScheme() {
