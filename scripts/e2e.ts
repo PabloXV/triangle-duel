@@ -364,7 +364,8 @@ async function phoneFlow() {
   await drag(await spot(0.5, 2), [[-20, 0], [-45, 0], [-70, 0]]);
   const full = await inputsFor(300);
   await touches("touchEnd", []);
-  check(full.at(-1)!.touch.stickX === -1 && turns(full, -1), "stick full left: full stick; the game gets turn-left input");
+  // (Stick value → turn input is tested deterministically in tests/input.test.ts.)
+  check(full.at(-1)!.touch.stickX === -1, "stick full left: full stick reaches the game");
   check((await sense()).touch.stickX === null, "stick released: no stick input");
   // One thumb: pull down to charge, then slide left (still down) to aim.
   const o = await spot(0.5, 3);

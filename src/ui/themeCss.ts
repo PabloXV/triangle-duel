@@ -1,7 +1,7 @@
 // The theme (src/theme.ts) as CSS custom properties, for the menus' styles.
 // Browser only (theme.ts itself stays DOM-free: the relay server imports it).
 
-import { DEBUG_COLORS, FONTS, GOLD, HALO, INK, PLATFORM_COLORS, PLAYER_COLORS, POP, UI, WHITE, mix, withAlpha } from "../theme";
+import { DEBUG_COLORS, FONTS, GOLD, HALO, INK, PLATFORM_COLORS, PLAYER_COLORS, POP, UI, WALL, WHITE, mix, withAlpha } from "../theme";
 
 const svgUrl = (svg: string) => `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")`;
 
@@ -53,6 +53,8 @@ export function applyTheme(root: HTMLElement = document.documentElement) {
     "platform-light": mix(PLATFORM_COLORS.violet, WHITE, 0.75), // the ground line
     "debug-grounded": DEBUG_COLORS.grounded,
     violet: PLATFORM_COLORS.violet,
+    "wall-top": WALL.top,
+    "wall-bottom": WALL.bottom,
     panel: UI.panel,
     slate: UI.slate,
     grain: GRAIN,

@@ -7,9 +7,8 @@
   import type { FighterShape, Vec2 } from "../sim/geometry";
   import { STANDARD_SHAPE, balanceShape, shapeIssue, shapeSize, triangleArea } from "../sim/shapes";
   import { playerColor } from "../theme";
-  import { EYE_MOODS, EYE_STYLES, eyesMarkup, type EyeMood } from "../look/eyes";
-  import { stickerSVG } from "../look/stickerSVG";
-  import { faceInWorld } from "../look/fighterLayout";
+  import { EYE_MOODS, EYE_STYLES, type EyeMood } from "../look/eyes";
+  import { stickerInWorld, stickerSVG } from "../look/stickerSVG";
 
   const MOOD_NAMES: Record<EyeMood, string> = { idle: "Idle", charge: "Charge", wobble: "Wobble", ko: "KO'd" };
 
@@ -145,13 +144,8 @@
 
   const poly = (p: Vec2[]) => p.map((v) => `${v.x},${-v.y}`).join(" ");
 
-  /** The face on the editor's triangle (shared placement: fighterLayout.ts), as an SVG transform (y down). */
-  const faceAt = $derived.by(() => {
-    if (!(triangleArea(pts) > 1e-6)) return null;
-    const fc = faceInWorld(pts, FOOT);
-    return `translate(${fc.x} ${-fc.y}) rotate(${(-fc.angle * 180) / Math.PI}) scale(${fc.scale})`;
-  });
-  const faceSvg = $derived(eyesMarkup(eyes, previewMood, playerColor(0)));
+  /** Your fighter exactly as it looks in a match (same drawing as the game: look/stickerSVG.ts), at true size. */
+  const fighterSvg = $derived(triangleArea(pts) > 1e-6 ? stickerInWorld(pts, FOOT, playerColor(0), eyes, previewMood) : "");
   // Eye thumbnails use the standard fighter: on a skinny custom shape the faces
   // get too small to tell apart. (The editor above shows them on your shape.)
   const thumbShape = STANDARD_SHAPE;
@@ -165,10 +159,11 @@
   <p class="hint">Drag the top corners, or slide the foot. Let go and it settles into balance at the same mass as everyone else.</p>
 
   <svg bind:this={svg} viewBox="-2.6 -3.3 5.2 3.7" class="editor" role="application" aria-label="fighter shape editor">
-    <line x1="-2.6" y1="0" x2="2.6" y2="0" class="ground" />
+    <!-- The floor, like a platform top: slab, ink line, ground line on the top edge. -->
+    <rect x="-2.7" y="0" width="5.4" height="0.6" class="slab" />
+    <line x1="-2.7" y1="0.06" x2="2.7" y2="0.06" class="ground" />
     <polygon points={poly(outline)} class="standard" />
-    <polygon points={poly(pts)} fill={playerColor(0)} class="mine" />
-    {#if faceAt}<g transform={faceAt} class="face">{@html faceSvg}</g>{/if}
+    <g class="face">{@html fighterSvg}</g>
     {#each pts as p, i}
       <circle
         cx={p.x}
@@ -225,14 +220,23 @@
   .editor {
     width: 100%;
     display: block;
-    background: var(--field);
+    background: var(--grain), linear-gradient(var(--wall-top), var(--wall-bottom));
+    background-blend-mode: multiply, normal;
+    border: 3px solid var(--ink);
+    box-shadow: 0 0 0 3px var(--halo);
     border-radius: var(--radius);
+    box-sizing: border-box;
     touch-action: none;
     user-select: none;
   }
+  .slab {
+    fill: var(--violet);
+    stroke: var(--ink);
+    stroke-width: 0.07;
+  }
   .ground {
     stroke: var(--platform-light);
-    stroke-width: 0.04;
+    stroke-width: 0.12;
   }
   .standard {
     fill: none;
@@ -317,9 +321,15 @@
     height: 100%;
     display: block;
   }
+  .card button.eye {
+    text-shadow: none; /* small labels: the ink outline would swamp them */
+  }
   .nm {
-    color: var(--muted);
+    color: var(--halo);
     white-space: nowrap;
+  }
+  .eye.selected .nm {
+    color: var(--ink);
   }
   .moods {
     display: flex;
