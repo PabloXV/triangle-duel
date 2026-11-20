@@ -3,7 +3,7 @@
 // Local: `npm run relay` (relay only, for `npm run dev`), or `npm run serve`
 // (the production setup: build, then game + relay on http://localhost:8787).
 {
-  "name": "triangle-duel-relay",
+  "name": "triangle-duel",
   "main": "server/worker.ts",
   "compatibility_date": "2026-10-01",
   // On Cloudflare's Git builds this builds the game first (see the script).
