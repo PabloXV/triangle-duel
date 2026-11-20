@@ -329,6 +329,15 @@ export class OnlineSession implements Session {
     return this.confirmedState().result;
   }
 
+  /**
+   * Each fighter's lives on the confirmed timeline. The HUD shows these: the
+   * present's count can flicker as predicted KOs get undone by rollbacks.
+   */
+  confirmedStocks(): number[] {
+    const snap = this.snapshots.get(this.confirmed);
+    return snap ? snap.fighters.map((f) => f.stocks) : this.sim.view().map((f) => f.stocks); // no snapshot: the present is confirmed
+  }
+
   get confirmedTick(): number {
     return this.confirmed;
   }

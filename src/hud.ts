@@ -21,6 +21,7 @@ export interface RenderOptions {
   eyes?: number[]; // per fighter: eye style (src/look/eyes.ts)
   colors?: string[]; // per fighter: body color (default: by player number)
   countdown?: { text: string; t: number } | null; // "3", "2", "1", "Fight!" and how far into it (0..1)
+  stocks?: number[]; // lives to show per fighter (online: the confirmed ones); default: the fighters' own
 }
 
 /** Fighter i's body color: as chosen (opts.colors), else by player number. */
@@ -85,12 +86,13 @@ function drawStocks(ctx: CanvasRenderingContext2D, fighters: FighterView[], opts
   if (fighters.length * slot > w - 24) return drawStocksCompact(ctx, fighters, opts, icons, w, y);
   fighters.forEach((f, i) => {
     const x0 = w / 2 - (fighters.length * slot) / 2 + i * slot;
-    ctx.globalAlpha = f.stocks > 0 ? 1 : 0.4;
+    const lives = opts.stocks?.[i] ?? f.stocks;
+    ctx.globalAlpha = lives > 0 ? 1 : 0.4;
     inkText(ctx, label(i), x0, y, colorOf(opts, i), "left");
     const ic = icons[i];
     if (!ic) return;
     for (let n = 0; n < opts.totalStocks; n++) {
-      ctx.globalAlpha = n < f.stocks ? 1 : 0.22;
+      ctx.globalAlpha = n < lives ? 1 : 0.22;
       ctx.drawImage(ic.img, x0 + labelW + n * step + (iconW - ic.w) / 2, y - ic.h / 2, ic.w, ic.h);
     }
   });
@@ -116,7 +118,8 @@ function drawStocksCompact(ctx: CanvasRenderingContext2D, fighters: FighterView[
     const inRow = Math.min(perRow, fighters.length - row * perRow);
     const cx = w / 2 + (i - row * perRow - (inRow - 1) / 2) * cell;
     const cy = y - (rows - 1 - row) * ROW_H;
-    ctx.globalAlpha = f.stocks > 0 ? 1 : 0.4;
+    const lives = opts.stocks?.[i] ?? f.stocks;
+    ctx.globalAlpha = lives > 0 ? 1 : 0.4;
     ctx.font = `13px ${FONTS.label}`;
     inkText(ctx, label(i), cx, cy - 15, colorOf(opts, i), "center");
     const ic = icons[i];
@@ -124,7 +127,7 @@ function drawStocksCompact(ctx: CanvasRenderingContext2D, fighters: FighterView[
     const left = cx - (iw + 4 + countW) / 2;
     if (ic) ctx.drawImage(ic.img, left, cy + 6 - ic.h / 2, ic.w, ic.h);
     ctx.font = `16px ${FONTS.label}`;
-    inkText(ctx, `×${f.stocks}`, left + iw + 4, cy + 7, HALO, "left");
+    inkText(ctx, `×${lives}`, left + iw + 4, cy + 7, HALO, "left");
   });
   ctx.globalAlpha = 1;
 }

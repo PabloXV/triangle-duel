@@ -455,6 +455,8 @@ export class Game {
       totalStocks: sim.match.stocks,
       status: [session.status(), this.fps.text()].filter(Boolean).join("  ·  "),
       countdown: hud ? countdownText(sim.tick, sim.match.countdownTicks ?? 0) : null,
+      // Online, lives as confirmed (the predicted present can flicker as rollbacks undo KOs).
+      stocks: session instanceof OnlineSession ? session.confirmedStocks() : undefined,
     });
   }
 }

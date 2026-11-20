@@ -65,6 +65,30 @@ describe("online rollback (in-process relay + two clients)", () => {
     expect(lateFirstHalf).toBeLessThan(60); // was ~180 with a fixed 2-step margin
   });
 
+  it("the lives shown (confirmed) never flicker: they only ever go down", () => {
+    let confirmedUp = 0;
+    let presentUp = 0;
+    const last = new Map<OnlineSession, { confirmed: number[]; present: number[] }>(); // per client
+    playOnline({
+      latency: [3, 3],
+      jitter: 8,
+      ticks: 3600,
+      bots: 2,
+      sample: (s) => {
+        const now = { confirmed: s.confirmedStocks(), present: s.sim.view().map((f) => f.stocks) };
+        const before = last.get(s);
+        if (before) {
+          confirmedUp += now.confirmed.filter((n, i) => n > before.confirmed[i]).length;
+          presentUp += now.present.filter((n, i) => n > before.present[i]).length;
+        }
+        last.set(s, now);
+      },
+    });
+    expect(confirmedUp).toBe(0);
+    // (For the record: the predicted present's count can go back up, as rollbacks undo KOs.)
+    console.log(`present lives went back up ${presentUp} times; confirmed never`);
+  });
+
   it("never predicts more than MAX_PREDICTION steps ahead, even on a terrible connection", () => {
     const { a, b } = playOnline({ latency: [25, 25], ticks: 900, sample: (s) => maxAhead.push(s.predicting) });
     expect(Math.max(...maxAhead)).toBeLessThanOrEqual(MAX_PREDICTION);
