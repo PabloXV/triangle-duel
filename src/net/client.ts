@@ -240,7 +240,12 @@ export class NetClient implements MatchTransport {
       case "pong": {
         const sent = this.pingSent.get(m.id);
         this.pingSent.delete(m.id);
-        if (sent !== undefined) this.rttMs = performance.now() - sent;
+        // Smoothed (a moving average), so one slow ping doesn't swing how far
+        // ahead the match runs (OnlineSession) or the ping shown in the room.
+        if (sent !== undefined) {
+          const sample = performance.now() - sent;
+          this.rttMs = this.rttMs === null ? sample : this.rttMs + (sample - this.rttMs) * 0.25;
+        }
         break;
       }
       case "desync":

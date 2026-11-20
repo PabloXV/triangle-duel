@@ -31,13 +31,30 @@ export interface MatchTransport {
   sendHash(step: number, hash: string): void;
 }
 
-/** Run ahead of the newest official step by one round trip plus this many steps. */
-const MARGIN_STEPS = 2;
+/**
+ * Run ahead of the newest official step by one round trip plus a margin, so
+ * my inputs reach the relay before their step. Too thin, and an input arrives
+ * late: the relay moves it to the next open step, and my own fighter snaps
+ * (it was predicted with the input earlier). Small rotation changes decide
+ * whether a launch goes forward or tips you over, so this matters. The margin
+ * adapts: each late input adds a step (connections differ: measured, a steady
+ * one needs ~3, 100 ms ~6, jittery wifi more); 10 s without one gives one back.
+ */
+const MARGIN_MIN = 3;
+const MARGIN_MAX = 12;
+const MARGIN_RELAX_STEPS = 600;
 /** Until a ping has been measured, assume this round trip. */
 const DEFAULT_RTT_MS = 100;
 /** Never predict further than this past the confirmed timeline (½ s): stall instead. */
 export const MAX_PREDICTION = 30;
-/** Fallen behind the target? Catch up, at most this many steps per frame. */
+/**
+ * Pacing: the present moves one step per frame, absorbing small drift
+ * gradually (relay ticks often arrive in bursts) instead of freezing and then
+ * jumping: wait only when more than AHEAD_SLACK steps ahead; when behind,
+ * catch up 2 steps per frame, or up to MAX_STEPS_PER_FRAME when far behind.
+ */
+const AHEAD_SLACK = 2;
+const FAR_BEHIND = 12;
 const MAX_STEPS_PER_FRAME = 10;
 
 const IDLE = encodeInput(NO_INPUT);
@@ -49,6 +66,9 @@ export interface RollbackStats {
   maxDepth: number; // deepest single rollback (steps)
   maxCorrection: number; // largest visible jump of any fighter when the present was corrected (m)
   totalCorrection: number; // sum of those jumps (m), for averages
+  ownLate: number; // rollbacks caused by my own input arriving late (the relay moved it to a later step)
+  stalls: number; // step() calls that ran no step (the present waited)
+  bursts: number; // step() calls that ran 3+ steps at once (the present jumped)
 }
 
 export class OnlineSession implements Session {
@@ -69,6 +89,8 @@ export class OnlineSession implements Session {
   /** Steps 0..confirmed-1 were simulated with official inputs and are final. */
   private confirmed = 0;
   private lastSent = new Map<number, string>(); // per driven fighter
+  private margin = MARGIN_MIN; // see MARGIN_MIN
+  private lastLate = 0; // confirmed step when my input last arrived late
   private recorder: Recorder;
 
   /** Events of every step run since the last takeEvents() (including re-simulated ones). */
@@ -77,7 +99,7 @@ export class OnlineSession implements Session {
   lastStepInputs = "";
   /** The latest rollback correction (present before vs after), until taken. For visual smoothing. */
   private correction: { before: FighterView[]; after: FighterView[] } | null = null;
-  readonly stats: RollbackStats = { rollbacks: 0, resimulated: 0, maxDepth: 0, maxCorrection: 0, totalCorrection: 0 };
+  readonly stats: RollbackStats = { rollbacks: 0, resimulated: 0, maxDepth: 0, maxCorrection: 0, totalCorrection: 0, ownLate: 0, stalls: 0, bursts: 0 };
   desync: { step: number } | null = null;
   disconnected = false;
 
@@ -151,16 +173,23 @@ export class OnlineSession implements Session {
   step(): boolean {
     this.reconcile();
     const target = this.newest + this.aheadSteps();
-    if (this.sim.tick > target) return false; // ahead of where we should be: let the relay catch up
+    const drift = this.sim.tick - target;
+    // (Spectators never step past the newest official step: they don't guess.)
+    if (drift > (this.spectating ? 0 : AHEAD_SLACK)) {
+      if (!this.sim.result.over) this.stats.stalls++;
+      return false; // well ahead: let the relay catch up
+    }
+    const steps = drift < -FAR_BEHIND ? MAX_STEPS_PER_FRAME : drift < -AHEAD_SLACK ? 2 : 1;
     let n = 0;
-    while (n < MAX_STEPS_PER_FRAME && (n === 0 || this.sim.tick < target - 1) && this.advance()) n++;
+    while (n < steps && this.advance()) n++;
+    if (n >= 3) this.stats.bursts++;
     return n > 0;
   }
 
   private aheadSteps(): number {
     if (this.spectating) return 0; // nothing to make responsive: show only final steps
     const rtt = this.rtt() ?? DEFAULT_RTT_MS;
-    return Math.ceil(rtt / STEP_MS) + MARGIN_STEPS;
+    return Math.ceil(rtt / STEP_MS) + this.margin;
   }
 
   /** Simulate one present step. False if we're too far past the confirmed timeline. */
@@ -219,6 +248,14 @@ export class OnlineSession implements Session {
       }
     }
     if (mismatch !== null) {
+      // My own input changed there? Then it arrived late and the relay moved it.
+      const used = this.used.get(mismatch)!;
+      const official = this.official.get(mismatch)!;
+      if ([...this.sources.keys()].some((f) => used[f] !== official[f])) {
+        this.stats.ownLate++;
+        this.margin = Math.min(MARGIN_MAX, this.margin + 1); // run further ahead from now on
+        this.lastLate = this.confirmed;
+      }
       // Rewind to the first wrong step and redo everything up to the present.
       const before = this.sim.view();
       this.sim.restore(this.snapshots.get(mismatch)!);
@@ -241,6 +278,10 @@ export class OnlineSession implements Session {
   private confirm(t: number) {
     this.recorder.addStep(this.official.get(t)!);
     this.confirmed = t + 1;
+    if (this.margin > MARGIN_MIN && this.confirmed - this.lastLate > MARGIN_RELAX_STEPS) {
+      this.margin--; // a while with no late inputs: tighten up again
+      this.lastLate = this.confirmed;
+    }
     if (this.confirmed % HASH_EVERY === 0) {
       const hash = hashState(this.confirmedState());
       this.recorder.addChecksum(this.confirmed, hash);

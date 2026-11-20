@@ -32,14 +32,16 @@ body {
   box-shadow: 0 0 0 4px var(--halo), 8px 10px 0 4px color-mix(in srgb, var(--ink) 80%, transparent);
 }
 /* White paint dripping off the bottom of the outline (::after), over all the
-   drips' shadows (::before, offset like the panel's own shadow). */
+   drips' shadows (::before, offset like the panel's own shadow). Positions are
+   from the padding box: past the 5 px border and the 4 px white outline (each
+   drip's top flare overlaps the outline by 2 px so they join). */
 .card::before,
 .card::after {
   content: "";
   position: absolute;
   left: -9px;
   right: -9px;
-  top: calc(100% + 2px);
+  top: calc(100% + 7px);
   height: 96px;
   pointer-events: none;
 }

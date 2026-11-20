@@ -27,10 +27,19 @@
 </div>
 
 <style>
+  /* Its own scroll box (about three rows), so the page stays short and
+     Save is in reach. Padding leaves room for the buttons' outlines and shadows. */
   .eye-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
-    gap: 0.4rem;
+    gap: 0.7rem;
+    max-height: 17rem;
+    overflow-y: auto;
+    padding: 0.6rem 0.9rem 0.9rem 0.6rem;
+    border: 3px solid var(--ink);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--panel) 60%, var(--ink));
+    overscroll-behavior: contain;
   }
   :global(.card) button.eye {
     display: grid;

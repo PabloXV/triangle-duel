@@ -23,7 +23,7 @@ for (const [name, latency, jitter] of conditions) {
     const st = s.stats;
     const avgDepth = st.rollbacks ? st.resimulated / st.rollbacks : 0;
     const avgJump = st.rollbacks ? (st.totalCorrection / st.rollbacks) * PX_PER_M : 0;
-    return `${(st.rollbacks / secs).toFixed(1)}/s, depth avg ${avgDepth.toFixed(1)} max ${st.maxDepth}, jump avg ${avgJump.toFixed(1)} px max ${(st.maxCorrection * PX_PER_M).toFixed(0)} px`;
+    return `${(st.rollbacks / secs).toFixed(1)}/s, depth avg ${avgDepth.toFixed(1)} max ${st.maxDepth}, jump avg ${avgJump.toFixed(1)} px max ${(st.maxCorrection * PX_PER_M).toFixed(0)} px; own input late ${st.ownLate}, stalls ${st.stalls}, bursts ${st.bursts}`;
   });
   const agree = a.confirmedHash() === b.confirmedHash() && desyncs.length === 0;
   console.log(`${name.padEnd(32)} ${agree ? "in sync" : "DESYNC!"}\n  A: ${row[0]}\n  B: ${row[1]}`);

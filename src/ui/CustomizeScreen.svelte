@@ -202,7 +202,7 @@
     <EyePicker value={eyes} color={playerColor(color)} bind:mood={previewMood} onPick={(e) => (eyes = e)} />
   </fieldset>
 
-  <div class="actions pinned">
+  <div class="actions">
     <button onclick={onBack}>Back</button>
     <span class="row">
       <button onclick={reset}>Reset to standard</button>
@@ -293,16 +293,5 @@
   }
   .eyes {
     margin-top: 0.25rem;
-  }
-  /* Back / Reset / Save stay at the bottom of the window while the rest scrolls. */
-  .pinned {
-    position: sticky;
-    bottom: 0;
-    z-index: 2;
-    margin: 0.9rem -1.75rem -1.5rem;
-    padding: 0.9rem 1.75rem 1.1rem;
-    border-top: 3px solid var(--ink);
-    border-radius: 0 0 9px 9px;
-    background: color-mix(in srgb, var(--panel) 70%, var(--ink));
   }
 </style>

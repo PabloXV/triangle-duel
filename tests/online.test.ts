@@ -49,6 +49,22 @@ describe("online rollback (in-process relay + two clients)", () => {
     expect(a.stats.rollbacks).toBeGreaterThan(0);
   });
 
+  it("on a steady connection my own input is almost never late, and the present never jumps", () => {
+    // Late own inputs snap my own fighter (often its rotation, which decides
+    // whether a launch goes forward or tips over). The margin adapts to avoid them.
+    const { a, b } = playOnline({ latency: [2, 2], jitter: 1, ticks: 1800 });
+    for (const s of [a, b]) {
+      expect(s.stats.ownLate).toBeLessThanOrEqual(3);
+      expect(s.stats.bursts).toBe(0);
+    }
+  });
+
+  it("on a jittery connection the margin grows, so late inputs stop", () => {
+    const { a } = playOnline({ latency: [3, 3], jitter: 8, ticks: 2400 });
+    const lateFirstHalf = a.stats.ownLate; // (cumulative; checked against the whole run below)
+    expect(lateFirstHalf).toBeLessThan(60); // was ~180 with a fixed 2-step margin
+  });
+
   it("never predicts more than MAX_PREDICTION steps ahead, even on a terrible connection", () => {
     const { a, b } = playOnline({ latency: [25, 25], ticks: 900, sample: (s) => maxAhead.push(s.predicting) });
     expect(Math.max(...maxAhead)).toBeLessThanOrEqual(MAX_PREDICTION);
