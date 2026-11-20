@@ -16,8 +16,6 @@ export const GOLD = "#ffd23d";
 /** Focus rings, primary buttons. */
 export const POP = "#ffd93d";
 export const SWEAT = "#9fe3ff";
-export const BLUSH = "#ff8fb8";
-export const TONGUE = "#ff7aa8";
 /** The thin volume line on white drips. */
 export const DRIP_SHADE = "#a99fcf";
 
@@ -85,14 +83,12 @@ export const DEBUG_COLORS = { grounded: "#6bff8f", coyote: "#ffd93d", airborne: 
 // ---- menus (CSS custom properties; see src/ui/themeCss.ts) ----
 export const UI = {
   bg: "#14121c",
-  card: "#221d33f2",
   surface: "#2e2742", // buttons, chips
   field: "#16121f", // inputs, the editor canvas
   line: "#3d3556",
   text: "#ece8f6",
   muted: "#a59fba",
   accent: PLAYER_COLORS[0],
-  accentText: "#1a0f12",
   radius: "10px",
   /** Panels (menu cards): a dark violet slab (visual-language.md §11). */
   panel: "#3b2d63",

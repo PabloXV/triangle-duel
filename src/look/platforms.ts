@@ -9,12 +9,15 @@
 // every frame, so the warp never blurs where the floor is.
 
 import type { Platform } from "../sim/geometry";
+import { mulberry32 } from "../rng";
 import { DRIP_SHADE, HALO, INK, LINES, PLATFORM_COLORS, WHITE, mix, withAlpha } from "../theme";
+import { sparkleSVG } from "./sparkle";
+import { SvgImages } from "./svgImage";
 
 /** Bake resolution, pixels per meter. */
 const PX = 96;
 /** The platform color (one for now; never a player color). */
-export const PLATFORM_COLOR = PLATFORM_COLORS.violet;
+const PLATFORM_COLOR = PLATFORM_COLORS.violet;
 
 /** Cut gem sizes in meters: solid floors are "big", pass-through platforms "small". */
 const BIG = {
@@ -51,17 +54,6 @@ function stepSize(p: Platform): Size {
 }
 const sizeOf = (p: Platform): Size => (p.oneWay ? SMALL : p.halfHeight < 0.5 ? stepSize(p) : BIG);
 
-/** A small seeded random source, so a platform's drips are the same every time. */
-function rng(seed: number) {
-  return () => {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 interface Drip {
   x: number; // px
   w: number;
@@ -71,7 +63,7 @@ interface Drip {
 
 /** Clustered drips (§7): a few clusters, each of a few drips, lengths skewed short. */
 function drips(width: number, s: Size, seed: number): Drip[] {
-  const r = rng(seed);
+  const r = mulberry32(seed); // seeded: a platform's drips are the same every time
   const clusters = s === SMALL ? 1 : Math.max(1, Math.round(width / 6));
   const centers = clusters === 1 ? [s === SMALL ? 0.6 : 0.5] : Array.from({ length: clusters }, (_, i) => 0.2 + (0.55 * i) / (clusters - 1));
   const out: Drip[] = [];
@@ -113,11 +105,6 @@ function dropletPath(d: Drip, y: number) {
   return `M${f(cx)} ${f(cy - r * 2)}C${f(cx + r * 0.3)} ${f(cy - r)} ${f(cx + r)} ${f(cy - r * 0.6)} ${f(cx + r)} ${f(cy)}A${f(r)} ${f(r)} 0 0 1 ${f(cx - r)} ${f(cy)}C${f(cx - r)} ${f(cy - r * 0.6)} ${f(cx - r * 0.3)} ${f(cy - r)} ${f(cx)} ${f(cy - r * 2)}Z`;
 }
 
-function star4(x: number, y: number, r: number) {
-  const q = r * 0.28;
-  return `<path d="M${f(x)} ${f(y - r)}L${f(x + q)} ${f(y - q)}L${f(x + r)} ${f(y)}L${f(x + q)} ${f(y + q)}L${f(x)} ${f(y + r)}L${f(x - q)} ${f(y + q)}L${f(x - r)} ${f(y)}L${f(x - q)} ${f(y - q)}Z" fill="${HALO}" stroke="${INK}" stroke-width="${f(r * 0.16)}" stroke-linejoin="round"/>`;
-}
-
 interface Baked {
   svg: string;
   /** Where the image's top-left corner is, in the world (m), and its size (m). */
@@ -128,7 +115,7 @@ interface Baked {
 }
 
 /** The platform as an SVG image, plus where it goes in the world. */
-export function bakePlatform(p: Platform, color = PLATFORM_COLOR, seed = 1): Baked {
+function bakePlatform(p: Platform, color = PLATFORM_COLOR, seed = 1): Baked {
   const s = sizeOf(p);
   const width = p.halfWidth * 2;
   const haloW = (LINES.line + 2 * s.band) * PX;
@@ -178,7 +165,7 @@ export function bakePlatform(p: Platform, color = PLATFORM_COLOR, seed = 1): Bak
     const gy = y0 + cap + 0.24 * PX;
     g += `<path d="M${f(gx)} ${f(gy)}H${f(gx + 0.8 * PX)}" stroke="${WHITE}" stroke-width="${f(0.1 * PX)}" stroke-linecap="round" opacity=".9"/><circle cx="${f(gx + 0.8 * PX + 0.22 * PX)}" cy="${f(gy)}" r="${f(0.05 * PX)}" fill="${WHITE}" opacity=".9"/>`;
     g += `<path d="M${f(gx)} ${f(gy + 0.24 * PX)}H${f(gx + 0.4 * PX)}" stroke="${WHITE}" stroke-width="${f(0.06 * PX)}" stroke-linecap="round" opacity=".6"/>`;
-    g += star4(x1 - 0.68 * PX, y0 + cap + 0.36 * PX, 0.2 * PX) + star4(x1 - 1.16 * PX, y0 + cap + 0.68 * PX, 0.1 * PX);
+    g += sparkleSVG(x1 - 0.68 * PX, y0 + cap + 0.36 * PX, 0.2 * PX, HALO) + sparkleSVG(x1 - 1.16 * PX, y0 + cap + 0.68 * PX, 0.1 * PX, HALO);
   }
 
   // The mockups' edge warp (§5): low-frequency displacement, whole object.
@@ -193,20 +180,16 @@ export function bakePlatform(p: Platform, color = PLATFORM_COLOR, seed = 1): Bak
 }
 
 // ---- drawing ----
-const baked = new Map<string, { img: HTMLImageElement; at: Baked } | null>(); // null = loading
+const baked = new SvgImages();
 
 function art(p: Platform, index: number) {
   const key = `${p.center.x},${p.center.y},${p.halfWidth},${p.halfHeight},${p.oneWay ?? false}`;
-  const hit = baked.get(key);
-  if (hit !== undefined) return hit;
-  baked.set(key, null);
-  const at = bakePlatform(p, PLATFORM_COLOR, index + 1);
-  const img = new Image();
-  img.onload = () => baked.set(key, { img, at });
-  img.onerror = () => baked.delete(key);
-  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(at.svg);
-  return null;
+  let at = placement.get(key);
+  if (!at) placement.set(key, (at = bakePlatform(p, PLATFORM_COLOR, index + 1)));
+  const img = baked.get(key, () => at.svg);
+  return img ? { img, at } : null;
 }
+const placement = new Map<string, Baked>();
 
 /** Draw a platform (world units, y up). */
 export function drawPlatform(ctx: CanvasRenderingContext2D, p: Platform, index: number) {

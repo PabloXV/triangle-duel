@@ -19,6 +19,7 @@ import { clamp, platformTop, type Platform, type Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { InputSource } from "../session";
 import type { FighterView, Input, Sim } from "../sim/sim";
+import { mulberry32 } from "../rng"; // seeded: a bot with the same seed makes the same choices
 
 export interface BotConfig {
   /**
@@ -342,18 +343,6 @@ function platformUnder(me: FighterView, stage: Stage): Platform | null {
     if (!nearest || Math.abs(p.center.x - me.x) < Math.abs(nearest.center.x - me.x)) nearest = p;
   }
   return nearest;
-}
-
-/** Tiny seeded PRNG, so a bot with the same seed makes the same choices. */
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 /** Adapts a HeuristicBot to the InputSource interface sessions use. */

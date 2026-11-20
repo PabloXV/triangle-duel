@@ -1,7 +1,7 @@
 <script lang="ts">
   // Set up a match on this machine: map, bots, stocks, difficulty, 2nd player.
   import { untrack } from "svelte";
-  import type { BotLevel, LocalSetup } from "../game";
+  import type { BotLevel, LocalSetup } from "../lineup";
   import { isTouchDevice } from "../input";
   import MapPicker from "./MapPicker.svelte";
   import Stepper from "./Stepper.svelte";

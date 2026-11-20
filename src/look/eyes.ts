@@ -8,6 +8,7 @@
 // (src/look/faces.ts) and places it at the fighter's incircle.
 
 import { GOLD, HALO, INK, SWEAT as SWEAT_COLOR, WHITE } from "../theme";
+import { sparkleSVG } from "./sparkle";
 
 export type EyeMood = "idle" | "charge" | "wobble" | "ko";
 export const EYE_MOODS: EyeMood[] = ["idle", "charge", "wobble", "ko"];
@@ -20,11 +21,6 @@ export const FACE_EXTENT = 1.3;
 // clipPath ids: unique across the page (eyes can also be inlined in the UI's SVGs).
 let uidN = 0;
 const uid = () => "eye" + ++uidN;
-
-export function star4(x: number, y: number, r: number, fill = WHITE): string {
-  const q = r * 0.28;
-  return `<path d="M${f(x)} ${f(y - r)}L${f(x + q)} ${f(y - q)}L${f(x + r)} ${f(y)}L${f(x + q)} ${f(y + q)}L${f(x)} ${f(y + r)}L${f(x - q)} ${f(y + q)}L${f(x - r)} ${f(y)}L${f(x - q)} ${f(y - q)}Z" fill="${fill}" stroke="${INK}" stroke-width="${f(r * 0.18)}" stroke-linejoin="round"/>`;
-}
 
 // ---------- shared eye build ----------
 // `shapes`: bare elements (no paint), painted in passes so every style matches.
@@ -181,7 +177,7 @@ function shadesEyes(mood: EyeMood) {
     inner += `<path d="M-.5 -.22L-.36 -.08L-.28 -.18L-.14 .04M-.36 -.08L-.4 .08M.2 -.2L.32 -.04L.42 -.14L.5 .06" stroke="${WHITE}" stroke-width=".04" fill="none" stroke-linejoin="round"/>`;
   inner += `</g><path d="M-.04 -.2Q0 -.26 .04 -.2" stroke="${INK}" stroke-width=".09" fill="none" stroke-linecap="round"/>`;
   const transform = { idle: "", charge: "translate(0 .05)", wobble: "translate(.04 .08) rotate(-10)", ko: "translate(.03 .06) rotate(12)" }[mood];
-  let extra = mood === "charge" ? star4(0.52, -0.42, 0.13) : "";
+  let extra = mood === "charge" ? sparkleSVG(0.52, -0.42, 0.13) : "";
   if (mood === "wobble") extra += SWEAT;
   return eyeBuild({ shapes, inner, fill: INK, transform, extra });
 }

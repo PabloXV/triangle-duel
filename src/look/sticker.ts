@@ -9,14 +9,16 @@
 // (docs/visual-language.md §5).
 
 import type { Vec2 } from "../sim/geometry";
-import { GOLD, HALO, INK, LINES, WHITE, mix, withAlpha } from "../theme";
+import { GOLD, HALO, INK, WHITE, mix, withAlpha } from "../theme";
+import { band, mark, sparkle, spike } from "./marks";
+import { SvgImages } from "./svgImage";
 import { EYE_MOODS, FACE_EXTENT, eyesSVG, type EyeMood } from "./eyes";
 import { PLAY_OUTLINE, SHEET_PX, cornersFromWorld, fighterLayout } from "./fighterLayout";
 
 /** Leaning past this (rad), the eyes go "wobble" (close to tipping). */
-export const WOBBLE_LEAN = 0.42;
+const WOBBLE_LEAN = 0.42;
 
-export interface StickerLook {
+interface StickerLook {
   color: string;
   eyes: number; // eye style index (src/look/eyes.ts)
 }
@@ -30,24 +32,13 @@ export function moodOf(f: { ko: unknown; charge: number; angle: number }): EyeMo
 
 // ---- faces: each (style, mood, color) rasterized once ----
 const FACE_PX = 256;
-const faces = new Map<string, HTMLCanvasElement | null>(); // null = loading
-
-function face(style: number, mood: EyeMood, color: string): HTMLCanvasElement | null {
-  const key = `${style}|${mood}|${color}`;
-  const hit = faces.get(key);
-  if (hit !== undefined) return hit;
-  faces.set(key, null);
-  const img = new Image();
-  img.onload = () => {
-    const c = document.createElement("canvas");
-    c.width = c.height = FACE_PX;
-    c.getContext("2d")!.drawImage(img, 0, 0, FACE_PX, FACE_PX);
-    faces.set(key, c);
-  };
-  img.onerror = () => faces.delete(key);
-  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(eyesSVG(style, mood, color, FACE_PX));
-  return null;
-}
+const faces = new SvgImages<HTMLCanvasElement>((img) => {
+  const c = document.createElement("canvas");
+  c.width = c.height = FACE_PX;
+  c.getContext("2d")!.drawImage(img, 0, 0, FACE_PX, FACE_PX);
+  return c;
+});
+const face = (style: number, mood: EyeMood, color: string) => faces.get(`${style}|${mood}|${color}`, () => eyesSVG(style, mood, color, FACE_PX));
 
 /** Start rasterizing every mood for these looks (e.g. at a match start), so no face pops in late. */
 export function preloadFaces(looks: StickerLook[]) {
@@ -56,89 +47,16 @@ export function preloadFaces(looks: StickerLook[]) {
 
 /** How many faces are ready (for tests). */
 export function facesReady(): number {
-  return [...faces.values()].filter(Boolean).length;
+  return faces.readyCount;
 }
 
 // ---- drawing ----
-/** Ink line on marks (LINES.markLine), and the thinnest one on a tiny mark (a sparkle). */
-const MARK_INK = LINES.markLine;
-const MARK_LINE_MIN = 0.022;
-
-/** A fill-style mark: flat `fill`, ink line (even-odd, so a path can have a hole). */
-function mark(ctx: CanvasRenderingContext2D, fill: string, path: () => void) {
-  ctx.beginPath();
-  path();
-  ctx.fillStyle = fill;
-  ctx.fill("evenodd");
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = MARK_INK;
-  ctx.lineJoin = "round";
-  ctx.stroke();
-}
-
-/** A white band along an arc (center, radius, from/to angle), thickest in the middle, tapered at the ends. */
-function band(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, a0: number, a1: number, width: number) {
-  const N = 16;
-  const at = (u: number, side: number) => {
-    const a = a0 + (a1 - a0) * u;
-    const w = width * (0.2 + 0.8 * Math.sin(Math.PI * u));
-    const rr = r + (side * w) / 2;
-    return [cx + rr * Math.cos(a), cy + rr * Math.sin(a)];
-  };
-  mark(ctx, HALO, () => {
-    for (let i = 0; i <= N; i++) {
-      const [x, y] = at(i / N, 1);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    for (let i = N; i >= 0; i--) {
-      const [x, y] = at(i / N, -1);
-      ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-  });
-}
-
-/** A white spike: base centered at (x, y), `len` long toward angle `a`. */
-function spike(ctx: CanvasRenderingContext2D, x: number, y: number, a: number, len: number, halfWidth: number) {
-  const px = -Math.sin(a) * halfWidth;
-  const py = Math.cos(a) * halfWidth;
-  mark(ctx, HALO, () => {
-    ctx.moveTo(x + px, y + py);
-    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
-    ctx.lineTo(x - px, y - py);
-    ctx.quadraticCurveTo(x - Math.cos(a) * halfWidth, y - Math.sin(a) * halfWidth, x + px, y + py);
-    ctx.closePath();
-  });
-}
-
 function tri(ctx: CanvasRenderingContext2D, [F, L, R]: readonly Vec2[]) {
   ctx.beginPath();
   ctx.moveTo(F.x, F.y);
   ctx.lineTo(L.x, L.y);
   ctx.lineTo(R.x, R.y);
   ctx.closePath();
-}
-
-/** A 4-point sparkle (sheet: star4), in the current transform's units. */
-function sparkle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, fill: string) {
-  const q = r * 0.28;
-  ctx.beginPath();
-  ctx.moveTo(x, y + r);
-  ctx.lineTo(x + q, y + q);
-  ctx.lineTo(x + r, y);
-  ctx.lineTo(x + q, y - q);
-  ctx.lineTo(x, y - r);
-  ctx.lineTo(x - q, y - q);
-  ctx.lineTo(x - r, y);
-  ctx.lineTo(x - q, y + q);
-  ctx.closePath();
-  ctx.fillStyle = fill;
-  ctx.fill();
-  ctx.lineWidth = Math.max(r * 0.2, MARK_LINE_MIN);
-  ctx.strokeStyle = INK;
-  ctx.lineJoin = "round";
-  ctx.stroke();
 }
 
 /**

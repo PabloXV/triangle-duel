@@ -21,7 +21,7 @@ export const PROTOCOL_VERSION = 9;
 export const MAX_PLAYERS = 4;
 /** Spectators per room (watching a match, or waiting for a free seat). */
 export const MAX_SPECTATORS = 8;
-export const MAX_MESSAGE_BYTES = 64 * 1024;
+const MAX_MESSAGE_BYTES = 64 * 1024;
 /** Clients report a state fingerprint every this many steps. */
 export const HASH_EVERY = 60;
 /** How far ahead of the relay's clock a client may schedule an input (steps). */

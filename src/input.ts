@@ -12,7 +12,7 @@ interface Binding {
 }
 
 // Only P1 and P2 can be human. P3 and P4 are always bots.
-export const BINDINGS: Binding[] = [
+const BINDINGS: Binding[] = [
   { left: "ArrowLeft", right: "ArrowRight", charge: "ArrowDown" }, // P1
   { left: "KeyA", right: "KeyD", charge: "KeyS" }, // P2
 ];
@@ -55,7 +55,7 @@ export function installKeyboard(onKey: (code: string) => void) {
   });
 }
 
-export function readInput(player: number): Input {
+function readInput(player: number): Input {
   const b = BINDINGS[player];
   const t = player === 0 ? touch : { left: false, right: false, charge: false };
   const turn = (held.has(b.right) || t.right ? 1 : 0) - (held.has(b.left) || t.left ? 1 : 0);

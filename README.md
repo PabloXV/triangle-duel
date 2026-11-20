@@ -49,22 +49,35 @@ src/sim/        ← the game. No DOM, no clock, no randomness. Runs in Node.
   detmath.ts      deterministic sin/cos (see "Determinism")
 src/game.ts     the game: canvas loop, modes (menu backdrop / local / online / replay),
                 and the small API the menus call
-src/ui/         menus and overlays (Svelte): name, main menu, local setup, pause, end of match
-src/stages.ts   the playable maps
+src/lineup.ts   who's in a match: input sources, shapes, looks (names, eyes, colors)
 src/session.ts  what the loop drives: LiveSession (one InputSource per player,
-                recorded) or PlaybackSession. Online will be another Session.
+                recorded) or PlaybackSession; online: net/onlineSession.ts
+src/stages.ts   the playable maps
 src/net/        online: protocol.ts (messages), room.ts (relay logic, no
-                Cloudflare APIs, tested in Node), client.ts (browser connection)
+                Cloudflare APIs, tested in Node), client.ts (browser connection),
+                onlineSession.ts (rollback)
 server/         the relay Worker + Room Durable Object (thin wrapper over room.ts)
 src/bots/       bots: read FighterView, return Input, same as a keyboard
-src/input.ts    keyboard → Input { turn, charge } (KeyboardSource)
-src/render.ts canvas renderer; reads sim state, never writes it
-src/panel.ts  lil-gui param panel
-src/camera.ts follow cam (pan/zoom to fit fighters) + screen shake
+src/input.ts    keyboard + touch → Input { turn, charge } (KeyboardSource)
+src/aim.ts      the touch stick's speed/aim controller
+src/theme.ts    every color, line weight and font (docs/visual-language.md)
+src/look/       how things are drawn: fighters (sticker.ts canvas, stickerSVG.ts
+                menus, fighterLayout.ts shared geometry), eyes.ts, platforms.ts,
+                wall.ts, texture.ts (grain), marks.ts / sparkle.ts (small effects),
+                svgImage.ts (SVG → cached images)
+src/render.ts   canvas renderer: the scene in world units; reads sim state only
+src/hud.ts      the in-game interface on the canvas (stocks, banner, arrows, debug)
+src/camera.ts   follow cam (pan/zoom to fit fighters) + screen shake
 src/koReplay.ts final-KO instant replay (plays back recorded frames)
-src/main.ts   entry point: starts the game, mounts the menus, attaches the debug panel
+src/ui/         menus and overlays (Svelte); theme.css holds the shared menu
+                styles, themeCss.ts publishes theme.ts as CSS variables
+src/storage.ts  what the browser remembers (every localStorage key)
+src/rng.ts      a seeded random generator (bots, drips, tests)
+src/panel.ts    lil-gui param panel (the ` debug toggle)
+src/main.ts     entry point: theme + fonts, starts the game, mounts the menus
 tests/        sim behavior tests
-scripts/      bot arena, recording verify, cross-browser check, fixture generator
+scripts/      bot arena, recording verify, cross-browser check, fixture generator;
+              e2e/ the browser test (one file per section, lib.ts shared)
 ```
 
 **The one rule:** the only way to affect a match is `sim.step(inputs)`.

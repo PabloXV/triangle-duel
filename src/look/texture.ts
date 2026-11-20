@@ -4,9 +4,11 @@
 // from the mockups (concept/platforms-world.html): frequencies are per mockup
 // pixel, at 50 px per meter.
 
+import { SvgImages } from "./svgImage";
+
 const TILE = 256; // px
 /** Tile pixels per meter (the mockups' scale). */
-export const TEXTURE_PX_PER_M = 50;
+const TEXTURE_PX_PER_M = 50;
 
 type Tile = "speckLight" | "speckDark" | "grain";
 const RECIPES: Record<Tile, { freq: number; seed: number; matrix: string }> = {
@@ -18,25 +20,22 @@ const RECIPES: Record<Tile, { freq: number; seed: number; matrix: string }> = {
   grain: { freq: 0.9, seed: 2, matrix: ".33 .33 .33 0 .5  .33 .33 .33 0 .5  .33 .33 .33 0 .5  0 0 0 0 1" },
 };
 
-const tiles = new Map<Tile, HTMLCanvasElement | null>();
+const tiles = new SvgImages<HTMLCanvasElement>((img) => {
+  const c = document.createElement("canvas");
+  c.width = c.height = TILE;
+  c.getContext("2d")!.drawImage(img, 0, 0);
+  return c;
+});
 
 function tile(name: Tile): HTMLCanvasElement | null {
-  if (tiles.has(name)) return tiles.get(name)!;
-  tiles.set(name, null);
   const r = RECIPES[name];
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${TILE}" height="${TILE}">` +
-    `<filter id="n" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="${r.freq}" numOctaves="3" seed="${r.seed}" stitchTiles="stitch"/><feColorMatrix values="${r.matrix}"/></filter>` +
-    `<rect width="100%" height="100%" filter="url(#n)"/></svg>`;
-  const img = new Image();
-  img.onload = () => {
-    const c = document.createElement("canvas");
-    c.width = c.height = TILE;
-    c.getContext("2d")!.drawImage(img, 0, 0);
-    tiles.set(name, c);
-  };
-  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
-  return null;
+  return tiles.get(
+    name,
+    () =>
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${TILE}" height="${TILE}">` +
+      `<filter id="n" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="${r.freq}" numOctaves="3" seed="${r.seed}" stitchTiles="stitch"/><feColorMatrix values="${r.matrix}"/></filter>` +
+      `<rect width="100%" height="100%" filter="url(#n)"/></svg>`,
+  );
 }
 
 /**

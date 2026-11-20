@@ -13,7 +13,7 @@ export const STANDARD_AREA = (DEFAULT_PARAMS.triWidth * DEFAULT_PARAMS.triHeight
 /** Meters per pixel of the eye sheet (concept/eyes.html), where the standard fighter is 7000 px². For sheet-sized details. */
 export const SHEET_PX = Math.sqrt(STANDARD_AREA / 7000);
 /** The face spans this many incircle radii per face unit. */
-export const FACE_SCALE = 1.38;
+const FACE_SCALE = 1.38;
 
 /** A fighter's corners in its upright frame: foot F (the origin), top-left L, top-right R. */
 export interface Corners {

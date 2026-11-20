@@ -9,8 +9,7 @@
 //   online   a match through the relay (OnlineSession)
 //   replay   watching a recording
 
-import { BotSource, DEFAULT_BOT, HeuristicBot } from "./bots/heuristic";
-import { randomBotShape } from "./bots/shapes";
+import { DEFAULT_BOT } from "./bots/heuristic";
 import { CameraRig, type CameraView } from "./camera";
 import { KeyboardSource, installKeyboard, isTouchDevice } from "./input";
 import { FinalKoReplay, History } from "./koReplay";
@@ -18,8 +17,9 @@ import { NetClient } from "./net/client";
 import { OnlineSession } from "./net/onlineSession";
 import { loadParams } from "./panel";
 import { Renderer } from "./render";
-import { assignColors, colorIndex, playerColor } from "./theme";
-import { EYE_STYLES, eyeStyle } from "./look/eyes";
+import { colorIndex, playerColor } from "./theme";
+import { eyeStyle } from "./look/eyes";
+import { DEFAULT_LOCAL_SETUP, attractLineup, botMaker, localLineup, onlineLooks, type LocalSetup, type Looks, type Profile } from "./lineup";
 import { facesReady, preloadFaces } from "./look/sticker";
 import { LiveSession, PlaybackSession, type InputSource, type Session } from "./session";
 import type { FighterShape } from "./sim/geometry";
@@ -29,21 +29,9 @@ import { DEFAULT_MATCH, DT, type FighterView, type MatchResult, type SimEvent } 
 import { CorrectionSmoother } from "./smoothing";
 import { STAGES, stageById } from "./stages";
 
+export type { LocalSetup } from "./lineup";
+
 export type GameMode = "attract" | "local" | "online" | "replay";
-export type BotLevel = "easy" | "normal" | "hard";
-
-/** Bot reaction delay (ticks) per difficulty. */
-const BOT_REACTION: Record<BotLevel, number> = { easy: 24, normal: 12, hard: 4 };
-
-export interface LocalSetup {
-  stageId: string;
-  bots: number; // 1–3 (fewer if a second player joins)
-  stocks: number;
-  botLevel: BotLevel;
-  secondPlayer: boolean; // a 2nd human on the same keyboard (A/D/S)
-}
-
-export const DEFAULT_LOCAL_SETUP: LocalSetup = { stageId: STAGES[0].id, bots: 1, stocks: 3, botLevel: "normal", secondPlayer: false };
 
 /** What the menus need to know. */
 export interface GameState {
@@ -74,24 +62,16 @@ export class Game {
   readonly params: Params = loadParams();
   readonly settings: GameSettings = { debug: false, cameraFollow: true, shakeScale: 1, finalKoReplay: true };
   readonly net = new NetClient();
-  playerName = "player";
-  /** My custom fighter (balanced unit-area shape), or null for the standard one. */
-  playerShape: FighterShape | null = null;
-  /** My eye style (an index into EYE_STYLES). */
-  playerEyes = 0;
-  /** Each fighter's eye style, this match. */
-  private eyes: number[] = [];
-  /** My color (an index into PLAYER_COLORS): mine locally; asked for online. */
-  myColor = 0;
-  /** Each fighter's color number, this match. */
-  private colors: number[] = [];
+  /** You, as set up in the menus (name, shape, eyes, color). */
+  readonly profile: Profile = { name: "player", shape: null, eyes: 0, color: 0 };
+  /** How each fighter looks this match (names, eyes, colors). */
+  private looks: Looks = { names: [], eyes: [], colors: [] };
 
   private renderer: Renderer;
   private camera = new CameraRig(STAGES[0].stage);
   private history = new History();
   private smoother = new CorrectionSmoother();
   private session!: Session;
-  private names: string[] = [];
   private prev: FighterView[] = [];
   private curr: FighterView[] = [];
   private koReplay: FinalKoReplay | null = null;
@@ -133,37 +113,15 @@ export class Game {
   /** A bot match behind the menus. */
   attract() {
     const stage = STAGES[this.matchNumber % STAGES.length].stage;
-    const sources = [0, 1, 2, 3].map((i) => this.bot(i, 12));
-    const shapes = sources.map(() => randomBotShape(Math.random));
-    const eyes = sources.map(() => randomEyes());
-    this.begin("attract", new LiveSession(stage, this.params, { players: 4, stocks: 2, shapes }, sources), ["", "", "", ""], eyes, assignColors(4));
+    const l = attractLineup(this.bots());
+    this.begin("attract", new LiveSession(stage, this.params, { players: l.sources.length, stocks: 2, shapes: l.shapes }, l.sources), l.looks);
   }
 
   playLocal(setup: LocalSetup) {
     this.localSetup = setup;
-    const reaction = BOT_REACTION[setup.botLevel];
-    const humans = setup.secondPlayer ? 2 : 1;
-    const players = humans + setup.bots;
-    const sources: InputSource[] = [];
-    const names: string[] = [];
-    for (let i = 0; i < players; i++) {
-      if (i < humans) {
-        sources.push(new KeyboardSource(i, i));
-        names.push(i === 0 ? this.playerName : "player 2");
-      } else {
-        sources.push(this.bot(i, reaction));
-        names.push(`bot ${i - humans + 1}`);
-      }
-    }
-    const stage = stageById(setup.stageId).stage;
-    // My custom shape for me; a 2nd local player is standard; bots get random
-    // shapes near the standard one (fresh each match).
-    const shapes = Array.from({ length: players }, (_, i) => (i === 0 ? this.playerShape : i < humans ? null : randomBotShape(Math.random)));
-    // My eyes for me; a 2nd local player gets the default; bots, random ones.
-    const eyes = Array.from({ length: players }, (_, i) => (i === 0 ? this.playerEyes : i < humans ? 0 : randomEyes()));
-    // My color for me; everyone else gets the first free ones.
-    const colors = assignColors(players, [this.myColor]);
-    this.begin("local", new LiveSession(stage, this.params, { players, stocks: setup.stocks, shapes }, sources), names, eyes, colors);
+    const l = localLineup(setup, this.profile, this.bots());
+    const match = { players: l.sources.length, stocks: setup.stocks, shapes: l.shapes };
+    this.begin("local", new LiveSession(stageById(setup.stageId).stage, this.params, match, l.sources), l.looks);
   }
 
   /** Same local setup again (R, or "play again"). */
@@ -185,8 +143,8 @@ export class Game {
       angles: sim.view().map((f) => f.angle),
       ko: sim.view().map((f) => f.ko),
       lives: sim.view().map((f) => f.stocks),
-      eyes: this.eyes,
-      colors: this.colors,
+      eyes: this.looks.eyes,
+      colors: this.looks.colors,
       facesReady: facesReady(),
       grounded: sim.view().map((f) => f.grounded),
       lastInputs: (this.session as { lastInputs?: unknown }).lastInputs ?? null,
@@ -222,19 +180,19 @@ export class Game {
 
   /** Set my color (an index into PLAYER_COLORS); also asks the room for it. */
   setPlayerColor(color: number) {
-    this.myColor = colorIndex(color);
-    this.net.setColor(this.myColor);
+    this.profile.color = colorIndex(color);
+    this.net.setColor(this.profile.color);
   }
 
   /** Set my eye style (src/look/eyes.ts); also tells the room if I'm in one. */
   setPlayerEyes(eyes: number) {
-    this.playerEyes = eyeStyle(eyes);
-    this.net.setEyes(this.playerEyes);
+    this.profile.eyes = eyeStyle(eyes);
+    this.net.setEyes(this.profile.eyes);
   }
 
   /** Set my fighter shape (null = standard); also tells the room if I'm in one. */
   setPlayerShape(shape: FighterShape | null) {
-    this.playerShape = shape;
+    this.profile.shape = shape;
     this.net.setShape(shape);
   }
 
@@ -251,7 +209,7 @@ export class Game {
   }
 
   watch(recording: Recording) {
-    this.begin("replay", new PlaybackSession(recording), [], [], []);
+    this.begin("replay", new PlaybackSession(recording), { names: [], eyes: [], colors: [] });
   }
 
   /** "Last match" = the most recently ended one (falls back to the current one). */
@@ -261,16 +219,10 @@ export class Game {
 
   // ---- internals ---------------------------------------------------------------
 
-  /**
-   * Test switch: with ?bots=still, local bots give no input (they just hop in
-   * place), so browser tests get a predictable opponent.
-   */
+  /** Test switch: with ?bots=still, local bots give no input (browser tests get a predictable opponent). */
   private readonly stillBots = new URLSearchParams(location.search).get("bots") === "still";
-
-  private bot(i: number, reaction: number): InputSource {
-    if (this.stillBots) return { isHuman: false, describe: () => "bot (still)", next: () => ({ turn: 0, charge: false }) };
-    const bot = new HeuristicBot(i, { ...DEFAULT_BOT, reactionTicks: reaction, seed: this.matchNumber * 4 + i + 1 });
-    return new BotSource(bot, this.params);
+  private bots() {
+    return botMaker(this.params, this.matchNumber, this.stillBots);
   }
 
   private update(patch: Partial<GameState>) {
@@ -279,14 +231,12 @@ export class Game {
   }
 
   /** Swap in a new session and reset everything that follows it. */
-  private begin(mode: GameMode, next: Session, names: string[], eyes: number[], colors: number[]) {
+  private begin(mode: GameMode, next: Session, looks: Looks) {
     if (this.session && this.state.mode !== "attract") this.lastRecording = this.session.recording() ?? this.lastRecording;
     this.session?.free();
     this.session = next;
-    this.names = names;
-    this.eyes = eyes;
-    this.colors = colors;
-    preloadFaces(eyes.map((e, i) => ({ eyes: e, color: playerColor(colors[i] ?? i) })));
+    this.looks = looks;
+    preloadFaces(looks.eyes.map((e, i) => ({ eyes: e, color: playerColor(looks.colors[i] ?? i) })));
     this.matchNumber++;
     this.curr = next.sim.view();
     this.prev = this.curr;
@@ -307,32 +257,25 @@ export class Game {
     // Online, you always use the arrow keys, whichever fighter you are. If you
     // host, your browser also drives the room's bots.
     net.onStart = (setup, you, drive) => {
-      const names = Array.from({ length: setup.match.players }, (_, i) => net.nameOf(i));
+      const looks = onlineLooks(net, setup.match.players);
+      const bot = botMaker(setup.params, this.matchNumber);
       const sources = new Map<number, InputSource>([[you, new KeyboardSource(0, you)]]);
-      for (const f of drive) {
-        if (f === you) continue;
-        const bot = new HeuristicBot(f, { ...DEFAULT_BOT, seed: this.matchNumber * 4 + f + 1 });
-        sources.set(f, new BotSource(bot, setup.params));
-      }
+      for (const f of drive) if (f !== you) sources.set(f, bot(f, DEFAULT_BOT.reactionTicks));
       this.onlineParams = setup.params;
-      const eyes = Array.from({ length: setup.match.players }, (_, i) => net.eyesOf(i));
-      const colors = names.map((_, i) => net.colorOf(i));
-      this.begin("online", new OnlineSession(setup, you, names, sources, net, net.room, () => net.rttMs), names, eyes, colors);
+      this.begin("online", new OnlineSession(setup, you, looks.names, sources, net, net.room, () => net.rttMs), looks);
     };
     // Joined mid-match (or waiting in a full room): watch, caught up to now.
     net.onSpectate = (setup, names, log, next) => {
       const s = new OnlineSession(setup, -1, names, new Map(), net, net.room, () => net.rttMs);
       s.catchUp(log, next);
-      this.begin("online", s, names, names.map((_, i) => net.eyesOf(i)), names.map((_, i) => net.colorOf(i)));
+      this.begin("online", s, { ...onlineLooks(net, names.length), names });
     };
     // The host left mid-match and we're the new host: run their bots from now on.
     net.onDrive = (fighters) => {
       const s = this.session;
       if (!(s instanceof OnlineSession) || !this.onlineParams) return;
-      for (const f of fighters) {
-        const bot = new HeuristicBot(f, { ...DEFAULT_BOT, seed: this.matchNumber * 4 + f + 1 });
-        s.takeOver(f, new BotSource(bot, this.onlineParams));
-      }
+      const bot = botMaker(this.onlineParams, this.matchNumber);
+      for (const f of fighters) s.takeOver(f, bot(f, DEFAULT_BOT.reactionTicks));
     };
     net.onTick = (t, changes) => {
       if (this.session instanceof OnlineSession) this.session.receiveTick(t, changes);
@@ -356,7 +299,7 @@ export class Game {
         // Someone left: say so, once. (No shake, and no final-KO replay: nothing to replay.)
         if (this.announcedLeaves.has(e.fighter)) continue;
         this.announcedLeaves.add(e.fighter);
-        this.notify(`${this.names[e.fighter] ?? `P${e.fighter + 1}`} left the match`);
+        this.notify(`${this.looks.names[e.fighter] ?? `P${e.fighter + 1}`} left the match`);
       } else if (e.type === "ko") {
         this.camera.shake(0.6);
         if (e.fighter === this.state.me) navigator.vibrate?.(80); // a buzz when you're KO'd (where supported)
@@ -389,7 +332,7 @@ export class Game {
       if (now >= this.attractRestartAt) this.attract();
       return;
     }
-    const winnerName = result.winner === null ? null : (this.names[result.winner] ?? `P${result.winner + 1}`);
+    const winnerName = result.winner === null ? null : (this.looks.names[result.winner] ?? `P${result.winner + 1}`);
     this.update({ ended: true, winnerName });
   }
 
@@ -420,7 +363,7 @@ export class Game {
     if (this.touchScreen) return s instanceof OnlineSession && s.spectating ? ["spectating"] : [];
     if (s instanceof OnlineSession) return s.spectating ? ["spectating · Esc to leave"] : [`you (P${s.you + 1}): ${KEYS[0]}`];
     const players = Array.from({ length: s.sim.match.players }, (_, i) => i);
-    return players.filter((i) => s.isHuman(i)).map((i) => `${this.names[i] ?? `P${i + 1}`}: ${KEYS[i]}`);
+    return players.filter((i) => s.isHuman(i)).map((i) => `${this.looks.names[i] ?? `P${i + 1}`}: ${KEYS[i]}`);
   }
 
   // Fixed timestep: the sim always advances in exact 1/60 s ticks regardless of
@@ -498,17 +441,12 @@ export class Game {
       replay: this.koReplay !== null,
       debug: s.debug,
       labels: players.map((i) => session.describe(i)),
-      names: players.map((i) => this.names[i] ?? `P${i + 1}`),
-      eyes: this.eyes,
-      colors: players.map((i) => playerColor(this.colors[i] ?? i)),
+      names: players.map((i) => this.looks.names[i] ?? `P${i + 1}`),
+      eyes: this.looks.eyes,
+      colors: players.map((i) => playerColor(this.looks.colors[i] ?? i)),
       controls: hud && !this.state.ended ? this.controlHints() : [],
       totalStocks: sim.match.stocks,
       status: session.status(),
     });
   }
-}
-
-/** A random eye style (bots, the menu backdrop). */
-function randomEyes(): number {
-  return Math.floor(Math.random() * EYE_STYLES.length);
 }

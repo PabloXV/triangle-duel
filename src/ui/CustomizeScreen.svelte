@@ -7,11 +7,11 @@
   import type { FighterShape, Vec2 } from "../sim/geometry";
   import { STANDARD_SHAPE, balanceShape, shapeIssue, shapeSize, triangleArea } from "../sim/shapes";
   import { playerColor } from "../theme";
-  import { EYE_MOODS, EYE_STYLES, type EyeMood } from "../look/eyes";
-  import { stickerInWorld, stickerSVG } from "../look/stickerSVG";
+  import type { EyeMood } from "../look/eyes";
+  import { stickerInWorld } from "../look/stickerSVG";
+  import EyePicker from "./EyePicker.svelte";
   import ColorPicker from "./ColorPicker.svelte";
 
-  const MOOD_NAMES: Record<EyeMood, string> = { idle: "Idle", charge: "Charge", wobble: "Wobble", ko: "KO'd" };
 
   let {
     initial,
@@ -151,9 +151,6 @@
 
   /** Your fighter exactly as it looks in a match (same drawing as the game: look/stickerSVG.ts), at true size. */
   const fighterSvg = $derived(triangleArea(pts) > 1e-6 ? stickerInWorld(pts, FOOT, playerColor(color), eyes, previewMood) : "");
-  // Eye thumbnails use the standard fighter: on a skinny custom shape the faces
-  // get too small to tell apart. (The editor above shows them on your shape.)
-  const thumbShape = STANDARD_SHAPE;
   const pct = (a: number, b: number) => `${Math.round((a / b) * 100)}%`;
 </script>
 
@@ -202,19 +199,7 @@
 
   <fieldset class="eyes">
     <legend>Eyes</legend>
-    <div class="eye-grid">
-      {#each EYE_STYLES as style, i}
-        <button class="eye" class:selected={eyes === i} aria-pressed={eyes === i} aria-label="eyes: {style.name}" title={style.vibe} onclick={() => (eyes = i)}>
-          <span class="thumb">{@html stickerSVG(thumbShape, playerColor(color), i, previewMood)}</span>
-          <span class="nm">{style.name}</span>
-        </button>
-      {/each}
-    </div>
-    <div class="moods" role="group" aria-label="preview mood">
-      {#each EYE_MOODS as m}
-        <button class:selected={previewMood === m} aria-pressed={previewMood === m} onclick={() => (previewMood = m)}>{MOOD_NAMES[m]}</button>
-      {/each}
-    </div>
+    <EyePicker value={eyes} color={playerColor(color)} bind:mood={previewMood} onPick={(e) => (eyes = e)} />
   </fieldset>
 
   <div class="actions">
@@ -308,47 +293,5 @@
   }
   .eyes {
     margin-top: 0.25rem;
-  }
-  .eye-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
-    gap: 0.4rem;
-  }
-  .card button.eye {
-    display: grid;
-    justify-items: center;
-    gap: 0.15rem;
-    padding: 0.35rem 0.2rem 0.3rem;
-    font-size: 0.75rem;
-  }
-  .thumb {
-    width: 54px;
-    height: 54px;
-    display: block;
-  }
-  .thumb :global(svg) {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
-  .card button.eye {
-    text-shadow: none; /* small labels: the ink outline would swamp them */
-  }
-  .nm {
-    color: var(--halo);
-    white-space: nowrap;
-  }
-  .eye.selected .nm {
-    color: var(--ink);
-  }
-  .moods {
-    display: flex;
-    gap: 0.4rem;
-    margin-top: 0.6rem;
-    flex-wrap: wrap;
-  }
-  .card .moods button {
-    padding: 0.35rem 0.7rem;
-    font-size: 0.85rem;
   }
 </style>

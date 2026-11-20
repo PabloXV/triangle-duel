@@ -15,6 +15,7 @@
 
 import type { Input } from "./sim/types";
 import type { FighterView } from "./sim/sim";
+import { clamp } from "./sim/geometry";
 
 export const STICK = {
   /** m/s at full stick. */
@@ -65,8 +66,4 @@ export class StickController {
   reset() {
     this.turn = 0;
   }
-}
-
-function clamp(v: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, v));
 }

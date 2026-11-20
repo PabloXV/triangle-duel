@@ -2,7 +2,8 @@
   import { untrack } from "svelte";
   // The menus around the game. The game itself (canvas, sim, netcode) is plain
   // TypeScript in src/game.ts; screens only call its small API.
-  import { DEFAULT_LOCAL_SETUP, type Game, type LocalSetup } from "../game";
+  import type { Game } from "../game";
+  import { DEFAULT_LOCAL_SETUP, type LocalSetup } from "../lineup";
   import type { FighterShape } from "../sim/geometry";
   import { shapeIssue } from "../sim/shapes";
   import { eyeStyle } from "../look/eyes";
@@ -49,7 +50,7 @@
   });
   let menuOpen = $state(false);
   $effect(() => {
-    game.playerName = name || "player";
+    game.profile.name = name || "player";
   });
 
   let setup = $state<LocalSetup>({ ...DEFAULT_LOCAL_SETUP, ...loadJSON<Partial<LocalSetup>>(KEYS.localSetup, {}) });

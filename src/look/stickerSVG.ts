@@ -5,7 +5,8 @@
 import type { FighterShape, Vec2 } from "../sim/geometry";
 import { STANDARD_SHAPE } from "../sim/shapes";
 import { HALO, INK, WHITE, mix, withAlpha } from "../theme";
-import { eyesMarkup, star4, type EyeMood } from "./eyes";
+import { eyesMarkup, type EyeMood } from "./eyes";
+import { sparkleSVG } from "./sparkle";
 import { ICON_OUTLINE, PLAY_OUTLINE, cornersFromShape, cornersFromWorld, fighterLayout, type Corners, type FighterLayout } from "./fighterLayout";
 
 const f = (n: number) => Math.round(n * 1000) / 1000;
@@ -34,7 +35,7 @@ function layers(lay: FighterLayout, color: string, eyes: number, mood: EyeMood) 
     `<polygon points="${pts}" fill="url(#${id})"/>` +
     `<path d="${lay.gloss.map(([a, b]) => `M${p(a)}L${p(b)}`).join("")}" stroke="${WHITE}" stroke-width="${f(lay.glossWidth)}" stroke-linecap="round"/>` +
     `<polygon points="${pts}" fill="none" stroke="${INK}" stroke-width="${f(lay.lineWidth)}" ${round}/>` +
-    star4(lay.sparkle.x, -lay.sparkle.y, lay.sparkle.r) +
+    sparkleSVG(lay.sparkle.x, -lay.sparkle.y, lay.sparkle.r) +
     `<g clip-path="url(#${id}c)"><g transform="translate(${f(lay.face.x)} ${f(-lay.face.y)}) rotate(${f((-lay.face.angle * 180) / Math.PI)}) scale(${f(lay.face.scale)})">${eyesMarkup(eyes, mood, color)}</g></g>`;
   return { shadow, body };
 }
