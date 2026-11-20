@@ -247,7 +247,14 @@ export class Game {
 
   // ---- internals ---------------------------------------------------------------
 
-  private bot(i: number, reaction: number): BotSource {
+  /**
+   * Test switch: with ?bots=still, local bots give no input (they just hop in
+   * place), so browser tests get a predictable opponent.
+   */
+  private readonly stillBots = new URLSearchParams(location.search).get("bots") === "still";
+
+  private bot(i: number, reaction: number): InputSource {
+    if (this.stillBots) return { isHuman: false, describe: () => "bot (still)", next: () => ({ turn: 0, charge: false }) };
     const bot = new HeuristicBot(i, { ...DEFAULT_BOT, reactionTicks: reaction, seed: this.matchNumber * 4 + i + 1 });
     return new BotSource(bot, this.params);
   }

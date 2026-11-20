@@ -1,6 +1,9 @@
-// Browser test of the menu flow (local play). Builds, serves, and drives the
-// real game in Chrome; saves screenshots to e2e-shots/ for a visual check.
-// Usage: npm run e2e
+// Browser test: builds, serves (the production setup), and drives the real
+// game in Chrome; saves screenshots to e2e-shots/ for a visual check.
+//
+// Usage: npm run e2e                 everything (a few minutes)
+//        npm run e2e -- phone online  just those sections
+// Sections: local, customize, phone, online, invite.
 
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
@@ -11,6 +14,22 @@ const PORT = 8787;
 const URL = `http://localhost:${PORT}/`;
 const SHOTS = "e2e-shots";
 mkdirSync(SHOTS, { recursive: true });
+
+const SECTIONS = ["local", "customize", "phone", "online", "invite"];
+const asked = process.argv.slice(2);
+for (const a of asked)
+  if (!SECTIONS.includes(a)) {
+    console.error(`unknown section "${a}" (sections: ${SECTIONS.join(", ")})`);
+    process.exit(2);
+  }
+const run = (name: string) => asked.length === 0 || asked.includes(name);
+async function section(name: string, fn: () => Promise<void>) {
+  if (!run(name)) return;
+  const t0 = Date.now();
+  console.log(`— ${name}`);
+  await fn();
+  console.log(`  (${name}: ${((Date.now() - t0) / 1000).toFixed(0)} s)`);
+}
 
 let failures = 0;
 function check(ok: boolean, what: string) {
@@ -36,77 +55,12 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(URL);
 
-  // 1. First visit: name screen.
-  await page.getByLabel("What should we call you?").waitFor();
-  await shot(page, "1-name");
-  await page.getByLabel("What should we call you?").fill("Pablo");
-  await page.getByRole("button", { name: "Continue" }).click();
-  check(await page.getByText("Playing as").isVisible(), "name accepted → main menu");
-  check((await page.locator("strong", { hasText: "Pablo" }).count()) > 0, "menu shows the name");
-  check((await info(page)).mode === "attract", "a bot match plays behind the menu");
-  await shot(page, "2-menu");
-
-  // 2. Local setup.
-  await page.getByRole("button", { name: "Play locally" }).click();
-  await page.getByRole("button", { name: /Island/ }).click();
-  await page.getByRole("button", { name: "more bots" }).click(); // 1 → 2
-  await page.getByRole("button", { name: "fewer stocks" }).click();
-  await page.getByRole("button", { name: "fewer stocks" }).click(); // 3 → 1
-  await page.getByRole("button", { name: "hard" }).click();
-  await shot(page, "3-local-setup");
-  await page.getByRole("button", { name: "Start" }).click();
-  const m = await info(page);
-  check(m.mode === "local" && m.players === 3 && m.stocks === 1 && m.platforms === 1, `local match: 3 fighters, 1 stock, Island`);
-  {
-    // I'm standard here; the bots get random shapes near it, at the same mass.
-    const [me, ...bots] = m.shapes as { height: number; width: number; area: number }[];
-    const differs = bots.some((b) => Math.abs(b.height - me.height) + Math.abs(b.width - me.width) > 0.02);
-    check(differs && bots.every((b) => Math.abs(b.area - me.area) < 1e-3), `bots have their own shapes (${bots.map((b) => `${b.height.toFixed(2)}×${b.width.toFixed(2)}`).join(", ")} vs standard ${me.height.toFixed(2)}×${me.width.toFixed(2)}), same mass`);
-  }
-  await page.waitForTimeout(800);
-  await shot(page, "4-in-game");
-
-  // 3. Pause freezes the clock; resume runs it.
-  await page.keyboard.press("Escape");
-  await page.getByRole("heading", { name: "Paused" }).waitFor();
-  const t0 = (await info(page)).tick;
-  await page.waitForTimeout(500);
-  check((await info(page)).tick === t0, "Esc pauses: the clock is frozen");
-  await shot(page, "5-paused");
-  await page.getByRole("button", { name: "Resume" }).click();
-  await page.waitForTimeout(500);
-  check((await info(page)).tick > t0 + 10, "Resume: the clock runs again");
-
-  // 4. Leave to menu.
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Leave to menu" }).click();
-  check(await page.getByRole("button", { name: "Play locally" }).isVisible(), "leave → back to the menu");
-  check((await info(page)).mode === "attract", "...with the bot match behind it again");
-
-  // 5. Reload: name and setup are remembered.
-  await page.reload();
-  await page.getByText("Playing as").waitFor();
-  check((await page.locator("strong", { hasText: "Pablo" }).count()) > 0, "after reload: name remembered");
-  await page.getByRole("button", { name: "Play locally" }).click();
-  check((await page.getByRole("button", { name: /Island/ }).getAttribute("aria-pressed")) === "true", "after reload: map choice remembered");
-  check((await page.locator("output").first().textContent()) === "2", "after reload: bot count remembered");
-
-  // 6. Play to the end (idle human vs 2 hard bots, 1 stock), then play again.
-  await page.getByRole("button", { name: "Start" }).click();
-  await page.getByRole("button", { name: "Play again" }).waitFor({ timeout: 90_000 });
-  await shot(page, "6-match-over");
-  check(true, "the match ended → end-of-match options");
-  await page.getByRole("button", { name: "Play again" }).click();
-  await page.waitForTimeout(300);
-  const again = await info(page);
-  check(again.mode === "local" && again.tick < 60, "play again starts a fresh match");
-
-  await customizeFlow(page);
-  await phoneFlow();
-  check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
-
-  await onlineFlow();
-  await inviteFlow();
+  await section("local", () => localFlow(page));
+  await section("customize", () => customizeFlow(page));
+  if (run("local") || run("customize")) check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
+  await section("phone", phoneFlow);
+  await section("online", onlineFlow);
+  await section("invite", inviteFlow);
 } catch (err) {
   console.error(err);
   failures++;
@@ -220,6 +174,10 @@ async function onlineFlow() {
 
 // ---- customize: drag corners (with push-back), settle into balance, save, use ----
 async function customizeFlow(page: Page) {
+  if (await page.getByLabel("What should we call you?").isVisible().catch(() => false)) {
+    await page.getByLabel("What should we call you?").fill("Pablo");
+    await page.getByRole("button", { name: "Continue" }).click();
+  }
   await page.keyboard.press("Escape").catch(() => {});
   if (await page.getByRole("button", { name: "Menu" }).isVisible().catch(() => false)) await page.getByRole("button", { name: "Menu" }).click();
   await page.getByRole("button", { name: "Customize fighter" }).click();
@@ -304,29 +262,31 @@ async function phoneFlow() {
     const b = (await pad.boundingBox())!;
     return { x: b.x + b.width * fx, y: b.y + b.height * fy, id };
   };
-  const me = async () => {
-    const i = await info(p);
-    return { angle: i.angles[0] as number, charge: i.charge[0] as number, ko: i.ko[0], grounded: i.grounded[0] as boolean, i };
-  };
-  /** Wait until my fighter is in play (not KO'd / respawning), roughly upright, and nearly stopped. */
-  const ready = async () => {
-    for (let n = 0; n < 120; n++) {
-      const m = await me();
-      // In play and upright; nearly stopped too, unless that takes long (a bot keeps pushing).
-      if (!m.ko && Math.abs(m.angle) < 0.4 && (n > 40 || Math.abs(m.i.positions[0].vx) < 0.4)) return;
-      await p.waitForTimeout(100);
+  /** The input the game took from me on its latest tick, plus the raw touch state. */
+  const sense = () =>
+    p.evaluate(() => {
+      const t = (window as any).triangleDuel;
+      return { input: t.game.info.lastInputs?.[0] as { turn: number; charge: boolean } | undefined, touch: { ...t.touch } as { stickX: number | null } };
+    });
+  /** Sample that for `ms` (e.g. while a finger is down). */
+  const inputsFor = async (ms: number) => {
+    const out: Awaited<ReturnType<typeof sense>>[] = [];
+    const until = Date.now() + ms;
+    while (Date.now() < until) {
+      out.push(await sense());
+      await p.waitForTimeout(30);
     }
+    return out;
   };
 
-  await p.goto(URL);
+  // A still opponent (?bots=still): it just hops in place, so nothing but the
+  // test's own touches moves our fighter.
+  await p.goto(`${URL}?bots=still`);
   await p.getByLabel("What should we call you?").fill("Thumbs");
   await p.getByRole("button", { name: "Continue" }).click();
   await shot(p, "14-phone-menu");
   await p.getByRole("button", { name: "Play locally" }).click();
   await shot(p, "15-phone-setup");
-  // Plenty of lives, so the test's own moves can't end the match early.
-  for (let n = 0; n < 4; n++) await p.getByRole("button", { name: "more stocks" }).click().catch(() => {});
-  await p.getByRole("button", { name: "easy" }).click(); // a passive test fighter shouldn't lose every life mid-test
   await p.getByRole("button", { name: "Start" }).click();
   await p.waitForTimeout(600);
 
@@ -345,168 +305,84 @@ async function phoneFlow() {
   const pxPerM = portrait.canvas.width / cam.width;
   check(pxPerM > 24, `portrait: fighters drawn at ${pxPerM.toFixed(0)} px/m (was ~14 before)`);
 
+  // Controls: these check the wiring only, that a touch gives the game the
+  // right input (instant, and independent of where the fighter is). What the
+  // inputs then do is tested against the physics, deterministically, in
+  // tests/aim.test.ts (the stick) and the sim's own tests.
   /** One thumb: put it down at `o`, then slide through `path` (offsets in px), then hold. */
   const drag = async (o: { x: number; y: number; id: number }, path: [number, number][]) => {
     await touches("touchStart", [o]);
     for (const [dx, dy] of path) await touches("touchMove", [{ ...o, x: o.x + dx, y: o.y + dy }]);
   };
-  /** Hold charge until my fighter has planted and the charge is building. */
-  const untilPlanted = async () => {
-    let m = await me();
-    for (let n = 0; n < 60 && m.charge === 0; n++) {
-      await p.waitForTimeout(25);
-      m = await me();
-    }
-    return m;
+  const hold = async (fx: number, id: number, fy = 0.5) => {
+    await touches("touchStart", [await spot(fx, id, fy)]);
+    const seen = await inputsFor(150);
+    await touches("touchEnd", []);
+    return seen;
   };
-
-  /** Sample my fighter for `ms`. */
-  const watch = async (ms: number) => {
-    const out: Awaited<ReturnType<typeof me>>[] = [];
-    const until = Date.now() + ms;
-    while (Date.now() < until) {
-      out.push(await me());
-      await p.waitForTimeout(40);
-    }
-    return out;
-  };
-  const leanMax = (xs: { angle: number }[]) => Math.max(...xs.map((m) => Math.abs(m.angle)));
+  const turns = (xs: Awaited<ReturnType<typeof sense>>[], t: number) => xs.some((x) => x.input?.turn === t);
 
   // Buttons (the default): ◀ on the left flank, ▶ on the right, Charge in the middle.
   check(await pad.getByText("Charge").isVisible() && !(await p.getByText(/slide ◀ ▶ to move/).isVisible()), "default touch controls: buttons (◀ | Charge | ▶)");
-  const holdTurn = async (fx: number, id: number) => {
-    await ready();
-    const before = (await me()).angle;
-    await touches("touchStart", [await spot(fx, id)]);
-    const held = await watch(160); // (held much longer, you tip onto a corner: a KO)
-    await touches("touchEnd", []);
-    const angles = held.map((m) => m.angle);
-    await p.waitForTimeout(500);
-    return { before, max: Math.max(...angles), min: Math.min(...angles) };
-  };
-  const l = await holdTurn(0.12, 11);
-  check(l.max > l.before + 0.1, `buttons, hold ◀ (left flank): turned counterclockwise (${l.before.toFixed(2)} → up to ${l.max.toFixed(2)} rad)`);
-  const r = await holdTurn(0.88, 12);
-  check(r.min < r.before - 0.1, `buttons, hold ▶ (right flank): turned clockwise (${r.before.toFixed(2)} → down to ${r.min.toFixed(2)} rad)`);
-  // Charge with one thumb (middle), aim with the other (▶).
-  await ready();
-  const chargeSpot = await spot(0.5, 13);
-  await touches("touchStart", [chargeSpot]);
-  const plantedB = await untilPlanted();
-  await touches("touchStart", [chargeSpot, await spot(0.88, 14)]);
-  await p.waitForTimeout(90);
-  await touches("touchEnd", [chargeSpot]);
-  const aimedB = await me();
+  const l = await hold(0.12, 11);
+  check(turns(l, -1) && !l.some((x) => x.input?.charge), "buttons, hold ◀ (left flank): the game gets turn left");
+  const r = await hold(0.88, 12);
+  check(turns(r, 1), "buttons, hold ▶ (right flank): the game gets turn right");
+  const c = await hold(0.5, 13);
+  check(c.some((x) => x.input?.charge && x.input.turn === 0), "buttons, hold Charge (middle): the game gets charge");
+  const cs = await spot(0.5, 14);
+  await touches("touchStart", [cs]);
+  await touches("touchStart", [cs, await spot(0.88, 15)]);
+  const both = await inputsFor(150);
   await shot(p, "16a-phone-buttons");
   await touches("touchEnd", []);
-  check(
-    plantedB.charge > 0 && aimedB.charge > plantedB.charge && aimedB.angle < plantedB.angle - 0.03,
-    `buttons, Charge + ▶: charge ${(plantedB.charge * 100).toFixed(0)}% → ${(aimedB.charge * 100).toFixed(0)}% while leaning right (${plantedB.angle.toFixed(2)} → ${aimedB.angle.toFixed(2)} rad)`,
-  );
-  await p.waitForTimeout(1200);
+  check(both.some((x) => x.input?.charge && x.input.turn === 1), "buttons, Charge + ▶ with two thumbs: charging and turning right at once");
 
   // Switch to the stick (pause menu).
   await p.getByRole("button", { name: "pause" }).click();
   await p.getByRole("button", { name: "Touch controls: buttons" }).click();
   check(await p.getByRole("button", { name: "Touch controls: stick" }).isVisible(), "pause menu: switched to the stick");
-  // Restart: each section starts with full lives at the spawn (the bot scores
-  // KOs on a test fighter that mostly stands still while being measured).
-  await p.getByRole("button", { name: "Restart" }).click();
-  await p.waitForTimeout(600);
-
-  // The stick is analog: sideways sets your speed.
+  await p.getByRole("button", { name: "Resume" }).click();
   check(await p.getByText(/slide ◀ ▶ to move/).isVisible(), "stick: idle hint shown");
-  // A small nudge right: a small, controlled move right, no flipping over.
-  await ready();
-  let x0 = (await me()).i.positions[0].x;
+  // A small nudge right: a small stick value.
   await drag(await spot(0.5, 1), [[8, 0], [16, 0], [22, 0]]);
-  let seen = await watch(900);
+  const nudge = (await inputsFor(60)).at(-1)!.touch.stickX ?? 0;
   await touches("touchEnd", []);
-  let x1 = (await me()).i.positions[0].x;
-  check(x1 > x0 + 0.2 && leanMax(seen) < 0.3 && !seen.some((m) => m.ko), `stick nudge right: moved right ${(x1 - x0).toFixed(2)} m, leaning at most ${leanMax(seen).toFixed(2)} rad (no flip)`);
-  await p.waitForTimeout(600);
-
-  // Full left, then back to center: runs, then brakes to a stop. (Left: the bot
-  // walks in from the right. Braking keeps us off the left edge.) Movement
-  // comes from hops: the next landing after leaning launches you sideways. If
-  // the bot reaches us mid-run, its shove isn't the stick's doing: restart and
-  // try once more.
-  const runAndBrake = async () => {
-    await ready();
-    const start = (await me()).i.positions[0].x;
-    const o = await spot(0.5, 2);
-    await drag(o, [[-20, 0], [-45, 0], [-70, 0]]);
-    const running = await watch(900);
-    const end = (await me()).i.positions[0].x;
-    await touches("touchMove", [{ ...o, x: o.x - 6 }]); // back to center (within the dead zone)
-    const braking = await watch(1000);
-    await touches("touchEnd", []);
-    const all = [...running, ...braking];
-    const nearBot = Math.min(...all.map((m) => Math.abs(m.i.positions[1].x - m.i.positions[0].x)));
-    return { start, end, running, braking, all, bumped: nearBot < 1.8 || all.some((m) => m.ko) };
-  };
-  let run = await runAndBrake();
-  if (run.bumped) {
-    await p.getByRole("button", { name: "pause" }).click();
-    await p.getByRole("button", { name: "Restart" }).click();
-    await p.waitForTimeout(600);
-    run = await runAndBrake();
-  }
-  const top = Math.max(...run.running.map((m) => -m.i.positions[0].vx));
-  const endVx = Math.abs(run.braking[run.braking.length - 1].i.positions[0].vx);
-  check(
-    !run.bumped && run.end < run.start - 0.5 && leanMax(run.all) < 0.6 && endVx < 1,
-    `stick full left: ran ${(run.start - run.end).toFixed(2)} m (up to ${top.toFixed(1)} m/s), then centered: braked to ${endVx.toFixed(1)} m/s; leaning at most ${leanMax(run.all).toFixed(2)} rad${run.bumped ? " (the bot got in the way twice)" : ""}`,
-  );
-  await p.waitForTimeout(500);
-
-  // Charge and aim, one thumb: pull down (charge), then slide left (aim left).
-  await ready();
+  check(nudge > 0 && nudge < 0.4, `stick nudge right: a small stick value (${nudge.toFixed(2)})`);
+  // Full left: full stick, and the speed controller turns us left.
+  await drag(await spot(0.5, 2), [[-20, 0], [-45, 0], [-70, 0]]);
+  const full = await inputsFor(300);
+  await touches("touchEnd", []);
+  check(full.at(-1)!.touch.stickX === -1 && turns(full, -1), "stick full left: full stick; the game gets turn-left input");
+  check((await sense()).touch.stickX === null, "stick released: no stick input");
+  // One thumb: pull down to charge, then slide left (still down) to aim.
   const o = await spot(0.5, 3);
   await drag(o, [[0, 12], [0, 24], [0, 36]]);
-  const planted = await untilPlanted();
-  await touches("touchMove", [{ ...o, x: o.x - 40, y: o.y + 36 }]);
+  const down = (await inputsFor(90)).at(-1)!;
   await touches("touchMove", [{ ...o, x: o.x - 64, y: o.y + 36 }]);
-  const aiming = await watch(350);
-  const aimed = aiming[aiming.length - 1];
+  const aim = (await inputsFor(120)).at(-1)!;
   await shot(p, "16-phone-portrait");
   await touches("touchEnd", []);
-  check(
-    planted.charge > 0 && Math.max(...aiming.map((m) => m.charge)) > planted.charge && aimed.angle > 0.2 && leanMax(aiming) < 0.6,
-    `stick pulled down, then left: charge ${(planted.charge * 100).toFixed(0)}% → ${(Math.max(...aiming.map((m) => m.charge)) * 100).toFixed(0)}%, aimed left (lean ${aimed.angle.toFixed(2)} rad, never past ${leanMax(aiming).toFixed(2)})`,
-  );
-  await p.waitForTimeout(1200);
+  check(down.input?.charge === true && aim.input?.charge === true && (aim.touch.stickX ?? 0) < -0.9, "stick pulled down: charging; slid left while down: still charging, aiming left");
 
   // Landscape: the game takes the full screen; the stick works anywhere on it.
-  await p.getByRole("button", { name: "pause" }).click();
-  await p.getByRole("button", { name: "Restart" }).click();
   await p.setViewportSize({ width: 844, height: 390 });
-  await p.waitForTimeout(400);
+  await p.waitForTimeout(300);
   const land = await info(p);
   check((await pad.getAttribute("class"))!.includes("landscape") && land.canvas.height >= 389, `landscape: full-screen game (${land.canvas.width}×${land.canvas.height})`);
-  await ready();
-  x0 = (await me()).i.positions[0].x;
-  await drag(await spot(0.5, 4, 0.4), [[20, 0], [40, 0]]); // right: back toward the middle
-  seen = await watch(1200);
+  await drag(await spot(0.3, 4, 0.3), [[20, 0], [40, 0]]);
+  const landStick = (await inputsFor(60)).at(-1)!.touch.stickX ?? 0;
   await touches("touchEnd", []);
-  x1 = (await me()).i.positions[0].x;
-  check(x1 > x0 + 0.3 && leanMax(seen) < 0.6, `landscape stick right: moved right ${(x1 - x0).toFixed(2)} m, leaning at most ${leanMax(seen).toFixed(2)} rad`);
+  check(landStick > 0.4, `landscape: the stick works up in the game area (${landStick.toFixed(2)})`);
   await shot(p, "17-phone-landscape");
 
-  // The pause menu switches to buttons (◀ ▶ | Charge), remembered on this device.
+  // The pause menu switches back to buttons, remembered on this device.
   await p.getByRole("button", { name: "pause" }).click();
   await p.getByRole("button", { name: "Touch controls: stick" }).click();
   check(await p.getByRole("button", { name: "Touch controls: buttons" }).isVisible(), "pause menu: switched to buttons");
   check((await p.evaluate(() => localStorage.getItem("triangle-duel.touchScheme"))) === "buttons", "the choice is remembered");
   await p.getByRole("button", { name: "Resume" }).click();
-  check(await pad.getByText("Charge").isVisible(), "buttons: ◀ ▶ Charge shown");
-  await ready();
-  const before = (await me()).angle;
-  await touches("touchStart", [await spot(0.1, 5, 0.7)]);
-  const held = await watch(350);
-  await touches("touchEnd", []);
-  const peak = Math.max(...held.map((m) => m.angle));
-  check(peak > before + 0.1, `buttons, hold ◀: turned counterclockwise (${before.toFixed(2)} → up to ${peak.toFixed(2)} rad)${peak > before + 0.1 ? "" : ` [inputs ${held.map((m) => `${m.i.lastInputs?.[0]?.turn}${m.ko ? "K" : ""}${m.grounded ? "G" : ""}`).join(" ")}; angles ${held.map((m) => m.angle.toFixed(2)).join(",")}; pad ${await pad.getAttribute("class")}]`}`);
+  check(turns(await hold(0.1, 5, 0.7), -1), "landscape buttons, hold ◀: the game gets turn left");
 
   // The pause menu hides the pad; resuming brings it back.
   await p.getByRole("button", { name: "pause" }).click();
@@ -568,4 +444,72 @@ async function inviteFlow() {
 
   check(errors.length === 0, `invite: no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
   for (const x of [host, ivy, jo]) await x.ctx.close();
+}
+
+// ---- local play: name, menu, setup, pause, leave, remembered settings, a match to the end ----
+async function localFlow(page: Page) {
+  // 1. First visit: name screen.
+  await page.getByLabel("What should we call you?").waitFor();
+  await shot(page, "1-name");
+  await page.getByLabel("What should we call you?").fill("Pablo");
+  await page.getByRole("button", { name: "Continue" }).click();
+  check(await page.getByText("Playing as").isVisible(), "name accepted → main menu");
+  check((await page.locator("strong", { hasText: "Pablo" }).count()) > 0, "menu shows the name");
+  check((await info(page)).mode === "attract", "a bot match plays behind the menu");
+  await shot(page, "2-menu");
+
+  // 2. Local setup.
+  await page.getByRole("button", { name: "Play locally" }).click();
+  await page.getByRole("button", { name: /Island/ }).click();
+  await page.getByRole("button", { name: "more bots" }).click(); // 1 → 2
+  await page.getByRole("button", { name: "fewer stocks" }).click();
+  await page.getByRole("button", { name: "fewer stocks" }).click(); // 3 → 1
+  await page.getByRole("button", { name: "hard" }).click();
+  await shot(page, "3-local-setup");
+  await page.getByRole("button", { name: "Start" }).click();
+  const m = await info(page);
+  check(m.mode === "local" && m.players === 3 && m.stocks === 1 && m.platforms === 1, `local match: 3 fighters, 1 stock, Island`);
+  {
+    // I'm standard here; the bots get random shapes near it, at the same mass.
+    const [me, ...bots] = m.shapes as { height: number; width: number; area: number }[];
+    const differs = bots.some((b) => Math.abs(b.height - me.height) + Math.abs(b.width - me.width) > 0.02);
+    check(differs && bots.every((b) => Math.abs(b.area - me.area) < 1e-3), `bots have their own shapes (${bots.map((b) => `${b.height.toFixed(2)}×${b.width.toFixed(2)}`).join(", ")} vs standard ${me.height.toFixed(2)}×${me.width.toFixed(2)}), same mass`);
+  }
+  await page.waitForTimeout(800);
+  await shot(page, "4-in-game");
+
+  // 3. Pause freezes the clock; resume runs it.
+  await page.keyboard.press("Escape");
+  await page.getByRole("heading", { name: "Paused" }).waitFor();
+  const t0 = (await info(page)).tick;
+  await page.waitForTimeout(500);
+  check((await info(page)).tick === t0, "Esc pauses: the clock is frozen");
+  await shot(page, "5-paused");
+  await page.getByRole("button", { name: "Resume" }).click();
+  await page.waitForTimeout(500);
+  check((await info(page)).tick > t0 + 10, "Resume: the clock runs again");
+
+  // 4. Leave to menu.
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Leave to menu" }).click();
+  check(await page.getByRole("button", { name: "Play locally" }).isVisible(), "leave → back to the menu");
+  check((await info(page)).mode === "attract", "...with the bot match behind it again");
+
+  // 5. Reload: name and setup are remembered.
+  await page.reload();
+  await page.getByText("Playing as").waitFor();
+  check((await page.locator("strong", { hasText: "Pablo" }).count()) > 0, "after reload: name remembered");
+  await page.getByRole("button", { name: "Play locally" }).click();
+  check((await page.getByRole("button", { name: /Island/ }).getAttribute("aria-pressed")) === "true", "after reload: map choice remembered");
+  check((await page.locator("output").first().textContent()) === "2", "after reload: bot count remembered");
+
+  // 6. Play to the end (idle human vs 2 hard bots, 1 stock), then play again.
+  await page.getByRole("button", { name: "Start" }).click();
+  await page.getByRole("button", { name: "Play again" }).waitFor({ timeout: 90_000 });
+  await shot(page, "6-match-over");
+  check(true, "the match ended → end-of-match options");
+  await page.getByRole("button", { name: "Play again" }).click();
+  await page.waitForTimeout(300);
+  const again = await info(page);
+  check(again.mode === "local" && again.tick < 60, "play again starts a fresh match");
 }

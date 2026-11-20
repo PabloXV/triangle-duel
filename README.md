@@ -18,7 +18,8 @@ npm run serve      # production setup locally: build, then game + relay on http:
 npm run deploy     # build and deploy to Cloudflare (or push: the Git-connected Worker builds itself)
 npm run relay:smoke  # end-to-end relay check: two clients, a match, identical tick streams
 npm run netsim     # rollback behavior on simulated connections
-npm run e2e        # browser test of the menu flow (screenshots in e2e-shots/)
+npm run e2e        # browser test, ~50 s (screenshots in e2e-shots/); one part: npm run e2e -- phone
+                   # (parts: local, customize, phone, online, invite)
 ```
 
 Open it, pick a name (remembered in this browser), then play locally (map,
