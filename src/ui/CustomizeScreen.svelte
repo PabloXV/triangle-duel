@@ -5,10 +5,11 @@
   // Shapes breaking the limits get pushed back toward where you started.
   import { untrack } from "svelte";
   import type { FighterShape, Vec2 } from "../sim/geometry";
-  import { STANDARD_SHAPE, balanceShape, shapeIssue, shapeSize } from "../sim/shapes";
+  import { STANDARD_SHAPE, balanceShape, shapeIssue, shapeSize, triangleArea } from "../sim/shapes";
   import { playerColor } from "../theme";
   import { EYE_MOODS, EYE_STYLES, eyesMarkup, type EyeMood } from "../look/eyes";
   import { stickerSVG } from "../look/stickerSVG";
+  import { faceInWorld } from "../look/fighterLayout";
 
   const MOOD_NAMES: Record<EyeMood, string> = { idle: "Idle", charge: "Charge", wobble: "Wobble", ko: "KO'd" };
 
@@ -144,20 +145,11 @@
 
   const poly = (p: Vec2[]) => p.map((v) => `${v.x},${-v.y}`).join(" ");
 
-  /** The face on the editor's triangle: at its incircle, along its top edge (SVG coordinates). */
+  /** The face on the editor's triangle (shared placement: fighterLayout.ts), as an SVG transform (y down). */
   const faceAt = $derived.by(() => {
-    const [F, A, B] = pts.map((v) => ({ x: v.x, y: -v.y }));
-    const [L, R] = A.x <= B.x ? [A, B] : [B, A];
-    const a = Math.hypot(L.x - R.x, L.y - R.y);
-    const b = Math.hypot(F.x - R.x, F.y - R.y);
-    const c = Math.hypot(F.x - L.x, F.y - L.y);
-    const per = a + b + c;
-    const area = Math.abs((L.x - F.x) * (R.y - F.y) - (L.y - F.y) * (R.x - F.x)) / 2;
-    if (!(per > 0)) return null;
-    const x = (a * F.x + b * L.x + c * R.x) / per;
-    const y = (a * F.y + b * L.y + c * R.y) / per;
-    const deg = (Math.atan2(R.y - L.y, R.x - L.x) * 180) / Math.PI;
-    return `translate(${x} ${y}) rotate(${deg}) scale(${((2 * area) / per) * 1.38})`;
+    if (!(triangleArea(pts) > 1e-6)) return null;
+    const fc = faceInWorld(pts, FOOT);
+    return `translate(${fc.x} ${-fc.y}) rotate(${(-fc.angle * 180) / Math.PI}) scale(${fc.scale})`;
   });
   const faceSvg = $derived(eyesMarkup(eyes, previewMood, playerColor(0)));
   // Eye thumbnails use the standard fighter: on a skinny custom shape the faces

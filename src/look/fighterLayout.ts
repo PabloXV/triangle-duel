@@ -121,3 +121,15 @@ export function fighterLayout(c: Corners, style: OutlineStyle): FighterLayout {
     face: { x: I.x, y: I.y, angle: Math.atan2(Ri.y - Li.y, Ri.x - Li.x), scale: r * shrink * FACE_SCALE },
   };
 }
+
+/** Just the shape: no outline, nothing inset (e.g. the shape editor's plain triangle). */
+export const BARE_OUTLINE: OutlineStyle = { band: 0, shadow: 0, inset: false };
+
+/** Where the face goes on a triangle given by its world corners (y up): center, rotation (radians), meters per face unit. */
+export function faceInWorld(verts: readonly Vec2[], footIndex: number, style: OutlineStyle = BARE_OUTLINE) {
+  const c = cornersFromWorld(verts, footIndex);
+  const { face } = fighterLayout(c, style);
+  const cos = Math.cos(c.angle);
+  const sin = Math.sin(c.angle);
+  return { x: c.foot.x + cos * face.x - sin * face.y, y: c.foot.y + sin * face.x + cos * face.y, angle: c.angle + face.angle, scale: face.scale };
+}

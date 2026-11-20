@@ -2,6 +2,7 @@
   // On top of a match: a pause/leave button, the pause menu, and end-of-match options.
   import type { Game, GameState } from "../game";
   import { isTouchDevice } from "../input";
+  import { KEYS, load, save } from "../storage";
   import TouchControls, { type TouchScheme } from "./TouchControls.svelte";
 
   let {
@@ -17,19 +18,10 @@
   // Touch controls, when this screen is playing (not watching) a running match.
   const touchScreen = isTouchDevice();
   // Which touch scheme (stick or buttons), remembered on this device.
-  const SCHEME_KEY = "triangle-duel.touchScheme";
-  let scheme = $state<TouchScheme>((() => {
-    try {
-      return localStorage.getItem(SCHEME_KEY) === "stick" ? "stick" : "buttons";
-    } catch {
-      return "buttons";
-    }
-  })());
+  let scheme = $state<TouchScheme>(load(KEYS.touchScheme) === "stick" ? "stick" : "buttons");
   function toggleScheme() {
     scheme = scheme === "stick" ? "buttons" : "stick";
-    try {
-      localStorage.setItem(SCHEME_KEY, scheme);
-    } catch {}
+    save(KEYS.touchScheme, scheme);
   }
   let vw = $state(0);
   let vh = $state(0);

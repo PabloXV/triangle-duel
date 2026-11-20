@@ -6,29 +6,20 @@ import GUI, { type Controller } from "lil-gui";
 import type { Game } from "./game";
 import type { Recording } from "./sim/recording";
 import { DEFAULT_PARAMS, PARAM_GROUPS, PARAM_META, type Params } from "./sim/params";
-
-const STORAGE_KEY = "triangle-duel.params.v1";
+import { KEYS, loadJSON, saveJSON } from "./storage";
 
 export function loadParams(): Params {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
-    // Only keep known keys, so renamed/removed params don't linger.
-    const merged: Params = { ...DEFAULT_PARAMS };
-    for (const k of Object.keys(DEFAULT_PARAMS) as (keyof Params)[]) {
-      if (typeof saved[k] === typeof DEFAULT_PARAMS[k]) (merged as any)[k] = saved[k];
-    }
-    return merged;
-  } catch {
-    return { ...DEFAULT_PARAMS };
+  const saved = loadJSON<Record<string, unknown>>(KEYS.params, {});
+  // Only keep known keys, so renamed/removed params don't linger.
+  const merged: Params = { ...DEFAULT_PARAMS };
+  for (const k of Object.keys(DEFAULT_PARAMS) as (keyof Params)[]) {
+    if (typeof saved?.[k] === typeof DEFAULT_PARAMS[k]) (merged as any)[k] = saved[k];
   }
+  return merged;
 }
 
 function saveParams(params: Params) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
-  } catch {
-    // storage unavailable; tuning just won't persist
-  }
+  saveJSON(KEYS.params, params);
 }
 
 export function buildPanel(game: Game, container: HTMLElement) {

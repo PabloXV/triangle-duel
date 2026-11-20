@@ -7,7 +7,7 @@
 
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { chromium, type Page } from "playwright-core";
+import { chromium, type BrowserContextOptions, type Page } from "playwright-core";
 
 // The production setup: wrangler serves the built game and the relay together.
 const PORT = 8787;
@@ -38,6 +38,27 @@ function check(ok: boolean, what: string) {
 }
 const info = (p: Page) => p.evaluate(() => (window as any).triangleDuel.game.info);
 const shot = (p: Page, name: string) => p.screenshot({ path: `${SHOTS}/${name}.png` });
+const DESKTOP = { width: 1280, height: 760 };
+const NAME_FIELD = "What should we call you?";
+
+/** A new browser user (its own storage); page errors go to `errors`, labeled. */
+async function newUser(label: string, errors: string[], options: BrowserContextOptions = { viewport: DESKTOP }) {
+  const ctx = await browser.newContext(options);
+  const p = await ctx.newPage();
+  p.on("pageerror", (e) => errors.push(`${label}: ${e.message}`));
+  return { ctx, p };
+}
+/** Fill in the name screen. */
+async function enterName(p: Page, name: string) {
+  await p.getByLabel(NAME_FIELD).fill(name);
+  await p.getByRole("button", { name: "Continue" }).click();
+}
+const rosterNames = (p: Page) => p.locator(".roster .name").allTextContents();
+/** Wait (up to 5 s) for `name` to show in the room's player list. */
+async function waitForRoster(p: Page, name: string) {
+  for (let n = 0; n < 50 && !(await rosterNames(p)).includes(name); n++) await p.waitForTimeout(100);
+  return (await rosterNames(p)).includes(name);
+}
 
 const server = spawn("npx", ["wrangler", "dev", "--port", String(PORT), "--ip", "127.0.0.1"], { stdio: "ignore" });
 const browser = await chromium.launch({ channel: "chrome" });
@@ -49,7 +70,7 @@ try {
       await new Promise((r) => setTimeout(r, 200));
     }
   }
-  const context = await browser.newContext({ viewport: { width: 1280, height: 760 } });
+  const context = await browser.newContext({ viewport: DESKTOP });
   const page = await context.newPage();
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -76,16 +97,12 @@ async function onlineFlow() {
   // The relay is the same server as the game (started above).
   const errors: string[] = [];
   async function player(name: string) {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 760 } });
-    const p = await ctx.newPage();
-    p.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
+    const { p } = await newUser(name, errors);
     await p.goto(URL);
-    await p.getByLabel("What should we call you?").fill(name);
-    await p.getByRole("button", { name: "Continue" }).click();
+    await enterName(p, name);
     await p.getByRole("button", { name: "Play online" }).click();
     return p;
   }
-  const rosterNames = (p: Page) => p.locator(".roster .name").allTextContents();
   const ana = await player("Ana");
   const bo = await player("Bo");
   const cy = await player("Cy");
@@ -174,10 +191,7 @@ async function onlineFlow() {
 
 // ---- customize: drag corners (with push-back), settle into balance, save, use ----
 async function customizeFlow(page: Page) {
-  if (await page.getByLabel("What should we call you?").isVisible().catch(() => false)) {
-    await page.getByLabel("What should we call you?").fill("Pablo");
-    await page.getByRole("button", { name: "Continue" }).click();
-  }
+  if (await page.getByLabel(NAME_FIELD).isVisible().catch(() => false)) await enterName(page, "Pablo");
   await page.keyboard.press("Escape").catch(() => {});
   if (await page.getByRole("button", { name: "Menu" }).isVisible().catch(() => false)) await page.getByRole("button", { name: "Menu" }).click();
   await page.getByRole("button", { name: "Customize fighter" }).click();
@@ -248,10 +262,8 @@ async function customizeFlow(page: Page) {
 
 // ---- phone: touch controls (portrait pad, landscape zones), camera on a tall screen ----
 async function phoneFlow() {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-  const p = await ctx.newPage();
   const errors: string[] = [];
-  p.on("pageerror", (e) => errors.push(e.message));
+  const { ctx, p } = await newUser("phone", errors, { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const cdp = await ctx.newCDPSession(p);
   /** Put fingers down / lift them: `points` is every finger touching after this event. */
   const touches = (type: "touchStart" | "touchMove" | "touchEnd", points: { x: number; y: number; id: number }[]) =>
@@ -282,8 +294,7 @@ async function phoneFlow() {
   // A still opponent (?bots=still): it just hops in place, so nothing but the
   // test's own touches moves our fighter.
   await p.goto(`${URL}?bots=still`);
-  await p.getByLabel("What should we call you?").fill("Thumbs");
-  await p.getByRole("button", { name: "Continue" }).click();
+  await enterName(p, "Thumbs");
   await shot(p, "14-phone-menu");
   await p.getByRole("button", { name: "Play locally" }).click();
   await shot(p, "15-phone-setup");
@@ -398,22 +409,14 @@ async function phoneFlow() {
 async function inviteFlow() {
   const errors: string[] = [];
   const open = async (name: string) => {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 760 } });
-    await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: URL });
-    const p = await ctx.newPage();
-    p.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
-    return { ctx, p };
-  };
-  const rosterNames = (p: Page) => p.locator(".roster .name").allTextContents();
-  const waitForRoster = async (p: Page, name: string) => {
-    for (let n = 0; n < 50 && !(await rosterNames(p)).includes(name); n++) await p.waitForTimeout(100);
-    return (await rosterNames(p)).includes(name);
+    const user = await newUser(name, errors);
+    await user.ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: URL });
+    return user;
   };
 
   const host = await open("Hal");
   await host.p.goto(URL);
-  await host.p.getByLabel("What should we call you?").fill("Hal");
-  await host.p.getByRole("button", { name: "Continue" }).click();
+  await enterName(host.p, "Hal");
   await host.p.getByRole("button", { name: "Play online" }).click();
   await host.p.getByRole("button", { name: "Create a room" }).click();
   await waitForRoster(host.p, "Hal");
@@ -428,8 +431,7 @@ async function inviteFlow() {
   // Someone new (no name yet): asked for a name, then straight into the room.
   const ivy = await open("Ivy");
   await ivy.p.goto(link);
-  await ivy.p.getByLabel("What should we call you?").fill("Ivy");
-  await ivy.p.getByRole("button", { name: "Continue" }).click();
+  await enterName(ivy.p, "Ivy");
   check(await waitForRoster(ivy.p, "Hal"), "new player via link: name, then in Hal's room");
   check(await waitForRoster(host.p, "Ivy"), "the host sees them join");
   check(!ivy.p.url().includes("join="), "the join parameter is cleared from the address (no rejoin on reload)");
@@ -437,8 +439,7 @@ async function inviteFlow() {
   // Someone who's played before: straight in, no clicks.
   const jo = await open("Jo");
   await jo.p.goto(URL);
-  await jo.p.getByLabel("What should we call you?").fill("Jo");
-  await jo.p.getByRole("button", { name: "Continue" }).click();
+  await enterName(jo.p, "Jo");
   await jo.p.goto(link);
   check(await waitForRoster(jo.p, "Jo") && (await rosterNames(jo.p)).includes("Hal"), "returning player via link: straight into the room");
 
@@ -449,10 +450,9 @@ async function inviteFlow() {
 // ---- local play: name, menu, setup, pause, leave, remembered settings, a match to the end ----
 async function localFlow(page: Page) {
   // 1. First visit: name screen.
-  await page.getByLabel("What should we call you?").waitFor();
+  await page.getByLabel(NAME_FIELD).waitFor();
   await shot(page, "1-name");
-  await page.getByLabel("What should we call you?").fill("Pablo");
-  await page.getByRole("button", { name: "Continue" }).click();
+  await enterName(page, "Pablo");
   check(await page.getByText("Playing as").isVisible(), "name accepted → main menu");
   check((await page.locator("strong", { hasText: "Pablo" }).count()) > 0, "menu shows the name");
   check((await info(page)).mode === "attract", "a bot match plays behind the menu");

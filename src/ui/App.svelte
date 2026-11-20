@@ -6,6 +6,7 @@
   import type { FighterShape } from "../sim/geometry";
   import { shapeIssue } from "../sim/shapes";
   import { eyeStyle } from "../look/eyes";
+  import { KEYS, load, loadJSON, save, saveJSON } from "../storage";
   import { ROOM_CODE } from "../net/protocol";
   import InGame from "./InGame.svelte";
   import LocalSetupScreen from "./LocalSetup.svelte";
@@ -17,24 +18,7 @@
 
   let { game }: { game: Game } = $props();
 
-  const NAME_KEY = "triangle-duel.name";
-  const SETUP_KEY = "triangle-duel.localSetup";
-  const SHAPE_KEY = "triangle-duel.shape";
-  const EYES_KEY = "triangle-duel.eyes";
-  const load = (key: string) => {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null; // storage blocked: just don't remember
-    }
-  };
-  const save = (key: string, value: string) => {
-    try {
-      localStorage.setItem(key, value);
-    } catch {}
-  };
-
-  const savedName = load(NAME_KEY) ?? "";
+  const savedName = load(KEYS.name) ?? "";
   let name = $state(savedName);
   type Screen = "name" | "menu" | "local" | "online" | "room" | "game" | "customize";
   const net = untrack(() => game.net); // `game` never changes
@@ -67,28 +51,17 @@
     game.playerName = name || "player";
   });
 
-  const savedSetup = (() => {
-    try {
-      return JSON.parse(load(SETUP_KEY) ?? "{}");
-    } catch {
-      return {}; // corrupted: use defaults
-    }
-  })();
-  let setup = $state<LocalSetup>({ ...DEFAULT_LOCAL_SETUP, ...savedSetup });
+  let setup = $state<LocalSetup>({ ...DEFAULT_LOCAL_SETUP, ...loadJSON<Partial<LocalSetup>>(KEYS.localSetup, {}) });
 
   // My fighter shape: re-checked on load, so a stale or corrupted save falls back to standard.
   const savedShape = ((): FighterShape | null => {
-    try {
-      const s = JSON.parse(load(SHAPE_KEY) ?? "null") as FighterShape | null;
-      return s && !shapeIssue(s) ? s : null;
-    } catch {
-      return null;
-    }
+    const s = loadJSON<FighterShape | null>(KEYS.shape, null);
+    return s && !shapeIssue(s) ? s : null;
   })();
   let shape = $state<FighterShape | null>(savedShape);
   untrack(() => game.setPlayerShape(savedShape));
   // My eye style (re-checked on load: anything unknown → the default).
-  let eyes = $state(eyeStyle(Number(load(EYES_KEY) ?? 0)));
+  let eyes = $state(eyeStyle(Number(load(KEYS.eyes) ?? 0)));
   untrack(() => game.setPlayerEyes(eyes));
 
   function saveFighter(s: FighterShape | null, e: number) {
@@ -96,21 +69,21 @@
     eyes = e;
     game.setPlayerShape(s);
     game.setPlayerEyes(e);
-    save(SHAPE_KEY, JSON.stringify(s));
-    save(EYES_KEY, String(e));
+    saveJSON(KEYS.shape, s);
+    save(KEYS.eyes, String(e));
     screen = "menu";
   }
 
   function setName(n: string) {
     name = n;
-    save(NAME_KEY, n);
+    save(KEYS.name, n);
     screen = "menu";
     joinPending(); // came from an invite link: straight to that room
   }
 
   function startLocal(s: LocalSetup) {
     setup = s;
-    save(SETUP_KEY, JSON.stringify(s));
+    saveJSON(KEYS.localSetup, s);
     menuOpen = false;
     game.playLocal(s);
     screen = "game";

@@ -1,5 +1,6 @@
 // Canvas 2D renderer. Reads sim state, never writes it.
 
+import { cornersFromWorld } from "./look/fighterLayout";
 import { drawSticker, moodOf } from "./look/sticker";
 import { DEBUG_COLORS, HALO, INK, SCENE, playerColor, withAlpha } from "./theme";
 import type { CameraView } from "./camera";
@@ -210,7 +211,11 @@ export class Renderer {
     const label = (i: number) => (names[i] ?? `P${i + 1}`).slice(0, 10);
     ctx.font = "bold 13px system-ui, sans-serif";
     const labelW = Math.max(28, ...fighters.map((_, i) => ctx.measureText(label(i)).width + 8));
-    const shapes = fighters.map(uprightShape);
+    // Each fighter standing upright (its own frame; fighterLayout.ts).
+    const shapes = fighters.map((f) => {
+      const c = cornersFromWorld(f.vertices, f.footIndex);
+      return [c.F, c.L, c.R];
+    });
     const extent = (s: Vec2[], axis: "x" | "y") => Math.max(...s.map((p) => p[axis])) - Math.min(...s.map((p) => p[axis]));
     const ICON_PX_PER_M = 9; // the standard fighter (~1.2 m) comes out ~11 px tall
     const MAX_ICON_PX = 15;
@@ -333,20 +338,6 @@ export class Renderer {
     }
     ctx.restore();
   }
-}
-
-/**
- * A fighter's shape standing upright (meters, y up): its corners relative to
- * the center of mass, with its current rotation undone. Shapes are balanced
- * (foot straight below the center of mass), so this is its natural stance.
- */
-function uprightShape(f: FighterView): Vec2[] {
-  const c = { x: (f.vertices[0].x + f.vertices[1].x + f.vertices[2].x) / 3, y: (f.vertices[0].y + f.vertices[1].y + f.vertices[2].y) / 3 };
-  const [cos, sin] = [Math.cos(-f.angle), Math.sin(-f.angle)];
-  return f.vertices.map((v) => {
-    const d = { x: v.x - c.x, y: v.y - c.y };
-    return { x: cos * d.x - sin * d.y, y: sin * d.x + cos * d.y };
-  });
 }
 
 function lerpV(a: Vec2, b: Vec2, t: number): Vec2 {
