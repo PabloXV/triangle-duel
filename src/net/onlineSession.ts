@@ -21,7 +21,7 @@
 import type { InputSource, Session } from "../session";
 import { decodeInput, encodeInput } from "../sim/inputCodec";
 import { Recorder, type Recording } from "../sim/recording";
-import { Sim, NO_INPUT, hashState, type FighterView, type MatchResult, type SimState } from "../sim/sim";
+import { Sim, NO_INPUT, hashState, type FighterView, type MatchResult, type SimEvent, type SimState } from "../sim/sim";
 import { HASH_EVERY, type MatchSetup } from "./protocol";
 
 /** What the session needs from the network. NetClient implements it. */
@@ -71,6 +71,8 @@ export class OnlineSession implements Session {
   private lastSent = new Map<number, string>(); // per driven fighter
   private recorder: Recorder;
 
+  /** Events of every step run since the last takeEvents() (including re-simulated ones). */
+  private stepEvents: SimEvent[] = [];
   /** Inputs (one char per fighter) of the newest simulated step. For tests and debugging. */
   lastStepInputs = "";
   /** The latest rollback correction (present before vs after), until taken. For visual smoothing. */
@@ -110,6 +112,13 @@ export class OnlineSession implements Session {
 
   receiveDesync(step: number) {
     this.desync ??= { step };
+  }
+
+  /** Start driving another fighter mid-match (a bot whose driver, the old host, left). */
+  takeOver(fighter: number, source: InputSource) {
+    this.sources.set(fighter, source);
+    // Its official input right now (likely idle): only send when our bot changes it.
+    this.lastSent.set(fighter, this.lastOfficial[fighter] ?? IDLE);
   }
 
   // ---- per frame / per step ---------------------------------------------------
@@ -176,6 +185,7 @@ export class OnlineSession implements Session {
     this.used.set(s, inputs);
     this.lastStepInputs = inputs;
     this.sim.step(inputs.split("").map(decodeInput));
+    this.stepEvents.push(...this.sim.events);
   }
 
   /** Compare new official steps against what we simulated; rewind on a mismatch; extend `confirmed`. */
@@ -228,6 +238,18 @@ export class OnlineSession implements Session {
   }
 
   // ---- reading ----------------------------------------------------------------
+
+  /**
+   * Events from every step since the last call, re-simulated steps included
+   * (a leave or KO often first happens in a re-simulation, when the official
+   * input arrives for a step already shown). May repeat an event if a step is
+   * re-simulated more than once.
+   */
+  takeEvents(): SimEvent[] {
+    const e = this.stepEvents;
+    this.stepEvents = [];
+    return e;
+  }
 
   /** The correction made by the last step() call (before/after views), if any. Call after each step(). */
   takeCorrection(): { before: FighterView[]; after: FighterView[] } | null {

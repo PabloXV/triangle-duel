@@ -4,7 +4,7 @@
 //
 // Events in (connect, disconnect, receive, advance), messages out.
 
-import { encodeInput } from "../sim/inputCodec";
+import { LEFT, encodeInput } from "../sim/inputCodec";
 import { NO_INPUT } from "../sim/types";
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -74,10 +74,21 @@ export class RoomCore {
     const c = this.conns.get(id);
     this.conns.delete(id);
     if (!c) return [];
-    // Fighters this player drove (their own, and bots if they hosted) go idle.
-    if (this.phase === "match") for (const f of c.drives) this.schedule(f, this.nextStep, IDLE);
+    const out: Outgoing[] = [];
+    if (this.phase === "match") {
+      // Their fighter leaves the match: every client removes it at the same step.
+      if (c.fighter !== null) this.schedule(c.fighter, this.nextStep, LEFT);
+      // Bots they drove (they were host) go to the new host, idling until then.
+      const bots = c.drives.filter((f) => f !== c.fighter);
+      for (const f of bots) this.schedule(f, this.nextStep, IDLE);
+      const heir = this.hostId();
+      if (bots.length && heir) {
+        this.conns.get(heir)!.drives.push(...bots);
+        out.push({ to: heir, msg: { type: "drive", fighters: bots } });
+      }
+    }
     if (this.conns.size === 0) this.reset();
-    return c.slot === null ? [] : [this.roster()];
+    return c.slot === null ? out : [...out, this.roster()];
   }
 
   receive(id: string, raw: unknown): Outgoing[] {

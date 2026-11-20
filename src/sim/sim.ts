@@ -18,7 +18,7 @@ import type { Params } from "./params";
 import { invertedIsosceles, spawnPoints, type Stage } from "./geometry";
 import { freshFighterState, worldVertices, type MatchContext } from "./fighter";
 import { applyGrip, applyJump, applyRotation, updateGrounded } from "./movement";
-import { checkKOs, passesThroughFighters, updateDead, updateGhost } from "./lives";
+import { checkKOs, forfeit, passesThroughFighters, updateDead, updateGhost } from "./lives";
 import { updateOneWaySolidity } from "./platforms";
 import {
   DEFAULT_MATCH,
@@ -171,6 +171,10 @@ export class Sim {
     ctx.events = [];
     this.syncLiveParams();
     updateOneWaySolidity(ctx);
+    // Players who left this step are removed first, wherever they are (even mid-respawn).
+    ctx.fighters.forEach((_, i) => {
+      if (inputs[i]?.left) forfeit(ctx, i);
+    });
 
     ctx.fighters.forEach((f, i) => {
       if (f.state.ko) {

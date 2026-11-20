@@ -6,8 +6,8 @@ import { WINGS_STAGE } from "../src/sim/geometry";
 import { DEFAULT_PARAMS } from "../src/sim/params";
 import { verifyRecording } from "../src/sim/recording";
 import type { InputSource } from "../src/session";
-import { encodeInput } from "../src/sim/inputCodec";
-import { DEFAULT_MATCH, NO_INPUT, initPhysics, type Input } from "../src/sim/sim";
+import { LEFT, encodeInput } from "../src/sim/inputCodec";
+import { DEFAULT_MATCH, NO_INPUT, initPhysics, type Input, type SimEvent } from "../src/sim/sim";
 
 await initPhysics();
 
@@ -104,5 +104,57 @@ describe("online rollback: room bots (driven by the host's browser)", () => {
       expect(botInputs.size).toBeGreaterThan(2);
     }
     expect(b.recording().inputs).toBe(rec.inputs);
+  });
+});
+
+describe("online rollback: leaving mid-match", () => {
+  const LEAVE_AT = 400;
+
+  /** The steps (from a recording) at which fighter f's input was LEFT. */
+  const leftSteps = (rec: ReturnType<OnlineSession["recording"]>, f: number) =>
+    Array.from({ length: rec.ticks }, (_, t) => t).filter((t) => rec.inputs[t * rec.match.players + f] === LEFT);
+
+  it("the host leaves: they're removed, the next player inherits the bot, the match goes on", () => {
+    const { b, desyncs } = playOnline({ latency: [2, 3], ticks: 1500, bots: 1, leave: { id: "a", at: LEAVE_AT } });
+    expect(desyncs).toEqual([]);
+    expect(b.confirmedTick).toBeGreaterThan(1300); // the match kept going
+    const rec = b.recording();
+    expect(verifyRecording(rec).ok).toBe(true); // B's match replays exactly
+    const leftAt = leftSteps(rec, 0)[0];
+    expect(leftAt).toBeGreaterThanOrEqual(LEAVE_AT); // the host's fighter got LEFT...
+    expect(b.sim.view()[0]).toMatchObject({ ko: "left", eliminated: true }); // ...and is gone
+    // The bot (fighter 2) kept playing after the handoff: B's browser drives it now.
+    const botAfter = new Set(Array.from({ length: rec.ticks - leftAt - 30 }, (_, k) => rec.inputs[(leftAt + 30 + k) * 3 + 2]));
+    expect(botAfter.size).toBeGreaterThan(2);
+  });
+
+  it("the remaining client gets the leave event, even though it happens in a re-simulation", () => {
+    const seen: SimEvent[] = [];
+    let missedByLastStepEvents = false; // would reading only sim.events (the last step) have missed it?
+    playOnline({
+      latency: [2, 3],
+      ticks: 700,
+      bots: 1,
+      leave: { id: "b", at: LEAVE_AT },
+      sample: (s) => {
+        if (s.you !== 0) return;
+        const isLeave = (e: SimEvent) => e.type === "ko" && e.reason === "left";
+        const events = s.takeEvents();
+        if (events.some(isLeave) && !s.sim.events.some(isLeave)) missedByLastStepEvents = true;
+        seen.push(...events);
+      },
+    });
+    expect(seen).toContainEqual(expect.objectContaining({ type: "ko", fighter: 1, reason: "left" }));
+    // The leave happened in an earlier (re-simulated) step of that call: the old
+    // approach, reading only the last step's events, would have missed it.
+    expect(missedByLastStepEvents).toBe(true);
+  });
+
+  it("a non-host leaves: they're removed for everyone, the host's match goes on", () => {
+    const { a, desyncs } = playOnline({ latency: [2, 3], ticks: 1200, bots: 1, leave: { id: "b", at: LEAVE_AT } });
+    expect(desyncs).toEqual([]);
+    expect(a.sim.view()[1]).toMatchObject({ ko: "left", eliminated: true });
+    expect(verifyRecording(a.recording()).ok).toBe(true);
+    expect(leftSteps(a.recording(), 1)[0]).toBeGreaterThanOrEqual(LEAVE_AT);
   });
 });

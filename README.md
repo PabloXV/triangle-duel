@@ -235,6 +235,16 @@ simulate, so the host's browser tells it, a few seconds after the *confirmed*
 timeline shows the result (the present can briefly show a win a rollback
 undoes). If the host leaves the room, the next player becomes host.
 
+**Leaving mid-match** (closing the tab, "Leave match", or being kicked): the
+relay puts a special LEFT input into the official stream for that fighter, at
+the next step. Every client's sim removes the fighter when it sees it, so the
+leave happens at the same step everywhere, and in recordings, with no special
+cases (clients can't send LEFT themselves). If that leaves one fighter, they
+win. If the leaver was host, the next player becomes host and the relay tells
+their browser to drive the bots from then on (they idle for a moment in
+between). Online sessions report events from re-simulated steps too
+(`takeEvents`), since a leave or KO often first happens in a rollback.
+
 **Bots online:** the host can add/remove bot seats in the lobby (Online →
 add bot). The host's browser runs them and sends their inputs through the
 relay like a player's (the relay only accepts bot inputs from the host); to

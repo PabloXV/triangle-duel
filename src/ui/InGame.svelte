@@ -26,6 +26,8 @@
   }
 </script>
 
+{#if gs.notice}<div class="notice" role="status">{gs.notice}</div>{/if}
+
 {#if !gs.ended && !menuOpen}
   <button class="corner" onclick={openMenu} aria-label={canPause ? "pause" : "menu"}>{canPause ? "❚❚" : "☰"}</button>
 {/if}
@@ -88,6 +90,18 @@
   }
   .row {
     flex-direction: row;
+  }
+  .notice {
+    position: absolute;
+    top: 44px; /* below the online status line */
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    background: #2e2742e8;
+    border: 1px solid var(--line);
+    color: var(--text);
+    font: 600 0.95rem system-ui, sans-serif;
   }
   .note {
     color: #fffc;

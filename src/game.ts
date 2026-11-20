@@ -47,6 +47,8 @@ export interface GameState {
   /** The match is decided and its final-KO replay (if any) has finished: show end-of-match options. */
   ended: boolean;
   winnerName: string | null; // null = draw (when ended)
+  /** A short message to show, e.g. "Bo left the match". */
+  notice: string | null;
 }
 
 /** Presentation settings (the debug panel's "Juice" section edits these). */
@@ -82,7 +84,10 @@ export class Game {
   private attractRestartAt = 0; // when the attract match should restart (ms), after it ends
   private backToRoomAt = 0; // host: when to send the room back to the lobby after an online match (ms)
 
-  private state: GameState = { mode: "attract", paused: false, ended: false, winnerName: null };
+  private state: GameState = { mode: "attract", paused: false, ended: false, winnerName: null, notice: null };
+  private noticeUntil = 0;
+  private announcedLeaves = new Set<number>(); // fighters whose leaving we've announced this match
+  private onlineParams: Params | null = null; // the current online match's params (for inherited bots)
   private listeners = new Set<(s: GameState) => void>();
 
   constructor(canvas: HTMLCanvasElement) {
@@ -143,7 +148,14 @@ export class Game {
   /** For tests and the console: the running match at a glance. */
   get info() {
     const sim = this.session.sim;
-    return { mode: this.state.mode, tick: sim.tick, players: sim.match.players, stocks: sim.match.stocks, platforms: sim.stage.platforms.length };
+    return {
+      mode: this.state.mode,
+      tick: sim.tick,
+      players: sim.match.players,
+      stocks: sim.match.stocks,
+      platforms: sim.stage.platforms.length,
+      eliminated: sim.view().map((f) => f.eliminated),
+    };
   }
 
   get lastLocalSetup(): LocalSetup {
@@ -205,8 +217,9 @@ export class Game {
     this.camera.setStage(next.sim.stage);
     this.smoother.reset();
     this.attractRestartAt = 0;
+    this.announcedLeaves.clear();
     this.backToRoomAt = 0;
-    this.update({ mode, paused: false, ended: false, winnerName: null });
+    this.update({ mode, paused: false, ended: false, winnerName: null, notice: null });
   }
 
   private wireNet() {
@@ -222,7 +235,17 @@ export class Game {
         const bot = new HeuristicBot(f, { ...DEFAULT_BOT, seed: this.matchNumber * 4 + f + 1 });
         sources.set(f, new BotSource(bot, setup.params));
       }
+      this.onlineParams = setup.params;
       this.begin("online", new OnlineSession(setup, you, names, sources, net, net.room, () => net.rttMs), names);
+    };
+    // The host left mid-match and we're the new host: run their bots from now on.
+    net.onDrive = (fighters) => {
+      const s = this.session;
+      if (!(s instanceof OnlineSession) || !this.onlineParams) return;
+      for (const f of fighters) {
+        const bot = new HeuristicBot(f, { ...DEFAULT_BOT, seed: this.matchNumber * 4 + f + 1 });
+        s.takeOver(f, new BotSource(bot, this.onlineParams));
+      }
     };
     net.onTick = (t, changes) => {
       if (this.session instanceof OnlineSession) this.session.receiveTick(t, changes);
@@ -242,12 +265,22 @@ export class Game {
     let final = false;
     for (const e of events) {
       if (e.type === "impact") this.camera.shake(Math.min(1, Math.max(0, (e.force - 30) / 100)));
-      else if (e.type === "ko") {
+      else if (e.type === "ko" && e.reason === "left") {
+        // Someone left: say so, once. (No shake, and no final-KO replay: nothing to replay.)
+        if (this.announcedLeaves.has(e.fighter)) continue;
+        this.announcedLeaves.add(e.fighter);
+        this.notify(`${this.names[e.fighter] ?? `P${e.fighter + 1}`} left the match`);
+      } else if (e.type === "ko") {
         this.camera.shake(0.6);
         if (e.final) final = true;
       }
     }
     return final;
+  }
+
+  private notify(message: string) {
+    this.noticeUntil = performance.now() + 3000;
+    this.update({ notice: message });
   }
 
   private startKoReplay() {
@@ -259,6 +292,7 @@ export class Game {
 
   /** Once the match is decided and its replay is done: tell the menus (or restart the backdrop). */
   private checkEnded(now: number) {
+    if (this.state.notice && now > this.noticeUntil) this.update({ notice: null });
     this.checkBackToRoom(now);
     const result: MatchResult = this.session.sim.result;
     if (!result.over || this.koReplay || this.state.ended) return;
@@ -341,7 +375,8 @@ export class Game {
         }
         this.history.push({ views: this.curr, events: sim.events });
         this.accumulator -= DT;
-        if (this.handleEvents(sim.events) && this.settings.finalKoReplay) {
+        const events = session.takeEvents?.() ?? sim.events;
+        if (this.handleEvents(events) && this.settings.finalKoReplay) {
           this.startKoReplay();
           break;
         }

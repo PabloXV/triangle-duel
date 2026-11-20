@@ -98,6 +98,24 @@ function overlapsAnyFighter(ctx: MatchContext, i: number): boolean {
   });
 }
 
+/**
+ * The player left mid-match: their fighter is out for good, immediately (no
+ * respawn delay, gone from the stage). If that leaves one fighter with stocks,
+ * checkKOs ends the match as usual. Repeats are ignored.
+ */
+export function forfeit(ctx: MatchContext, i: number) {
+  const f = ctx.fighters[i];
+  if (f.state.stocks === 0) return;
+  f.state.stocks = 0;
+  f.state.ko = "left";
+  f.state.respawnTimer = 0;
+  f.state.ghostTimer = 0;
+  f.state.charging = false;
+  f.state.chargeTicks = 0;
+  f.body.setEnabled(false);
+  ctx.events.push({ type: "ko", fighter: i, reason: "left", stocksLeft: 0, final: false });
+}
+
 /** Dead bodies and post-respawn ghosts don't collide with other fighters. */
 export function passesThroughFighters(ctx: MatchContext, i: number): boolean {
   const s = ctx.fighters[i].state;

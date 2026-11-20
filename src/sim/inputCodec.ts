@@ -4,12 +4,21 @@
 
 import type { Input } from "./types";
 
-// One input = one character '0'..'5': (turn + 1) + (charge ? 3 : 0).
+/**
+ * "This player has left the match." Only the relay injects it (clients can't
+ * send it; see protocol.ts). The sim removes that fighter when it sees it, so
+ * a leave happens at the same step on every client, and in recordings.
+ */
+export const LEFT = "6";
+
+// One input = one character '0'..'5': (turn + 1) + (charge ? 3 : 0), or LEFT.
 export function encodeInput(i: Input): string {
+  if (i.left) return LEFT;
   return String(i.turn + 1 + (i.charge ? 3 : 0));
 }
 
 export function decodeInput(c: string): Input {
+  if (c === LEFT) return { turn: 0, charge: false, left: true };
   const n = Number(c);
   if (!(n >= 0 && n <= 5)) throw new Error(`bad input char ${JSON.stringify(c)}`);
   return { turn: ((n % 3) - 1) as Input["turn"], charge: n >= 3 };

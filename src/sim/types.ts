@@ -11,11 +11,13 @@ export interface Input {
   turn: -1 | 0 | 1;
   /** Held state of the charge button. What it does depends on jumpMode, see movement.ts. */
   charge: boolean;
+  /** The player left the match: their fighter is removed (see lives.ts forfeit). */
+  left?: boolean;
 }
 
 export const NO_INPUT: Input = { turn: 0, charge: false };
 
-export type KoReason = "touched" | "fell";
+export type KoReason = "touched" | "fell" | "left";
 
 /**
  * Things that happened during the last step(), for presentation (screen shake,

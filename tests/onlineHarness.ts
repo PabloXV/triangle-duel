@@ -25,6 +25,7 @@ export function playOnline(opts: {
   rttMs?: (id: string) => number; // what each client believes its round trip is (default: the true one)
   sample?: (s: OnlineSession) => void; // called for each client after every step
   bots?: number; // bot seats the host adds before starting (driven by client A, the host)
+  leave?: { id: "a" | "b"; at: number }; // disconnect this client at this tick
 }) {
   let now = 0;
   let seed = 12345;
@@ -44,11 +45,16 @@ export function playOnline(opts: {
   const ids = ["a", "b"];
   const room = new RoomCore("TEST");
   const sessions = new Map<string, OnlineSession>();
+  const left = new Map<string, OnlineSession>(); // clients that disconnected (frozen)
   const desyncs: number[] = [];
 
   const toClient = (id: string, msg: ServerMsg) => {
     const s = sessions.get(id);
     if (msg.type === "tick") s?.receiveTick(msg.t, msg.c ?? []);
+    if (msg.type === "drive" && s) {
+      // We inherited bots (the host left): run them from now on.
+      for (const f of msg.fighters) s.takeOver(f, new BotSource(new HeuristicBot(f, { ...DEFAULT_BOT, seed: 50 + f }), DEFAULT_PARAMS));
+    }
     if (msg.type === "desync") {
       desyncs.push(msg.step);
       s?.receiveDesync(msg.step);
@@ -91,6 +97,11 @@ export function playOnline(opts: {
   // client sends input and simulates, as the game loop would.
   for (; now < opts.ticks; now++) {
     flush();
+    if (opts.leave && now === opts.leave.at) {
+      route(room.disconnect(opts.leave.id)); // they close the tab
+      left.set(opts.leave.id, sessions.get(opts.leave.id)!);
+      sessions.delete(opts.leave.id);
+    }
     route(room.advance());
     for (const s of sessions.values()) {
       s.step();
@@ -102,6 +113,7 @@ export function playOnline(opts: {
     flush();
     for (const s of sessions.values()) s.step();
   }
-  return { a: sessions.get("a")!, b: sessions.get("b")!, desyncs };
+  const get = (id: string) => (sessions.get(id) ?? left.get(id))!;
+  return { a: get("a"), b: get("b"), desyncs };
 }
 

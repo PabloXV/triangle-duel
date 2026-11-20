@@ -17,7 +17,7 @@ import type { Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { MatchOptions } from "../sim/sim";
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const MAX_PLAYERS = 4;
 export const MAX_MESSAGE_BYTES = 64 * 1024;
 /** Clients report a state fingerprint every this many steps. */
@@ -79,6 +79,8 @@ export type ServerMsg =
   | { type: "roster"; phase: "lobby" | "match"; players: RosterEntry[]; settings: RoomSettings }
   /** You were removed from the room by the host. */
   | { type: "kicked" }
+  /** Mid-match: you now also drive these fighters (bots whose driver, the old host, left). */
+  | { type: "drive"; fighters: number[] }
   /**
    * A match begins at step 0. `fighters[i]` = the lobby slot playing fighter i;
    * `you` = your fighter; `drive` = fighters whose inputs you send (yours, plus

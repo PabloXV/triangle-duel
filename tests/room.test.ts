@@ -3,6 +3,7 @@ import { PROTOCOL_VERSION, type MatchSetup, type ServerMsg } from "../src/net/pr
 import { RoomCore, type Outgoing } from "../src/net/room";
 import { WINGS_STAGE } from "../src/sim/geometry";
 import { DEFAULT_PARAMS } from "../src/sim/params";
+import { LEFT } from "../src/sim/inputCodec";
 import { DEFAULT_MATCH } from "../src/sim/types";
 
 const send = (msg: object) => JSON.stringify(msg);
@@ -140,12 +141,17 @@ describe("room: the official input stream", () => {
     expect(room.receive("a", send({ type: "input", tick: 10_000, input: "2" }))[0].msg).toMatchObject({ type: "error" });
   });
 
-  it("a player who disconnects mid-match goes idle", () => {
+  it("a player who disconnects mid-match leaves it: LEFT at the next step", () => {
     const { room } = started(2);
     room.receive("b", send({ type: "input", tick: 0, input: "5" }));
     room.advance();
     room.disconnect("b");
-    expect(room.advance()[0].msg).toEqual({ type: "tick", t: 1, c: [[1, "1"]] });
+    expect(room.advance()[0].msg).toEqual({ type: "tick", t: 1, c: [[1, LEFT]] });
+  });
+
+  it("clients can't send LEFT themselves (only the relay injects it)", () => {
+    const { room } = started(2);
+    expect(room.receive("a", send({ type: "input", tick: 0, input: LEFT }))[0].msg).toEqual({ type: "error", message: "malformed message" });
   });
 
   it("the host can end the match; ticking stops; the room can start again from step 0", () => {
@@ -244,15 +250,30 @@ describe("room: bots", () => {
     expect(room.advance()[0].msg).toEqual({ type: "tick", t: 0, c: [[2, "2"]] });
   });
 
-  it("if the host leaves mid-match, their bots go idle too", () => {
+  it("if the host leaves mid-match: they leave, their bots idle and pass to the new host", () => {
     const { room } = roomWith(2);
     room.receive("a", addBot);
     room.receive("a", send({ type: "start", setup: setup(3) }));
     room.receive("a", send({ type: "input", tick: 0, input: "5" }));
     room.receive("a", send({ type: "input", tick: 0, input: "5", fighter: 2 }));
     room.advance();
+    const out = room.disconnect("a");
+    expect(out).toContainEqual({ to: "b", msg: { type: "drive", fighters: [2] } });
+    expect(ofType(out, "roster")[0].players.find((p) => p.name === "b")?.host).toBe(true);
+    expect(room.advance()[0].msg).toEqual({ type: "tick", t: 1, c: [[0, LEFT], [2, "1"]] });
+    // The new host may now drive the bot.
+    expect(room.receive("b", send({ type: "input", tick: 2, input: "2", fighter: 2 }))).toEqual([]);
+    expect(room.advance()[0].msg).toEqual({ type: "tick", t: 2, c: [[2, "2"]] });
+  });
+
+  it("if the last human leaves mid-match, the room resets (bots too)", () => {
+    const { room } = roomWith(1);
+    room.receive("a", addBot);
+    room.receive("a", send({ type: "start", setup: setup(2) }));
+    room.advance();
     room.disconnect("a");
-    expect(room.advance()[0].msg).toEqual({ type: "tick", t: 1, c: [[0, "1"], [2, "1"]] });
+    expect(room.phase).toBe("lobby");
+    expect(room.advance()).toEqual([]);
   });
 
   it("bots go when everyone leaves", () => {
@@ -301,12 +322,12 @@ describe("room: settings and kick", () => {
     expect(room.receive("a", send({ type: "kick", slot: 3 }))[0].msg).toEqual({ type: "error", message: "nobody in that seat" });
   });
 
-  it("kicking mid-match: their fighter goes idle", () => {
+  it("kicking mid-match removes their fighter from the match (LEFT)", () => {
     const { room } = started(2);
     room.receive("b", send({ type: "input", tick: 0, input: "5" }));
     room.advance();
     room.receive("a", send({ type: "kick", slot: 1 }));
-    expect(room.advance()[0].msg).toEqual({ type: "tick", t: 1, c: [[1, "1"]] });
+    expect(room.advance()[0].msg).toEqual({ type: "tick", t: 1, c: [[1, LEFT]] });
   });
 
   it("settings reset when the room empties", () => {

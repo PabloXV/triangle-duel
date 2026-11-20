@@ -11,7 +11,7 @@
 import type { Stage } from "./sim/geometry";
 import type { Params } from "./sim/params";
 import { Playback, Recorder, type Recording } from "./sim/recording";
-import { Sim, type FighterView, type Input, type MatchOptions } from "./sim/sim";
+import { Sim, type FighterView, type Input, type MatchOptions, type SimEvent } from "./sim/sim";
 
 /** Produces one player's input each tick. */
 export interface InputSource {
@@ -30,6 +30,12 @@ export interface Session {
   recording(): Recording | null;
   isHuman(player: number): boolean;
   describe(player: number): string;
+  /**
+   * Events from every step the last step() call ran, oldest first, if the
+   * session can run several (online: rollback re-simulates steps). Without
+   * this, only the last step's events (sim.events) would be seen.
+   */
+  takeEvents?(): SimEvent[];
   /** A status line for the top of the screen, if any. */
   status(): string | undefined;
   free(): void;

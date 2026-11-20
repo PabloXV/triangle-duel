@@ -183,10 +183,23 @@ async function onlineFlow() {
   await ana.keyboard.up("ArrowRight");
   await bo.keyboard.up("ArrowRight");
 
-  // Ana leaves; Bo becomes host.
-  await ana.getByRole("button", { name: "Leave room" }).click();
-  await bo.getByRole("button", { name: "Start match" }).waitFor({ timeout: 5000 });
-  check(JSON.stringify(await rosterNames(bo)) === JSON.stringify(["bot 1", "Bo"]), "Ana left: Bo is host, the bot stays");
-  await shot(bo, "10-new-host");
+  // Second match: Ana (host) leaves mid-match. Bo inherits host and the bot.
+  await ana.getByRole("button", { name: "Start match" }).click();
+  await bo.waitForTimeout(1500);
+  await ana.keyboard.press("Escape");
+  await ana.getByRole("button", { name: "Leave match" }).click();
+  check(await ana.getByRole("button", { name: "Create a room" }).isVisible(), "Ana left the match → back on the online menu");
+  await bo.getByText("Ana left the match").waitFor({ timeout: 5000 });
+  check(true, "Bo is told Ana left");
+  const after = await info(bo);
+  check(after.mode === "online" && after.eliminated[0] === true && !after.eliminated[1], "Bo's match goes on; Ana's fighter is gone");
+  await shot(bo, "10-host-left");
+  // Bo walks off; the bot wins. Bo's browser is host now, so it sends everyone back.
+  await bo.keyboard.down("ArrowRight");
+  await bo.locator("button.code").waitFor({ timeout: 60_000 });
+  await bo.keyboard.up("ArrowRight");
+  check(await bo.getByRole("button", { name: "Start match" }).isVisible(), "the new host (Bo) ended the match: back in the room as host");
+  check(JSON.stringify(await rosterNames(bo)) === JSON.stringify(["bot 1", "Bo"]), "the bot stays in the room");
+  await shot(bo, "11-new-host-room");
   check(errors.length === 0, `online: no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
 }

@@ -40,6 +40,8 @@ export class NetClient implements MatchTransport {
   onDesync?: (step: number) => void;
   /** The host ended the match (back to the lobby). */
   onLobby?: () => void;
+  /** Mid-match: start driving these fighters too (bots inherited when the host left). */
+  onDrive?: (fighters: number[]) => void;
   /** During a match: the lobby slot of each fighter. */
   fighters: number[] = [];
 
@@ -190,6 +192,9 @@ export class NetClient implements MatchTransport {
       }
       case "desync":
         this.onDesync?.(m.step);
+        break;
+      case "drive":
+        this.onDrive?.(m.fighters);
         break;
       case "error":
         this.error = m.message;

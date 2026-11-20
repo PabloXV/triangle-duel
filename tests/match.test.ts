@@ -3,6 +3,7 @@ import { DEFAULT_BOT, HeuristicBot } from "../src/bots/heuristic";
 import { WINGS_STAGE, spawnPoints } from "../src/sim/geometry";
 import { DEFAULT_PARAMS, type Params } from "../src/sim/params";
 import { DEFAULT_MATCH, NO_INPUT, Sim, initPhysics, type Input, type MatchOptions } from "../src/sim/sim";
+import { LEFT, decodeInput, encodeInput } from "../src/sim/inputCodec";
 
 beforeAll(() => initPhysics());
 
@@ -82,5 +83,43 @@ describe("free-for-all", () => {
       // Everyone else is out of stocks; the winner isn't.
       sim.view().forEach((f, i) => expect(f.stocks > 0).toBe(i === r.winner));
     }
+  });
+});
+
+describe("leaving mid-match", () => {
+  const LEAVE: Input = { turn: 0, charge: false, left: true };
+  const idle3 = (): Input[] => [NO_INPUT, NO_INPUT, NO_INPUT];
+
+  it("a player who leaves is removed immediately; the match goes on if 2+ remain", () => {
+    const sim = new Sim(WINGS_STAGE, DEFAULT_PARAMS, { players: 3, stocks: 3 });
+    for (let t = 0; t < 30; t++) sim.step(idle3());
+    sim.step([NO_INPUT, LEAVE, NO_INPUT]);
+    expect(sim.events).toContainEqual({ type: "ko", fighter: 1, reason: "left", stocksLeft: 0, final: false });
+    expect(sim.view()[1]).toMatchObject({ ko: "left", stocks: 0, eliminated: true });
+    expect(sim.result.over).toBe(false);
+    for (let t = 0; t < 120; t++) sim.step([NO_INPUT, LEAVE, NO_INPUT]); // the relay keeps repeating LEFT
+    expect(sim.view()[1].eliminated).toBe(true);
+    expect(sim.events.filter((e) => e.type === "ko")).toEqual([]); // repeats are ignored
+  });
+
+  it("if only one fighter is left, they win", () => {
+    const sim = new Sim(WINGS_STAGE, DEFAULT_PARAMS, { players: 2 });
+    for (let t = 0; t < 30; t++) sim.step([NO_INPUT, NO_INPUT]);
+    sim.step([LEAVE, NO_INPUT]);
+    expect(sim.result).toMatchObject({ over: true, winner: 1 });
+    expect(sim.events).toContainEqual({ type: "ko", fighter: 0, reason: "left", stocksLeft: 0, final: true });
+  });
+
+  it("leaving while KO'd (waiting to respawn) means no respawn", () => {
+    const sim = new Sim(WINGS_STAGE, STILL, { players: 3, stocks: 3 });
+    stepUntil(sim, () => [TIP, NO_INPUT, NO_INPUT], () => sim.view()[0].ko !== null);
+    sim.step([LEAVE, NO_INPUT, NO_INPUT]);
+    for (let t = 0; t < respawnDelayTicks + 30; t++) sim.step([LEAVE, NO_INPUT, NO_INPUT]);
+    expect(sim.view()[0]).toMatchObject({ ko: "left", stocks: 0, eliminated: true });
+  });
+
+  it("a leave survives a recording round trip (it's just an input)", () => {
+    expect(decodeInput(encodeInput(LEAVE))).toEqual(LEAVE);
+    expect(encodeInput(LEAVE)).toBe(LEFT);
   });
 });
