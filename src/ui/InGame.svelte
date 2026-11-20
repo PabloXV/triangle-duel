@@ -2,7 +2,7 @@
   // On top of a match: a pause/leave button, the pause menu, and end-of-match options.
   import type { Game, GameState } from "../game";
   import { isTouchDevice } from "../input";
-  import TouchControls from "./TouchControls.svelte";
+  import TouchControls, { type TouchScheme } from "./TouchControls.svelte";
 
   let {
     game,
@@ -16,6 +16,21 @@
 
   // Touch controls, when this screen is playing (not watching) a running match.
   const touchScreen = isTouchDevice();
+  // Which touch scheme (stick or buttons), remembered on this device.
+  const SCHEME_KEY = "triangle-duel.touchScheme";
+  let scheme = $state<TouchScheme>((() => {
+    try {
+      return localStorage.getItem(SCHEME_KEY) === "buttons" ? "buttons" : "stick";
+    } catch {
+      return "stick";
+    }
+  })());
+  function toggleScheme() {
+    scheme = scheme === "stick" ? "buttons" : "stick";
+    try {
+      localStorage.setItem(SCHEME_KEY, scheme);
+    } catch {}
+  }
   let vw = $state(0);
   let vh = $state(0);
   const layout = $derived(vh > vw ? "portrait" : "landscape");
@@ -42,7 +57,7 @@
 
 <svelte:window bind:innerWidth={vw} bind:innerHeight={vh} />
 
-{#if showPad}<TouchControls {layout} />{/if}
+{#if showPad}<TouchControls {layout} {scheme} />{/if}
 
 {#if gs.notice}<div class="notice" role="status">{gs.notice}</div>{/if}
 
@@ -57,6 +72,9 @@
       <div class="stack">
         <button class="primary" onclick={resume}>{canPause ? "Resume" : "Back to the match"}</button>
         {#if gs.mode === "local"}<button onclick={restart}>Restart</button>{/if}
+        {#if touchScreen}
+          <button onclick={toggleScheme}>Touch controls: {scheme === "stick" ? "stick" : "buttons"}</button>
+        {/if}
         <button onclick={onLeave}>{gs.mode === "online" ? "Leave match" : "Leave to menu"}</button>
       </div>
     </div>

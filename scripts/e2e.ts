@@ -106,6 +106,7 @@ try {
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
 
   await onlineFlow();
+  await inviteFlow();
 } catch (err) {
   console.error(err);
   failures++;
@@ -284,7 +285,7 @@ async function phoneFlow() {
   p.on("pageerror", (e) => errors.push(e.message));
   const cdp = await ctx.newCDPSession(p);
   /** Put fingers down / lift them: `points` is every finger touching after this event. */
-  const touches = (type: "touchStart" | "touchEnd", points: { x: number; y: number; id: number }[]) =>
+  const touches = (type: "touchStart" | "touchMove" | "touchEnd", points: { x: number; y: number; id: number }[]) =>
     cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
   const pad = p.getByRole("group", { name: "touch controls" });
   /** A spot on the pad: fraction across its width, middle of its height (or near the bottom). */
@@ -329,52 +330,77 @@ async function phoneFlow() {
   const pxPerM = portrait.canvas.width / cam.width;
   check(pxPerM > 24, `portrait: fighters drawn at ${pxPerM.toFixed(0)} px/m (was ~14 before)`);
 
-  // Hold ▶: I turn clockwise (angle goes down).
+  /** One thumb: put it down at `o`, then slide through `path` (offsets in px), then hold. */
+  const drag = async (o: { x: number; y: number; id: number }, path: [number, number][]) => {
+    await touches("touchStart", [o]);
+    for (const [dx, dy] of path) await touches("touchMove", [{ ...o, x: o.x + dx, y: o.y + dy }]);
+  };
+  /** Hold charge until my fighter has planted and the charge is building. */
+  const untilPlanted = async () => {
+    let m = await me();
+    for (let n = 0; n < 60 && m.charge === 0; n++) {
+      await p.waitForTimeout(25);
+      m = await me();
+    }
+    return m;
+  };
+
+  // Stick (the default): thumb down anywhere on the pad, slide right → tilt clockwise.
+  check(await p.getByText(/slide ◀ ▶ to tilt/).isVisible(), "stick: idle hint shown");
   await ready();
   let before = (await me()).angle;
-  await touches("touchStart", [await spot(0.375, 1)]);
+  await drag(await spot(0.5, 1), [[10, 0], [25, 0], [40, 0]]);
   await p.waitForTimeout(200);
   await touches("touchEnd", []);
   let after = (await me()).angle;
-  check(after < before - 0.1, `hold ▶: turned clockwise (${before.toFixed(2)} → ${after.toFixed(2)} rad)`);
+  check(after < before - 0.1, `stick slide right: tilted clockwise (${before.toFixed(2)} → ${after.toFixed(2)} rad)`);
   await p.waitForTimeout(500);
 
-  // Aim while charging: hold Charge (right thumb) until planted, then nudge ◀
-  // (left thumb): the lean changes and the charge keeps building.
+  // Aim while charging, one thumb: pull down (charge), slide down-left (aim), back to down.
   await ready();
-  const left = await spot(0.125, 2);
-  const charge = await spot(0.75, 3);
-  await touches("touchStart", [charge]);
-  let planted = await me();
-  for (let n = 0; n < 60 && planted.charge === 0; n++) {
-    await p.waitForTimeout(25);
-    planted = await me();
-  }
-  await touches("touchStart", [charge, left]);
+  const o = await spot(0.4, 2);
+  await drag(o, [[0, 12], [0, 24], [0, 36]]);
+  const planted = await untilPlanted();
+  await touches("touchMove", [{ ...o, x: o.x - 30, y: o.y + 36 }]);
   await p.waitForTimeout(90);
-  await touches("touchEnd", [charge]); // ◀ up, still charging
+  await touches("touchMove", [{ ...o, y: o.y + 36 }]);
   const aimed = await me();
   await shot(p, "16-phone-portrait");
   await touches("touchEnd", []);
   check(
     planted.charge > 0 && aimed.charge > planted.charge && aimed.angle > planted.angle + 0.03,
-    `aim while charging: charge ${(planted.charge * 100).toFixed(0)}% → ${(aimed.charge * 100).toFixed(0)}% while leaning left (${planted.angle.toFixed(2)} → ${aimed.angle.toFixed(2)} rad)`,
+    `stick down, then down-left: charge ${(planted.charge * 100).toFixed(0)}% → ${(aimed.charge * 100).toFixed(0)}% while leaning left (${planted.angle.toFixed(2)} → ${aimed.angle.toFixed(2)} rad)`,
   );
-  check(await pad.getByText("Charge").isVisible(), "pad labels: ◀ ▶ Charge");
+  await p.waitForTimeout(800);
 
-  // Landscape: the game takes the full screen, controls are zones over it.
+  // Landscape: the game takes the full screen; the stick works anywhere on it.
   await p.setViewportSize({ width: 844, height: 390 });
   await p.waitForTimeout(400);
   const land = await info(p);
-  check((await pad.getAttribute("class"))!.includes("landscape") && land.canvas.height >= 389, `landscape: full-screen game (${land.canvas.width}×${land.canvas.height}), zones over it`);
+  check((await pad.getAttribute("class"))!.includes("landscape") && land.canvas.height >= 389, `landscape: full-screen game (${land.canvas.width}×${land.canvas.height})`);
   await ready();
   before = (await me()).angle;
-  await touches("touchStart", [await spot(0.1, 4, 0.7)]);
+  await drag(await spot(0.3, 4, 0.4), [[-10, 0], [-25, 0], [-40, 0]]);
   await p.waitForTimeout(200);
   await touches("touchEnd", []);
   after = (await me()).angle;
-  check(after > before + 0.1, `landscape hold ◀: turned counterclockwise (${before.toFixed(2)} → ${after.toFixed(2)} rad)`);
+  check(after > before + 0.1, `landscape stick slide left: tilted counterclockwise (${before.toFixed(2)} → ${after.toFixed(2)} rad)`);
   await shot(p, "17-phone-landscape");
+
+  // The pause menu switches to buttons (◀ ▶ | Charge), remembered on this device.
+  await p.getByRole("button", { name: "pause" }).click();
+  await p.getByRole("button", { name: "Touch controls: stick" }).click();
+  check(await p.getByRole("button", { name: "Touch controls: buttons" }).isVisible(), "pause menu: switched to buttons");
+  check((await p.evaluate(() => localStorage.getItem("triangle-duel.touchScheme"))) === "buttons", "the choice is remembered");
+  await p.getByRole("button", { name: "Resume" }).click();
+  check(await pad.getByText("Charge").isVisible(), "buttons: ◀ ▶ Charge shown");
+  await ready();
+  before = (await me()).angle;
+  await touches("touchStart", [await spot(0.1, 5, 0.7)]);
+  await p.waitForTimeout(200);
+  await touches("touchEnd", []);
+  after = (await me()).angle;
+  check(after > before + 0.1, `buttons, hold ◀: turned counterclockwise (${before.toFixed(2)} → ${after.toFixed(2)} rad)`);
 
   // The pause menu hides the pad; resuming brings it back.
   await p.getByRole("button", { name: "pause" }).click();
@@ -384,4 +410,56 @@ async function phoneFlow() {
 
   check(errors.length === 0, `phone: no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
   await ctx.close();
+}
+
+// ---- invite link: copy it in the room; opening it joins that room ----
+async function inviteFlow() {
+  const errors: string[] = [];
+  const open = async (name: string) => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 760 } });
+    await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: URL });
+    const p = await ctx.newPage();
+    p.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
+    return { ctx, p };
+  };
+  const rosterNames = (p: Page) => p.locator(".roster .name").allTextContents();
+  const waitForRoster = async (p: Page, name: string) => {
+    for (let n = 0; n < 50 && !(await rosterNames(p)).includes(name); n++) await p.waitForTimeout(100);
+    return (await rosterNames(p)).includes(name);
+  };
+
+  const host = await open("Hal");
+  await host.p.goto(URL);
+  await host.p.getByLabel("What should we call you?").fill("Hal");
+  await host.p.getByRole("button", { name: "Continue" }).click();
+  await host.p.getByRole("button", { name: "Play online" }).click();
+  await host.p.getByRole("button", { name: "Create a room" }).click();
+  await waitForRoster(host.p, "Hal");
+  const code = (await host.p.locator(".code").textContent())!.trim();
+  await host.p.getByRole("button", { name: "Copy invite link" }).click();
+  const copiedShown = await host.p.getByText("link copied!").waitFor({ timeout: 2000 }).then(() => true, () => false);
+  check(copiedShown, "room: Copy invite link → copied");
+  const link = await host.p.evaluate(() => navigator.clipboard.readText());
+  check(link === `${URL}?join=${code}`, `the invite link is ${link}`);
+  await shot(host.p, "18-room-invite");
+
+  // Someone new (no name yet): asked for a name, then straight into the room.
+  const ivy = await open("Ivy");
+  await ivy.p.goto(link);
+  await ivy.p.getByLabel("What should we call you?").fill("Ivy");
+  await ivy.p.getByRole("button", { name: "Continue" }).click();
+  check(await waitForRoster(ivy.p, "Hal"), "new player via link: name, then in Hal's room");
+  check(await waitForRoster(host.p, "Ivy"), "the host sees them join");
+  check(!ivy.p.url().includes("join="), "the join parameter is cleared from the address (no rejoin on reload)");
+
+  // Someone who's played before: straight in, no clicks.
+  const jo = await open("Jo");
+  await jo.p.goto(URL);
+  await jo.p.getByLabel("What should we call you?").fill("Jo");
+  await jo.p.getByRole("button", { name: "Continue" }).click();
+  await jo.p.goto(link);
+  check(await waitForRoster(jo.p, "Jo") && (await rosterNames(jo.p)).includes("Hal"), "returning player via link: straight into the room");
+
+  check(errors.length === 0, `invite: no page errors${errors.length ? `: ${errors.join("; ")}` : ""}`);
+  for (const x of [host, ivy, jo]) await x.ctx.close();
 }

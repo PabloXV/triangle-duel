@@ -5,6 +5,7 @@
   import { DEFAULT_LOCAL_SETUP, type Game, type LocalSetup } from "../game";
   import type { FighterShape } from "../sim/geometry";
   import { shapeIssue } from "../sim/shapes";
+  import { ROOM_CODE } from "../net/protocol";
   import InGame from "./InGame.svelte";
   import LocalSetupScreen from "./LocalSetup.svelte";
   import MainMenu from "./MainMenu.svelte";
@@ -36,6 +37,29 @@
   type Screen = "name" | "menu" | "local" | "online" | "room" | "game" | "customize";
   const net = untrack(() => game.net); // `game` never changes
   let screen = $state<Screen>(savedName ? "menu" : "name");
+
+  // An invite link (?join=ABCD): join that room, once we have a name. The
+  // parameter is removed from the address right away, so a reload or leaving
+  // the room doesn't rejoin.
+  let pendingJoin: string | null = (() => {
+    const url = new URL(location.href);
+    const code = url.searchParams.get("join")?.trim().toUpperCase() ?? "";
+    if (url.searchParams.has("join")) {
+      url.searchParams.delete("join");
+      history.replaceState(null, "", url);
+    }
+    return ROOM_CODE.test(code) ? code : null;
+  })();
+  function joinPending() {
+    if (!pendingJoin) return false;
+    net.connect(pendingJoin, name);
+    pendingJoin = null;
+    screen = "online"; // → the room once joined (or the reason it failed)
+    return true;
+  }
+  untrack(() => {
+    if (savedName) joinPending();
+  });
   let menuOpen = $state(false);
   $effect(() => {
     game.playerName = name || "player";
@@ -73,6 +97,7 @@
     name = n;
     save(NAME_KEY, n);
     screen = "menu";
+    joinPending(); // came from an invite link: straight to that room
   }
 
   function startLocal(s: LocalSetup) {

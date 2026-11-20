@@ -1,26 +1,95 @@
 <script lang="ts">
-  // On-screen controls for touch screens: ◀ ▶ under the left thumb, Charge
-  // under the right, usable together (steer while charging), like ←/→ + ↓.
+  // On-screen controls for touch screens. Two schemes (pause menu to switch):
+  //
+  //   stick (default): put a thumb down anywhere on the control area and a
+  //     stick appears there. Slide sideways to tilt, pull down to charge,
+  //     diagonally for both (aim while charging): ← ↓ → under one thumb, like
+  //     the keyboard. It follows the thumb past its edge, so reversing is
+  //     quick. A second finger anywhere also charges.
+  //   buttons: ◀ ▶ under the left thumb, Charge under the right. A thumb keeps
+  //     the role it started with (it can slide between ◀ and ▶), so drifting
+  //     can't start or drop a charge.
   //
   //   portrait:  a pad below the game (the canvas shrinks to make room), so
   //              thumbs never cover the action;
-  //   landscape: invisible zones over the bottom of the game, with faint labels.
+  //   landscape: over the game (stick: anywhere; buttons: faint zones).
   //
-  // Zones are bigger than the labels: the whole left side turns (left/right
-  // half of it), the whole right side charges. A thumb that starts on the turn
-  // side stays a turn thumb (it can slide between ◀ and ▶), and one that starts
-  // on Charge stays Charge, so a drifting thumb can't start or drop a charge.
+  // Both drive the same input as the arrow keys (src/input.ts `touch`).
   import { onDestroy } from "svelte";
   import { touch } from "../input";
 
-  let { layout }: { layout: "portrait" | "landscape" } = $props();
+  export type TouchScheme = "stick" | "buttons";
+  let { layout, scheme }: { layout: "portrait" | "landscape"; scheme: TouchScheme } = $props();
 
-  type Zone = "left" | "right" | "charge";
-  const pointers = new Map<number, Zone>();
   let pressed = $state({ left: false, right: false, charge: false });
   let el: HTMLDivElement;
 
-  /** Where along the pad (0..1 of its width) a pointer is. */
+  function set(next: { left: boolean; right: boolean; charge: boolean }) {
+    for (const k of ["left", "right", "charge"] as const) touch[k] = pressed[k] = next[k];
+  }
+
+  // ---- stick ----
+  const R = 56; // px: how far the knob travels; the base follows beyond this
+  const TURN_ON = 14; // px sideways to start tilting...
+  const TURN_OFF = 8; // ...and back within this to stop (hysteresis: no flicker)
+  const CHARGE_ON = 22; // px down to start charging
+  const CHARGE_OFF = 14;
+  let stickId = $state<number | null>(null);
+  let base = $state({ x: 0, y: 0 }); // where the stick is (px, in the pad)
+  let knob = $state({ x: 0, y: 0 }); // offset from the base
+  const extra = new Set<number>(); // other fingers: they charge
+
+  function local(e: PointerEvent) {
+    const r = el.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function stickInput() {
+    const { x, y } = knob;
+    const t = pressed.right ? x > TURN_OFF : pressed.left ? false : x > TURN_ON;
+    const l = pressed.left ? x < -TURN_OFF : pressed.right ? false : x < -TURN_ON;
+    const stickCharge = stickId !== null && (pressed.charge ? y > CHARGE_OFF : y > CHARGE_ON);
+    set({ left: stickId !== null && l, right: stickId !== null && t, charge: stickCharge || extra.size > 0 });
+  }
+
+  function stickDown(e: PointerEvent) {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    if (stickId === null) {
+      stickId = e.pointerId;
+      base = local(e);
+      knob = { x: 0, y: 0 };
+    } else extra.add(e.pointerId);
+    stickInput();
+  }
+
+  function stickMove(e: PointerEvent) {
+    if (e.pointerId !== stickId) return;
+    const p = local(e);
+    let dx = p.x - base.x;
+    let dy = p.y - base.y;
+    const d = Math.hypot(dx, dy);
+    if (d > R) {
+      // Drag the base along, so the knob stays at the rim.
+      base = { x: p.x - (dx / d) * R, y: p.y - (dy / d) * R };
+      dx = (dx / d) * R;
+      dy = (dy / d) * R;
+    }
+    knob = { x: dx, y: dy };
+    stickInput();
+  }
+
+  function stickUp(e: PointerEvent) {
+    if (e.pointerId === stickId) {
+      stickId = null;
+      knob = { x: 0, y: 0 };
+    } else extra.delete(e.pointerId);
+    stickInput();
+  }
+
+  // ---- buttons ----
+  type Zone = "left" | "right" | "charge";
+  const zones = new Map<number, Zone>();
   const fx = (e: PointerEvent) => {
     const r = el.getBoundingClientRect();
     return (e.clientX - r.left) / r.width;
@@ -29,44 +98,57 @@
   const turnEnd = $derived(layout === "portrait" ? 0.5 : 0.42);
   const chargeStart = $derived(layout === "portrait" ? 0.5 : 0.58);
 
-  function sync() {
-    const zones = [...pointers.values()];
-    for (const k of ["left", "right", "charge"] as const) touch[k] = pressed[k] = zones.includes(k);
+  function syncZones() {
+    const z = [...zones.values()];
+    set({ left: z.includes("left"), right: z.includes("right"), charge: z.includes("charge") });
   }
 
-  function down(e: PointerEvent) {
+  function buttonsDown(e: PointerEvent) {
     const x = fx(e);
     const zone: Zone | null = x < turnEnd ? (x < turnEnd / 2 ? "left" : "right") : x >= chargeStart ? "charge" : null;
     if (!zone) return;
     e.preventDefault();
     el.setPointerCapture(e.pointerId);
-    pointers.set(e.pointerId, zone);
-    sync();
+    zones.set(e.pointerId, zone);
+    syncZones();
   }
 
-  function move(e: PointerEvent) {
-    const zone = pointers.get(e.pointerId);
+  function buttonsMove(e: PointerEvent) {
+    const zone = zones.get(e.pointerId);
     if (zone === undefined || zone === "charge") return;
     const next = fx(e) < turnEnd / 2 ? "left" : "right";
     if (next !== zone) {
-      pointers.set(e.pointerId, next);
-      sync();
+      zones.set(e.pointerId, next);
+      syncZones();
     }
   }
 
-  function up(e: PointerEvent) {
-    if (pointers.delete(e.pointerId)) sync();
+  function buttonsUp(e: PointerEvent) {
+    if (zones.delete(e.pointerId)) syncZones();
   }
 
-  onDestroy(() => {
-    pointers.clear();
-    touch.left = touch.right = touch.charge = false;
+  const down = (e: PointerEvent) => (scheme === "stick" ? stickDown(e) : buttonsDown(e));
+  const move = (e: PointerEvent) => (scheme === "stick" ? stickMove(e) : buttonsMove(e));
+  const up = (e: PointerEvent) => (scheme === "stick" ? stickUp(e) : buttonsUp(e));
+
+  function reset() {
+    zones.clear();
+    extra.clear();
+    stickId = null;
+    knob = { x: 0, y: 0 };
+    set({ left: false, right: false, charge: false });
+  }
+  // Switching schemes mid-match: start clean.
+  $effect(() => {
+    void scheme;
+    reset();
   });
+  onDestroy(reset);
 </script>
 
 <div
   bind:this={el}
-  class="pad {layout}"
+  class="pad {layout} {scheme}"
   role="group"
   aria-label="touch controls"
   onpointerdown={down}
@@ -75,13 +157,23 @@
   onpointercancel={up}
   oncontextmenu={(e) => e.preventDefault()}
 >
-  <div class="turns" style:width="{turnEnd * 100}%">
-    <div class="btn" class:on={pressed.left} data-zone="left">◀</div>
-    <div class="btn" class:on={pressed.right} data-zone="right">▶</div>
-  </div>
-  <div class="charge-side" style:width="{(1 - chargeStart) * 100}%">
-    <div class="btn charge" class:on={pressed.charge} data-zone="charge">Charge</div>
-  </div>
+  {#if scheme === "stick"}
+    {#if stickId !== null}
+      <div class="base" style:left="{base.x}px" style:top="{base.y}px" style:width="{2 * R}px" style:height="{2 * R}px">
+        <div class="knob" class:charging={pressed.charge} style:transform="translate({knob.x}px, {knob.y}px)"></div>
+      </div>
+    {:else}
+      <p class="stick-hint">Thumb anywhere here · slide ◀ ▶ to tilt · pull ▼ to charge</p>
+    {/if}
+  {:else}
+    <div class="turns" style:width="{turnEnd * 100}%">
+      <div class="btn" class:on={pressed.left} data-zone="left">◀</div>
+      <div class="btn" class:on={pressed.right} data-zone="right">▶</div>
+    </div>
+    <div class="charge-side" style:width="{(1 - chargeStart) * 100}%">
+      <div class="btn charge" class:on={pressed.charge} data-zone="charge">Charge</div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -109,6 +201,47 @@
     height: 60%;
     padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
+  .pad.landscape.stick {
+    height: 100%; /* anywhere on screen (the pause button sits on top) */
+  }
+
+  /* stick */
+  .base {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 2px solid #ffffff30;
+    background: #ffffff0a;
+    pointer-events: none;
+  }
+  .knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 52px;
+    height: 52px;
+    margin: -26px 0 0 -26px;
+    border-radius: 50%;
+    background: #ffffff55;
+    transition: background 60ms;
+  }
+  .knob.charging {
+    background: var(--accent);
+  }
+  .stick-hint {
+    margin: auto;
+    padding: 0 1.5rem;
+    text-align: center;
+    color: #fff6;
+    font: 600 0.95rem system-ui, sans-serif;
+    pointer-events: none;
+  }
+  .landscape .stick-hint {
+    margin: auto auto 1.2rem;
+    color: #fff5;
+  }
+
+  /* buttons */
   .turns,
   .charge-side {
     display: flex;

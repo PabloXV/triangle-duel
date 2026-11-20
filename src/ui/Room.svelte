@@ -4,6 +4,7 @@
   import type { NetClient } from "../net/client";
   import { MAX_PLAYERS, MAX_STOCKS } from "../net/protocol";
   import { COLORS } from "../render";
+  import { isTouchDevice } from "../input";
   import FighterIcon from "./FighterIcon.svelte";
   import MapPicker from "./MapPicker.svelte";
   import Stepper from "./Stepper.svelte";
@@ -13,19 +14,36 @@
   const host = $derived($net.isHost);
   const bots = $derived($net.roster.filter((p) => p.bot).length);
   const humans = $derived($net.roster.length - bots);
-  let copied = $state(false);
 
   function setBots(n: number) {
     if (n > bots) net.addBot();
     else if (n < bots) net.removeBot();
   }
 
-  async function copyCode() {
+  // An invite link: opening it joins this room (App.svelte reads ?join=).
+  const inviteUrl = $derived(`${location.origin}${location.pathname}?join=${$net.room}`);
+  // Phones get the share sheet (Messages, WhatsApp, ...); elsewhere, copy.
+  const canShare = typeof navigator.share === "function" && isTouchDevice();
+  let copied = $state("");
+
+  async function copy(text: string, what: string) {
     try {
-      await navigator.clipboard.writeText($net.room);
-      copied = true;
-      setTimeout(() => (copied = false), 1500);
+      await navigator.clipboard.writeText(text);
+      copied = what;
+      setTimeout(() => (copied = ""), 1500);
     } catch {}
+  }
+
+  async function invite() {
+    if (canShare) {
+      try {
+        await navigator.share({ title: "Triangle Duel", text: `Join my Triangle Duel room (${$net.room})`, url: inviteUrl });
+        return;
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return; // closed the share sheet
+      }
+    }
+    await copy(inviteUrl, "link copied!");
   }
 </script>
 
@@ -33,8 +51,11 @@
   <div class="top">
     <div>
       <p class="label">Room code</p>
-      <button class="code" onclick={copyCode} title="Copy">{$net.room}</button>
-      <span class="hint">{copied ? "copied!" : "share it with friends"}</span>
+      <div class="code-row">
+        <button class="code" onclick={() => copy($net.room, "code copied!")} title="Copy the code">{$net.room}</button>
+        <button class="primary invite" onclick={invite}>{canShare ? "Share invite" : "Copy invite link"}</button>
+      </div>
+      <span class="hint">{copied || "anyone with the link joins this room"}</span>
     </div>
     {#if $net.rttMs !== null}<span class="hint">ping {Math.round($net.rttMs)} ms</span>{/if}
   </div>
@@ -110,6 +131,13 @@
     margin: 0;
     color: var(--muted);
     font-size: 0.85rem;
+  }
+  .code-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.3rem;
   }
   .code {
     font-size: 2rem !important;

@@ -276,21 +276,32 @@ disconnects mid-match, their bots go idle. Bots change input ~5×/s (see "Bot").
 ## Phones (touch controls)
 
 On a touch screen (or with `?touch=1`), matches get on-screen controls
-(`src/ui/TouchControls.svelte`): ◀ ▶ under the left thumb, Charge under the
-right, usable together (aim while charging), feeding the same input as the
-arrow keys, so they work locally and online. The zones are bigger than the
-labels; a thumb that starts on the turn side stays a turn thumb, so a drifting
-thumb can't start or drop a charge.
+(`src/ui/TouchControls.svelte`), feeding the same input as the arrow keys, so
+they work locally and online. Two schemes, switched in the pause menu and
+remembered per device:
 
-- **Portrait:** a pad below the game (the canvas shrinks), so thumbs never
-  cover the action.
-- **Landscape:** full-screen game, faint zones over its bottom corners.
+- **Stick (default):** a thumb down anywhere on the control area puts a stick
+  there; slide sideways to tilt, pull down to charge, diagonally for both
+  (aim while charging), like ← ↓ → under one hand. It follows the thumb past
+  its rim; dead zones have hysteresis; a second finger also charges.
+- **Buttons:** ◀ ▶ under the left thumb, Charge under the right. A thumb keeps
+  the role it started with, so drifting can't start or drop a charge.
+
+Portrait puts the controls on a pad below the game (the canvas shrinks), so
+thumbs never cover the action; landscape puts them over a full-screen game.
 
 The camera caps how much height it shows (never more than a 1.4:1 screen
 would): wide screens are unaffected, and on a tall one it zooms in to about
 landscape size, keeping your fighter in view, with edge arrows pointing at
 anyone outside it. A KO buzzes the phone where supported (not iOS). `npm run
 e2e` emulates a phone: taps with real multi-touch, both orientations.
+
+## Invite links
+
+The room has **Copy invite link** (phones: **Share invite**, the system share
+sheet). Opening `/?join=ABCD` joins that room: a new player picks a name
+first, a returning one goes straight in. The parameter is removed from the
+address right away, so reloading or leaving doesn't rejoin.
 
 ## Custom fighters
 
