@@ -6,7 +6,7 @@
   import { untrack } from "svelte";
   import type { FighterShape, Vec2 } from "../sim/geometry";
   import { STANDARD_SHAPE, balanceShape, shapeIssue, shapeSize } from "../sim/shapes";
-  import { COLORS } from "../render";
+  import { playerColor } from "../theme";
   import { EYE_MOODS, EYE_STYLES, eyesMarkup, type EyeMood } from "../look/eyes";
   import { stickerSVG } from "../look/stickerSVG";
 
@@ -159,7 +159,7 @@
     const deg = (Math.atan2(R.y - L.y, R.x - L.x) * 180) / Math.PI;
     return `translate(${x} ${y}) rotate(${deg}) scale(${((2 * area) / per) * 1.38})`;
   });
-  const faceSvg = $derived(eyesMarkup(eyes, previewMood, COLORS[0]));
+  const faceSvg = $derived(eyesMarkup(eyes, previewMood, playerColor(0)));
   // Eye thumbnails use the standard fighter: on a skinny custom shape the faces
   // get too small to tell apart. (The editor above shows them on your shape.)
   const thumbShape = STANDARD_SHAPE;
@@ -175,7 +175,7 @@
   <svg bind:this={svg} viewBox="-2.6 -3.3 5.2 3.7" class="editor" role="application" aria-label="fighter shape editor">
     <line x1="-2.6" y1="0" x2="2.6" y2="0" class="ground" />
     <polygon points={poly(outline)} class="standard" />
-    <polygon points={poly(pts)} fill={COLORS[0]} class="mine" />
+    <polygon points={poly(pts)} fill={playerColor(0)} class="mine" />
     {#if faceAt}<g transform={faceAt} class="face">{@html faceSvg}</g>{/if}
     {#each pts as p, i}
       <circle
@@ -208,7 +208,7 @@
     <div class="eye-grid">
       {#each EYE_STYLES as style, i}
         <button class="eye" class:selected={eyes === i} aria-pressed={eyes === i} aria-label="eyes: {style.name}" title={style.vibe} onclick={() => (eyes = i)}>
-          <span class="thumb">{@html stickerSVG(thumbShape, COLORS[0], i, previewMood)}</span>
+          <span class="thumb">{@html stickerSVG(thumbShape, playerColor(0), i, previewMood)}</span>
           <span class="nm">{style.name}</span>
         </button>
       {/each}
@@ -233,7 +233,7 @@
   .editor {
     width: 100%;
     display: block;
-    background: #16121f;
+    background: var(--field);
     border-radius: var(--radius);
     touch-action: none;
     user-select: none;
@@ -244,18 +244,18 @@
   }
   .standard {
     fill: none;
-    stroke: #fff6;
+    stroke: color-mix(in srgb, var(--halo) 40%, transparent);
     stroke-width: 0.025;
     stroke-dasharray: 0.08 0.06;
   }
   .handle {
-    fill: #fff;
-    stroke: #0008;
+    fill: var(--halo);
+    stroke: color-mix(in srgb, var(--ink) 55%, transparent);
     stroke-width: 0.03;
     cursor: grab;
   }
   .handle.foot {
-    fill: #6bff8f;
+    fill: var(--debug-grounded);
     cursor: ew-resize;
   }
   .handle.active {
@@ -291,7 +291,7 @@
     background: var(--accent);
   }
   .std-key {
-    border: 1px dashed #fff8;
+    border: 1px dashed color-mix(in srgb, var(--halo) 55%, transparent);
   }
   .row {
     display: flex;

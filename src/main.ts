@@ -7,7 +7,9 @@ import { touch } from "./input";
 import { buildPanel } from "./panel";
 import { initPhysics } from "./sim/sim";
 import App from "./ui/App.svelte";
+import { applyTheme } from "./ui/themeCss";
 
+applyTheme(); // colors and fonts as CSS variables, before any menu renders
 await initPhysics();
 
 const game = new Game(document.getElementById("game") as HTMLCanvasElement);

@@ -17,7 +17,8 @@ import { FinalKoReplay, History } from "./koReplay";
 import { NetClient } from "./net/client";
 import { OnlineSession } from "./net/onlineSession";
 import { loadParams } from "./panel";
-import { COLORS, Renderer } from "./render";
+import { Renderer } from "./render";
+import { playerColor } from "./theme";
 import { EYE_STYLES, eyeStyle } from "./look/eyes";
 import { facesReady, preloadFaces } from "./look/sticker";
 import { LiveSession, PlaybackSession, type InputSource, type Session } from "./session";
@@ -271,7 +272,7 @@ export class Game {
     this.session = next;
     this.names = names;
     this.eyes = eyes;
-    preloadFaces(eyes.map((e, i) => ({ eyes: e, color: COLORS[i % COLORS.length] })));
+    preloadFaces(eyes.map((e, i) => ({ eyes: e, color: playerColor(i) })));
     this.matchNumber++;
     this.curr = next.sim.view();
     this.prev = this.curr;

@@ -1,12 +1,12 @@
 // Canvas 2D renderer. Reads sim state, never writes it.
 
 import { drawSticker, moodOf } from "./look/sticker";
+import { DEBUG_COLORS, HALO, INK, SCENE, playerColor, withAlpha } from "./theme";
 import type { CameraView } from "./camera";
 import type { Platform, Stage, Vec2 } from "./sim/geometry";
 import type { FighterView, MatchResult } from "./sim/sim";
 
 /** Fighter colors, by fighter index (also used by the menus). */
-export const COLORS = ["#ff6b6b", "#4ecdc4", "#ffd93d", "#a78bfa"];
 
 export interface RenderOptions {
   hud: boolean; // false = no in-game interface (e.g. the bot match behind the menus)
@@ -77,8 +77,8 @@ export class Renderer {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const g = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-    g.addColorStop(0, "#1e1b2e");
-    g.addColorStop(1, "#2b2340");
+    g.addColorStop(0, SCENE.skyTop);
+    g.addColorStop(1, SCENE.skyBottom);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.restore();
@@ -91,7 +91,7 @@ export class Renderer {
       // Respawning teleports the body; don't draw a smear between the two spots.
       if (Math.abs(p.x - f.x) + Math.abs(p.y - f.y) > 1) p = f;
       const verts = f.vertices.map((v, k) => lerpV(p.vertices[k], v, alpha));
-      this.drawFighter(verts, f, COLORS[i % COLORS.length], opts.eyes?.[i] ?? 0, opts.debug);
+      this.drawFighter(verts, f, playerColor(i), opts.eyes?.[i] ?? 0, opts.debug);
     });
 
     if (opts.replay) this.drawLetterbox();
@@ -105,15 +105,15 @@ export class Renderer {
     const bottom = plat.center.y - plat.halfHeight;
     const w = plat.halfWidth * 2;
     const h = plat.halfHeight * 2;
-    ctx.fillStyle = plat.oneWay ? "#7a6f96" : "#5c5470";
+    ctx.fillStyle = plat.oneWay ? SCENE.platformPassable : SCENE.platform;
     ctx.fillRect(left, bottom, w, h);
-    ctx.fillStyle = "#b9b4c7"; // walkable top edge
+    ctx.fillStyle = SCENE.groundLine; // walkable top edge
     ctx.fillRect(left, bottom + h - 0.06, w, 0.06);
     if (plat.oneWay) {
       // Dashed underside: a hint that you can jump up through it.
       ctx.save();
       ctx.setLineDash([0.15, 0.12]);
-      ctx.strokeStyle = "#b9b4c799";
+      ctx.strokeStyle = withAlpha(SCENE.groundLine, 0.6);
       ctx.lineWidth = 2 / this.scale;
       ctx.beginPath();
       ctx.moveTo(left, bottom);
@@ -151,9 +151,9 @@ export class Renderer {
     if (f.charge > 0) {
       const top = Math.max(verts[0].y, verts[1].y, verts[2].y) + 0.35;
       const cx = (verts[0].x + verts[1].x + verts[2].x) / 3;
-      ctx.fillStyle = "#15101fcc";
+      ctx.fillStyle = withAlpha(INK, 0.8);
       ctx.fillRect(cx - 0.52, top - 0.02, 1.04, 0.16);
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = HALO;
       ctx.fillRect(cx - 0.5, top, f.charge, 0.12);
     }
     ctx.globalAlpha = 1;
@@ -177,12 +177,12 @@ export class Renderer {
     const foot = verts[f.footIndex];
     ctx.beginPath();
     ctx.arc(foot.x, foot.y, 6 * px, 0, Math.PI * 2);
-    ctx.fillStyle = f.grounded ? "#6bff8f" : f.canJump ? "#ffd93d" : "#888";
+    ctx.fillStyle = f.grounded ? DEBUG_COLORS.grounded : f.canJump ? DEBUG_COLORS.coyote : DEBUG_COLORS.airborne;
     ctx.fill();
     if (f.gripActive) {
       ctx.beginPath();
       ctx.arc(foot.x, foot.y, 11 * px, 0, Math.PI * 2);
-      ctx.strokeStyle = "#6bff8f";
+      ctx.strokeStyle = DEBUG_COLORS.grounded;
       ctx.lineWidth = 2 * px;
       ctx.stroke();
     }
@@ -194,7 +194,7 @@ export class Renderer {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const bar = this.canvas.height * 0.09;
-    ctx.fillStyle = "#000";
+    ctx.fillStyle = INK;
     ctx.fillRect(0, 0, this.canvas.width, bar);
     ctx.fillRect(0, this.canvas.height - bar, this.canvas.width, bar);
     ctx.restore();
@@ -220,7 +220,7 @@ export class Renderer {
     const slot = labelW + totalStocks * step + 14; // px per player
     const midY = y + 7; // icons centered on the label's line
     fighters.forEach((f, i) => {
-      const color = COLORS[i % COLORS.length];
+      const color = playerColor(i);
       const x0 = cx - (fighters.length * slot) / 2 + i * slot;
       ctx.globalAlpha = f.stocks > 0 ? 1 : 0.35;
       ctx.fillStyle = color;
@@ -277,7 +277,7 @@ export class Renderer {
       ctx.lineTo(-6, -7);
       ctx.lineTo(-6, 7);
       ctx.closePath();
-      ctx.fillStyle = COLORS[i % COLORS.length];
+      ctx.fillStyle = playerColor(i);
       ctx.globalAlpha = 0.9;
       ctx.fill();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -305,13 +305,13 @@ export class Renderer {
           `grip   ${f.gripActive ? "on" : "off"}`,
           `charge ${(f.charge * 100).toFixed(0)}%`,
         ];
-        ctx.fillStyle = COLORS[i % COLORS.length];
+        ctx.fillStyle = playerColor(i);
         lines.forEach((l, k) => ctx.fillText(l, 12 + i * 220, 12 + k * 16));
       });
     }
 
     if (opts.hud) {
-      ctx.fillStyle = "#fff8";
+      ctx.fillStyle = withAlpha(HALO, 0.55);
       ctx.textAlign = "center";
       ctx.fillText(opts.controls.join("   ·   "), w / 2, h - 28);
       this.drawStocks(fighters, opts.names, opts.totalStocks, w / 2, h - 64);
@@ -319,7 +319,7 @@ export class Renderer {
 
     if (opts.status) {
       ctx.font = "bold 15px ui-monospace, monospace";
-      ctx.fillStyle = opts.status.includes("DESYNC") ? "#ff6b6b" : "#fffc";
+      ctx.fillStyle = opts.status.includes("DESYNC") ? playerColor(0) : withAlpha(HALO, 0.8);
       ctx.textAlign = "center";
       ctx.fillText(opts.status, w / 2, opts.debug ? 118 : 14); // below the debug overlay if shown
     }
@@ -327,7 +327,7 @@ export class Renderer {
     if (opts.hud && result.over && !opts.replay) {
       ctx.textAlign = "center"; // (the stock row leaves it at "left")
       ctx.font = "bold 48px system-ui, sans-serif";
-      ctx.fillStyle = result.winner === null ? "#fff" : COLORS[result.winner % COLORS.length];
+      ctx.fillStyle = result.winner === null ? HALO : playerColor(result.winner);
       const winner = result.winner === null ? "" : (opts.names[result.winner] ?? `P${result.winner + 1}`);
       ctx.fillText(result.winner === null ? "DRAW" : `${winner.toUpperCase()} WINS`, w / 2, h * 0.2);
     }

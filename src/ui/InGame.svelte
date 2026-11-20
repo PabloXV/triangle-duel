@@ -112,7 +112,7 @@
     inset: 0;
     display: grid;
     place-items: center;
-    background: #0008;
+    background: color-mix(in srgb, var(--ink) 55%, transparent);
     pointer-events: auto;
   }
   .end {
@@ -134,13 +134,13 @@
     transform: translateX(-50%);
     padding: 0.5rem 1rem;
     border-radius: 999px;
-    background: #2e2742e8;
+    background: color-mix(in srgb, var(--surface) 91%, transparent);
     border: 1px solid var(--line);
     color: var(--text);
     font: 600 0.95rem system-ui, sans-serif;
   }
   .note {
-    color: #fffc;
+    color: color-mix(in srgb, var(--halo) 80%, transparent);
     font: 600 1rem system-ui, sans-serif;
     margin: 0;
   }

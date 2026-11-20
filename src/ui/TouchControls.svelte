@@ -191,8 +191,8 @@
     height: var(--pad-h);
     padding-bottom: env(safe-area-inset-bottom);
     box-sizing: border-box;
-    background: #17141f;
-    border-top: 1px solid #ffffff14;
+    background: color-mix(in srgb, var(--bg) 92%, var(--surface));
+    border-top: 1px solid color-mix(in srgb, var(--halo) 8%, transparent);
   }
   .pad.landscape {
     height: 60%;
@@ -207,8 +207,8 @@
     position: absolute;
     transform: translate(-50%, -50%);
     border-radius: 50%;
-    border: 2px solid #ffffff30;
-    background: #ffffff0a;
+    border: 2px solid color-mix(in srgb, var(--halo) 19%, transparent);
+    background: color-mix(in srgb, var(--halo) 4%, transparent);
     pointer-events: none;
   }
   .knob {
@@ -219,7 +219,7 @@
     height: 52px;
     margin: -26px 0 0 -26px;
     border-radius: 50%;
-    background: #ffffff55;
+    background: color-mix(in srgb, var(--halo) 33%, transparent);
     transition: background 60ms;
   }
   .knob.charging {
@@ -229,13 +229,13 @@
     margin: auto;
     padding: 0 1.5rem;
     text-align: center;
-    color: #fff6;
+    color: color-mix(in srgb, var(--halo) 40%, transparent);
     font: 600 0.95rem system-ui, sans-serif;
     pointer-events: none;
   }
   .landscape .stick-hint {
     margin: auto auto 1.2rem;
-    color: #fff5;
+    color: color-mix(in srgb, var(--halo) 33%, transparent);
   }
 
   /* buttons */
@@ -255,9 +255,9 @@
     width: 4.6rem;
     height: 4.6rem;
     border-radius: 1.2rem;
-    background: #2a2438;
-    border: 1px solid #ffffff22;
-    color: #fffc;
+    background: var(--surface);
+    border: 1px solid color-mix(in srgb, var(--halo) 13%, transparent);
+    color: color-mix(in srgb, var(--halo) 80%, transparent);
     font: 700 1.6rem system-ui, sans-serif;
     transition: background 60ms, transform 60ms;
   }
@@ -270,9 +270,9 @@
     text-transform: uppercase;
   }
   .landscape .btn {
-    background: #ffffff10;
-    border-color: #ffffff22;
-    color: #fff8;
+    background: color-mix(in srgb, var(--halo) 6%, transparent);
+    border-color: color-mix(in srgb, var(--halo) 13%, transparent);
+    color: color-mix(in srgb, var(--halo) 55%, transparent);
     width: 3.8rem;
     height: 3.8rem;
     font-size: 1.3rem;
@@ -284,11 +284,11 @@
   }
   .btn.on {
     background: var(--accent);
-    color: #1a1424;
+    color: var(--accent-text);
     transform: scale(0.94);
   }
   .landscape .btn.on {
-    background: #ff6b6b88;
-    color: #fff;
+    background: color-mix(in srgb, var(--accent) 53%, transparent);
+    color: var(--halo);
   }
 </style>

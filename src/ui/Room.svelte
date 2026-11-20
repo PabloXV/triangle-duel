@@ -3,7 +3,7 @@
   // changes settings, adds bots, kicks, and starts; everyone else waits.
   import type { NetClient } from "../net/client";
   import { MAX_PLAYERS, MAX_STOCKS } from "../net/protocol";
-  import { COLORS } from "../render";
+  import { playerColor } from "../theme";
   import { isTouchDevice } from "../input";
   import FighterIcon from "./FighterIcon.svelte";
   import MapPicker from "./MapPicker.svelte";
@@ -70,7 +70,7 @@
     <ul class="roster">
       {#each $net.roster as p, i (p.slot)}
         <li>
-          <FighterIcon shape={p.shape} color={COLORS[i % COLORS.length]} eyes={p.eyes} size={30} />
+          <FighterIcon shape={p.shape} color={playerColor(i)} eyes={p.eyes} size={30} />
           <span class="name">{p.name}</span>
           {#if p.host}<span class="tag">host</span>{/if}
           {#if p.bot}<span class="tag">bot</span>{/if}
@@ -160,7 +160,7 @@
     gap: 0.5rem;
     padding: 0.45rem 0.6rem;
     border-radius: var(--radius);
-    background: #2a2440;
+    background: color-mix(in srgb, var(--surface) 85%, var(--bg));
   }
   .name {
     font-weight: 600;
@@ -188,7 +188,7 @@
     margin: 0 0 1rem;
     padding: 0.6rem 0.8rem;
     border-radius: var(--radius);
-    background: #2a2440;
+    background: color-mix(in srgb, var(--surface) 85%, var(--bg));
   }
   .error {
     color: var(--accent);

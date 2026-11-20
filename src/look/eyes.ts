@@ -7,13 +7,11 @@
 // ±1 across, y down. The renderer rasterizes each (style, mood, color) once
 // (src/look/faces.ts) and places it at the fighter's incircle.
 
+import { GOLD, HALO, INK, SWEAT as SWEAT_COLOR, WHITE } from "../theme";
+
 export type EyeMood = "idle" | "charge" | "wobble" | "ko";
 export const EYE_MOODS: EyeMood[] = ["idle", "charge", "wobble", "ko"];
 
-const INK = "#15101f";
-const WHITE = "#ffffff";
-const HALO = "#f3eefc";
-const GOLD = "#ffd23d";
 const f = (n: number) => Math.round(n * 1000) / 1000;
 
 /** Half the side of the square the face is drawn in (face units). Covers every style's extras. */
@@ -91,7 +89,7 @@ function sclera(type: ScleraType, cx: number, cy: number, rx: number, ry: number
   return `<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(rx)}" ry="${f(ry)}"/>`;
 }
 
-const SWEAT = `<path d="M.78 -.62Q.9 -.4 .78 -.34Q.66 -.4 .78 -.62Z" fill="#9fe3ff" stroke="${INK}" stroke-width=".06"/>`;
+const SWEAT = `<path d="M.78 -.62Q.9 -.4 .78 -.34Q.66 -.4 .78 -.62Z" fill="${SWEAT_COLOR}" stroke="${INK}" stroke-width=".06"/>`;
 
 interface Lid {
   y: number;

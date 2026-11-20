@@ -183,24 +183,15 @@
   .ui.menus {
     display: grid;
     place-items: center;
-    background: linear-gradient(#14121cc0, #14121ce0); /* the attract match shows through */
+    background: linear-gradient(color-mix(in srgb, var(--bg) 75%, transparent), color-mix(in srgb, var(--bg) 88%, transparent)); /* the attract match shows through */
     pointer-events: auto;
     overflow-y: auto;
     padding: 16px;
     box-sizing: border-box;
   }
 
+  /* Colors and fonts are CSS variables set from src/theme.ts (applyTheme). */
   :global(:root) {
-    --bg: #14121c;
-    --card: #221d33f2;
-    --line: #3d3556;
-    --text: #ece8f6;
-    --muted: #a59fba;
-    --accent: #ff6b6b; /* P1's color */
-    --accent-text: #1a0f12;
-    --platform: #5c5470;
-    --platform-light: #7a6f96;
-    --radius: 10px;
     color-scheme: dark;
   }
   :global(.card) {
@@ -213,7 +204,7 @@
     box-sizing: border-box;
     color: var(--text);
     font-family: system-ui, sans-serif;
-    box-shadow: 0 20px 60px #0008;
+    box-shadow: 0 20px 60px color-mix(in srgb, var(--ink) 55%, transparent);
   }
   :global(.card.wide) {
     width: min(640px, 100%);
@@ -235,7 +226,7 @@
   :global(.card button) {
     font: inherit;
     color: var(--text);
-    background: #2e2742;
+    background: var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 0.65rem 1rem;
@@ -275,7 +266,7 @@
     margin: 0.4rem 0 1rem;
     border-radius: var(--radius);
     border: 1px solid var(--line);
-    background: #16121f;
+    background: var(--field);
     color: var(--text);
   }
   :global(.card fieldset) {
@@ -308,7 +299,7 @@
   :global(.corner) {
     font: 600 1rem system-ui, sans-serif;
     color: var(--text);
-    background: #2e2742e8;
+    background: color-mix(in srgb, var(--surface) 91%, transparent);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 0.65rem 1.1rem;
