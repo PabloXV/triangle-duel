@@ -7,6 +7,7 @@
 import { LEFT, encodeInput } from "../sim/inputCodec";
 import type { FighterShape } from "../sim/geometry";
 import { shapeIssue } from "../sim/shapes";
+import { randomBotShape } from "../bots/shapes";
 import { NO_INPUT } from "../sim/types";
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -52,7 +53,7 @@ const IDLE = encodeInput(NO_INPUT);
 
 export class RoomCore {
   private conns = new Map<string, Conn>();
-  private bots = new Map<number, string>(); // slot → name
+  private bots = new Map<number, { name: string; shape: FighterShape }>(); // slot → bot
   private settings: RoomSettings = { ...DEFAULT_ROOM_SETTINGS };
   phase: "lobby" | "match" = "lobby";
   private setup: MatchSetup | null = null;
@@ -70,7 +71,11 @@ export class RoomCore {
   private matchNames: string[] = []; // fighter names at the start of the match
   private joins = 0;
 
-  constructor(readonly code: string) {}
+  /** `random` picks bot shapes (pass a seeded source in tests). */
+  constructor(
+    readonly code: string,
+    private random: () => number = Math.random,
+  ) {}
 
   get connectionCount() {
     return this.conns.size;
@@ -184,7 +189,8 @@ export class RoomCore {
         if (this.phase !== "lobby") return [error(id, "can't change seats during a match")];
         const slot = this.freeSlot();
         if (slot === null) return [error(id, `room is full (${MAX_PLAYERS} players)`)];
-        this.bots.set(slot, `bot ${this.bots.size + 1}`);
+        // Each bot gets a random shape near the standard one, kept for as long as it's seated.
+        this.bots.set(slot, { name: `bot ${this.bots.size + 1}`, shape: randomBotShape(this.random) });
         return [this.roster()];
       }
       case "shape": {
@@ -257,7 +263,7 @@ export class RoomCore {
   /** Every seat (joined players and bots), in slot order. */
   private seats(): Seat[] {
     const players: Seat[] = [...this.conns].flatMap(([id, c]) => (c.slot === null ? [] : [{ slot: c.slot, name: c.name, conn: id, shape: c.shape }]));
-    const bots: Seat[] = [...this.bots].map(([slot, name]) => ({ slot, name, conn: null, shape: null }));
+    const bots: Seat[] = [...this.bots].map(([slot, b]) => ({ slot, name: b.name, conn: null, shape: b.shape }));
     return [...players, ...bots].sort((a, b) => a.slot - b.slot);
   }
 

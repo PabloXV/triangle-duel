@@ -282,7 +282,12 @@ A drag that breaks a limit is pushed back along its path to the furthest point
 that fits. Shapes are balanced unit-area triangles in the match setup (so
 they're deterministic and recorded); online, the relay re-checks every shape
 with the same rules (no trig, so the check is identical everywhere), and the
-room shows each player's shape as their icon. `npm run shape-arena` (bots
+room shows each player's shape as their icon. Bots get random shapes near the standard one (`src/bots/shapes.ts`): each top
+corner moved by a normal offset (σ = 0.25 in unit-shape units), balanced, and
+pulled back toward standard if it breaks a limit; the middle 80% end up
+94–139% of standard height and 81–116% of its width. Locally they're fresh
+each match; online the relay picks a bot's shape when it's added (so it shows
+in the room and stays put). `npm run shape-arena` (bots
 playing; bots were tuned on the standard shape): the extremes are weak (needle
 3–37, wedge 0–40), a moderately lopsided shape about even.
 

@@ -3,7 +3,7 @@ import { PROTOCOL_VERSION, type MatchSetup, type ServerMsg } from "../src/net/pr
 import { RoomCore, type Outgoing } from "../src/net/room";
 import { WINGS_STAGE } from "../src/sim/geometry";
 import { DEFAULT_PARAMS } from "../src/sim/params";
-import { balanceShape } from "../src/sim/shapes";
+import { balanceShape, shapeIssue } from "../src/sim/shapes";
 import { LEFT } from "../src/sim/inputCodec";
 import { DEFAULT_MATCH } from "../src/sim/types";
 
@@ -198,13 +198,25 @@ describe("room: bots", () => {
   const addBot = send({ type: "addBot" });
   const removeBot = send({ type: "removeBot" });
 
-  it("the host can add bot seats, which show in the roster", () => {
+  it("the host can add bot seats, which show in the roster with a random (legal) shape", () => {
     const { room } = roomWith(1);
     const out = room.receive("a", addBot);
-    expect(ofType(out, "roster")[0].players).toEqual([
-      { slot: 0, name: "a", host: true, bot: false, shape: null },
-      { slot: 1, name: "bot 1", host: false, bot: true, shape: null },
-    ]);
+    const [human, bot] = ofType(out, "roster")[0].players;
+    expect(human).toEqual({ slot: 0, name: "a", host: true, bot: false, shape: null });
+    expect(bot).toMatchObject({ slot: 1, name: "bot 1", host: false, bot: true });
+    expect(bot.shape).not.toBeNull();
+    expect(shapeIssue(bot.shape!)).toBeNull();
+    // It keeps that shape while seated.
+    expect(ofType(room.receive("a", send({ type: "ping", id: 1 })).concat(room.receive("a", addBot)), "roster")[0].players[1].shape).toEqual(bot.shape);
+  });
+
+  it("a match with random-shaped bots passes the relay's shape check", () => {
+    const { room } = roomWith(1);
+    room.receive("a", addBot);
+    const out = room.receive("a", addBot);
+    const shapes = ofType(out, "roster")[0].players.map((p) => p.shape);
+    const s = { ...setup(3), match: { ...setup(3).match, shapes } };
+    expect(ofType(room.receive("a", send({ type: "start", setup: s })), "start")).toHaveLength(1);
   });
 
   it("only the host, only in the lobby, and only while there's room", () => {

@@ -10,6 +10,7 @@
 //   replay   watching a recording
 
 import { BotSource, DEFAULT_BOT, HeuristicBot } from "./bots/heuristic";
+import { randomBotShape } from "./bots/shapes";
 import { CameraRig } from "./camera";
 import { KeyboardSource, installKeyboard } from "./input";
 import { FinalKoReplay, History } from "./koReplay";
@@ -120,7 +121,8 @@ export class Game {
   attract() {
     const stage = STAGES[this.matchNumber % STAGES.length].stage;
     const sources = [0, 1, 2, 3].map((i) => this.bot(i, 12));
-    this.begin("attract", new LiveSession(stage, this.params, { players: 4, stocks: 2 }, sources), ["", "", "", ""]);
+    const shapes = sources.map(() => randomBotShape(Math.random));
+    this.begin("attract", new LiveSession(stage, this.params, { players: 4, stocks: 2, shapes }, sources), ["", "", "", ""]);
   }
 
   playLocal(setup: LocalSetup) {
@@ -140,8 +142,9 @@ export class Game {
       }
     }
     const stage = stageById(setup.stageId).stage;
-    // My custom shape for me; everyone else (2nd local player, bots) is standard.
-    const shapes = [this.playerShape];
+    // My custom shape for me; a 2nd local player is standard; bots get random
+    // shapes near the standard one (fresh each match).
+    const shapes = Array.from({ length: players }, (_, i) => (i === 0 ? this.playerShape : i < humans ? null : randomBotShape(Math.random)));
     this.begin("local", new LiveSession(stage, this.params, { players, stocks: setup.stocks, shapes }, sources), names);
   }
 
@@ -180,7 +183,7 @@ export class Game {
   startOnline() {
     const net = this.net;
     if (!net.isHost) return;
-    // Everyone's shape, as the relay knows it (validated there). Bots are standard.
+    // Everyone's shape, as the relay knows it (validated there; bots' picked by the relay).
     const shapes = net.roster.map((p) => p.shape);
     const match = { ...DEFAULT_MATCH, players: net.roster.length, stocks: net.settings.stocks, shapes };
     net.start({ stage: stageById(net.settings.stageId).stage, match, params: structuredClone(this.params) });
