@@ -57,8 +57,21 @@ export interface BotConfig {
   brakeCoef: number;
   /** Controller damping: how much spin (rad/s) counts as lean (rad). */
   spinDamping: number;
-  /** Don't twitch for errors smaller than this (radians). */
+  /** Start turning when the lean error exceeds this (radians). */
   deadband: number;
+  /**
+   * Stop turning once the error is below this (radians, <= deadband). In
+   * between, keep doing what we were doing (hysteresis), so the bot doesn't
+   * flicker between keys around the threshold. Fewer input changes = fewer
+   * mispredictions for other players online.
+   *
+   * Tuned with scripts/bot-tune.ts: .12/.03 cut input changes from ~20/s to
+   * ~5/s and beat the old bang-bang bot (.03/.03) 36–4, holding up on fresh
+   * seeds, Island, and 3-player FFA. (A minimum hold time after each change
+   * was also tried and always made it worse: balancing on a point needs
+   * quick corrections.)
+   */
+  releaseBand: number;
   /** Seed for the bot's own randomness (attack timing jitter). */
   seed: number;
 }
@@ -78,7 +91,8 @@ export const DEFAULT_BOT: BotConfig = {
   edgeMargin: 0.8,
   brakeCoef: 0.15,
   spinDamping: 0.1,
-  deadband: 0.03,
+  deadband: 0.12,
+  releaseBand: 0.03,
   seed: 1,
 };
 
@@ -89,6 +103,7 @@ export class HeuristicBot {
   private rng: () => number;
   private chargeHeldTicks = 0;
   private cooldown = 0; // ticks before the next attack is allowed
+  private turn: Input["turn"] = 0; // current turn input (kept between ticks for hysteresis and hold)
   /** What the bot is doing, for the debug overlay. */
   mode: BotMode = "move";
 
@@ -171,7 +186,25 @@ export class HeuristicBot {
       }
     }
 
-    return { turn: steer(me, desiredLean, c), charge };
+    return { turn: this.steer(me, desiredLean), charge };
+  }
+
+  /**
+   * Bang-bang steering with hysteresis. Error = how much further left we lean
+   * than desired, plus some spin, so we let off before overshooting. Leaning
+   * too far left → turn clockwise (+1). Keep spinDamping small in servo mode,
+   * since releasing the key already brakes the spin.
+   */
+  private steer(me: FighterView, desiredLean: number): Input["turn"] {
+    const c = this.cfg;
+    const err = me.angle - desiredLean + c.spinDamping * me.angularVelocity;
+    let want = this.turn;
+    if (err > c.deadband) want = 1;
+    else if (err < -c.deadband) want = -1;
+    else if (Math.abs(err) < c.releaseBand) want = 0;
+    // (between releaseBand and deadband: keep doing what we were doing)
+    this.turn = want;
+    return want;
   }
 
   private climb(
@@ -196,10 +229,20 @@ export class HeuristicBot {
       out(leanForSpeed(me, clamp((opp.x - me.x) * c.approachGain, -c.cruiseSpeed, c.cruiseSpeed), c), false);
       return;
     }
-    // Jump from under the target platform, a bit in from its ends.
+    // Jump up through the target platform beside the opponent, not under them:
+    // platforms are pass-through from below, fighters aren't, so jumping from
+    // directly underneath headbutts their feet. Pick a side that's within the
+    // platform (a bit in from its ends) and over our own platform; failing that,
+    // go from underneath.
     const left = target.center.x - target.halfWidth + 0.6;
     const right = target.center.x + target.halfWidth - 0.6;
-    const launchX = clamp(opp.x, left, right);
+    const mine = platformUnder(me, stage);
+    const overMine = (x: number) => !mine || Math.abs(x - mine.center.x) <= mine.halfWidth - c.edgeMargin;
+    const beside = [opp.x - CLIMB_SIDE_OFFSET, opp.x + CLIMB_SIDE_OFFSET]
+      .map((x) => clamp(x, left, right))
+      .filter((x) => Math.abs(x - opp.x) > 0.8 && overMine(x))
+      .sort((a, b) => Math.abs(a - me.x) - Math.abs(b - me.x));
+    const launchX = beside[0] ?? clamp(opp.x, left, right);
     const inPosition = Math.abs(me.x - launchX) < 0.6 && Math.abs(me.vx) < 1;
     if (this.mode === "climb" || inPosition) {
       this.mode = "climb";
@@ -226,6 +269,8 @@ export class HeuristicBot {
 
 /** Extra height (m) to clear when jumping up onto a platform. */
 const CLIMB_CLEARANCE = 0.5;
+/** How far beside the opponent (m) to jump up onto their platform. */
+const CLIMB_SIDE_OFFSET = 1.3;
 
 /** Is `a` standing on (or hopping just above) a platform clearly higher than `b`'s? */
 function isAbove(a: FighterView, b: FighterView, stage: Stage): boolean {
@@ -254,19 +299,6 @@ function safeDropEdge(plat: Platform, stage: Stage, towardX: number): number | n
 /** Lean that pushes our speed toward targetVx. Lean right (negative) to speed up rightward. */
 function leanForSpeed(me: FighterView, targetVx: number, c: BotConfig): number {
   return -clamp((targetVx - me.vx) * c.leanPerSpeed, -c.maxLean, c.maxLean);
-}
-
-/**
- * Bang-bang controller with a little damping. Error = how much further left we
- * lean than desired, plus some spin, so we let off before overshooting.
- * Leaning too far left → turn clockwise (+1). Keep spinDamping small in servo
- * mode, since releasing the key already brakes the spin.
- */
-function steer(me: FighterView, desiredLean: number, c: BotConfig): Input["turn"] {
-  const err = me.angle - desiredLean + c.spinDamping * me.angularVelocity;
-  if (err > c.deadband) return 1;
-  if (err < -c.deadband) return -1;
-  return 0;
 }
 
 /**

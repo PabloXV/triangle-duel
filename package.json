@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p server && svelte-check --tsconfig ./tsconfig.json --threshold error",
     "test": "vitest run",
     "bots": "tsx scripts/bot-arena.ts",
+    "bot-tune": "tsx scripts/bot-tune.ts",
     "verify": "tsx scripts/verify-recording.ts",
     "cross-browser": "npm run build && tsx scripts/cross-browser.ts",
     "relay": "wrangler dev --port 8787",

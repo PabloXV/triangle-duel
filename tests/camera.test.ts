@@ -24,7 +24,8 @@ function measure(players: number) {
   let curr: FighterView[] = session.sim.view();
   let acc = 0;
   const floorY: number[] = []; // the floor's screen position, px
-  let offscreen = 0;
+  const outStreak = new Map<number, number>(); // fighter → consecutive frames partly off-screen
+  let longestOut = 0;
   for (let frame = 0; frame < FPS * 20; frame++) {
     acc += 1 / FPS;
     while (acc >= DT) {
@@ -34,14 +35,18 @@ function measure(players: number) {
     }
     const v = camera.update(curr.filter((f) => !f.ko), 1 / FPS, ASPECT, { follow: true, shakeScale: 0 });
     floorY.push((0 - v.center.y) * (CANVAS_W / v.width));
-    // Anyone on or above the floor must be fully in view (fallers below it are
-    // deliberately not followed: they're dropping to a KO).
+    // Anyone on or above the floor must be in view (fallers below it are
+    // deliberately not followed: they're dropping to a KO). A respawn teleports
+    // a fighter, possibly outside the current view; the camera eases over, so
+    // allow a moment to catch up, but never a lasting miss.
     const halfW = v.width / 2;
     const halfH = v.width / ASPECT / 2;
-    const out = curr.some(
-      (f) => !f.ko && f.y > -0.5 && f.vertices.some((p) => Math.abs(p.x - v.center.x) > halfW || Math.abs(p.y - v.center.y) > halfH),
-    );
-    if (out) offscreen++;
+    curr.forEach((f, i) => {
+      const out = !f.ko && f.y > -0.5 && f.vertices.some((p) => Math.abs(p.x - v.center.x) > halfW || Math.abs(p.y - v.center.y) > halfH);
+      const streak = out ? (outStreak.get(i) ?? 0) + 1 : 0;
+      outStreak.set(i, streak);
+      longestOut = Math.max(longestOut, streak);
+    });
   }
   session.free();
   // Peak-to-peak floor movement within each quarter second (about one hop).
@@ -51,13 +56,13 @@ function measure(players: number) {
     windows.push(Math.max(...w) - Math.min(...w));
   }
   const avg = windows.reduce((a, b) => a + b, 0) / windows.length;
-  return { avgBobPx: avg, offscreenFrames: offscreen };
+  return { avgBobPx: avg, longestOffscreenSec: longestOut / FPS };
 }
 
 describe("follow camera", () => {
   it.each([2, 4])("doesn't bob with hops, and keeps on-stage fighters in frame (%i players)", (players) => {
     const r = measure(players);
     expect(r.avgBobPx).toBeLessThan(10); // measured ~5 px with dead zones (was ~28 without)
-    expect(r.offscreenFrames).toBe(0);
+    expect(r.longestOffscreenSec).toBeLessThanOrEqual(0.1); // catches up within 0.1 s (e.g. after a respawn)
   });
 });

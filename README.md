@@ -9,6 +9,7 @@ npm install
 npm run dev        # play at the printed URL
 npm test           # sim tests (Node, headless)
 npm run bots       # headless bot matches with win/loss stats (--experiments for more)
+npm run bot-tune   # compare bot steering variants (win rate, input changes/s; --robust)
 npm run verify -- f.json  # check a downloaded match recording replays exactly
 npm run cross-browser    # replay the fixture match in Node, Chrome, Firefox, WebKit and compare
 npm run relay      # the online room relay, locally (Cloudflare Workers runtime via wrangler)
@@ -216,8 +217,9 @@ Presentation only, so it can't affect sync.
 `npm run netsim` measures rollback on simulated connections (bots playing).
 Typical: corrections of a fraction of a pixel to a few pixels, rare big ones
 (17–76 px; smoothing cuts the worst per-frame snap ~3×), and well under 1% CPU.
-Bots change input ~17×/s, several times more than people do, so real matches
-have proportionally fewer rollbacks.
+Bots change input ~5×/s since the steering got hysteresis (was ~20×/s): that
+cut rollbacks 3–4× on low/medium-latency links and relay messages 4× overall
+(at ~100 ms, rollback counts stay similar: inputs arrive in batches).
 
 `tests/online.test.ts` runs the real relay logic and two OnlineSessions in one
 process over a fake network (`tests/onlineHarness.ts`; equal, lopsided,
@@ -259,9 +261,8 @@ add bot). The host's browser runs them and sends their inputs through the
 relay like a player's (the relay only accepts bot inputs from the host); to
 everyone else a bot is just another remote player. Each bot thinks once per
 step; on a rollback the host reuses the decision it already sent. If the host
-disconnects mid-match, their bots go idle. Note: bots change input far more
-often than people (~17×/s), so non-host players see more rollbacks when
-playing against bots.
+disconnects mid-match, their bots go idle. Bots change input ~5×/s (see "Bot").
+
 
 ## Juice (camera, shake, final-KO replay)
 
@@ -341,6 +342,15 @@ is what stopped it from skidding off the stage.
 Handicap: `reactionTicks` delays what it sees of the opponent (panel: "bot
 reaction"). Its own body is seen almost live (`selfReactionTicks`), because
 balancing with a long delay is unstable and it just falls over.
+
+Steering uses hysteresis: start turning when the lean error passes `deadband`
+(0.12 rad), stop once it's under `releaseBand` (0.03), and in between keep
+doing what it was doing. That cut input changes from ~20/s to ~5/s (fewer
+mispredictions online) and made it stronger: it beat the old twitchy steering
+36–4 and held up on fresh seeds, Island, and 3-player FFA (`npm run bot-tune`,
+`--robust`). A minimum hold time per key press was also tried and always made
+it worse. Climbing jumps up beside the opponent, not under them (fighters
+aren't pass-through, so jumping from underneath headbutts their feet).
 
 Known limits, from `npm run bots -- --experiments`:
 - Brittle: small config changes flip results from 30/30 to 0/30.

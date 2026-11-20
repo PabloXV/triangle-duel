@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_BOT, HeuristicBot } from "../src/bots/heuristic";
 import { WINGS_STAGE } from "../src/sim/geometry";
 import { DEFAULT_PARAMS } from "../src/sim/params";
-import { Recorder, decodeInput, encodeInput, verifyRecording, type Recording } from "../src/sim/recording";
-import { DEFAULT_MATCH, Sim, initPhysics, type Input, type MatchOptions } from "../src/sim/sim";
+import { LEFT } from "../src/sim/inputCodec";
+import { Playback, Recorder, decodeInput, encodeInput, verifyRecording, type Recording } from "../src/sim/recording";
+import { DEFAULT_MATCH, Sim, initPhysics, type MatchOptions } from "../src/sim/sim";
 
 await initPhysics(); // top-level: the match below is recorded during test collection
 
@@ -52,15 +53,20 @@ describe("recordings", () => {
   });
 
   it("one changed input → desync reported at the next fingerprint", () => {
-    // Flip P1's turn at tick 700 (P1 is alive then; checked below).
+    // Replace one of P1's inputs with LEFT ("left the match"), which always
+    // changes the state. (Flipping a turn doesn't always: in servo mode, "no
+    // input" brakes the spin, so when spinning left, "none" and "turn right"
+    // can both saturate the same max torque and give identical physics.)
     const n = recording.match.players;
-    const i = 700 * n;
-    const original = decodeInput(recording.inputs[i]);
-    const flipped: Input = { ...original, turn: original.turn === 1 ? -1 : 1 };
-    const tampered = { ...recording, inputs: recording.inputs.slice(0, i) + encodeInput(flipped) + recording.inputs.slice(i + 1) };
+    const p = new Playback(recording);
+    while (p.sim.tick < 700 || p.sim.view()[0].stocks === 0) p.step();
+    const at = p.sim.tick;
+    p.sim.free();
+    const i = at * n;
+    const tampered = { ...recording, inputs: recording.inputs.slice(0, i) + LEFT + recording.inputs.slice(i + 1) };
     const r = verifyRecording(tampered);
     expect(r.ok).toBe(false);
-    expect(r.desync?.tick).toBe(720); // first fingerprint after tick 700
+    expect(r.desync?.tick).toBe(Math.ceil((at + 1) / 60) * 60); // the first fingerprint after the change
   });
 
   it("dropping the mid-match param change → desync after it", () => {
