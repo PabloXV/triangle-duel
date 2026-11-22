@@ -53,7 +53,7 @@ describe("stages: every platform is reachable", () => {
   it("Platform ▽: floor -> the bar over the pit is easy, and the pit can be jumped", () => {
     const s = stageById("station").stage;
     expect(ease(s, 0, -2.2, 2)).toBeGreaterThanOrEqual(15);
-    expect(ease(s, 0, -1.6, 1)).toBeGreaterThanOrEqual(2);
+    expect(ease(s, 0, -2.0, 1)).toBeGreaterThanOrEqual(2); // from 0.6 m inside the edge, as before the pit got wider
   });
   it("The Stoop: floor -> step -> top step", () => {
     const s = stageById("stoop").stage;

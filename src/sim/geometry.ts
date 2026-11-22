@@ -125,22 +125,24 @@ export const OVERPASS_STAGE: Stage = {
 };
 
 /**
- * Two floors with a 2 m pit between them (a KO pit mid-stage) and a long, low
- * pass-through bar over it that overlaps both floor edges: hop up, walk across,
- * drop down (or jump the pit outright, harder). With 3 players, the middle one
- * starts on the bar. (A 3 m pit with a short, high bar was nearly uncrossable:
- * tests/reach.test.ts.)
+ * Two floors with a 2.8 m pit between them (a KO pit mid-stage) and a long,
+ * low pass-through bar over it that overlaps both floor edges: hop up, walk
+ * across, drop down (or jump the pit outright, harder). With 3 players, the
+ * middle one starts on the bar. (A 3 m pit with a short, high bar was nearly
+ * uncrossable: tests/reach.test.ts. A 2 m pit was too narrow: two fighters
+ * falling in side by side wedged between the walls, held each other up, and
+ * neither could jump; tilted, a fighter is ~1.4 m wide.)
  */
 export const STATION_STAGE: Stage = {
   platforms: [
-    { center: { x: -5.25, y: -0.5 }, halfWidth: 4.25, halfHeight: 0.5 },
-    { center: { x: 5.25, y: -0.5 }, halfWidth: 4.25, halfHeight: 0.5 },
+    { center: { x: -5.65, y: -0.5 }, halfWidth: 4.25, halfHeight: 0.5 },
+    { center: { x: 5.65, y: -0.5 }, halfWidth: 4.25, halfHeight: 0.5 },
     { center: { x: 0, y: 1.45 }, halfWidth: 2, halfHeight: 0.15, oneWay: true },
   ],
   spawnLine: { minX: -8, maxX: 8, y: 0.001 },
   spawns: {
-    2: [{ x: -5.25, y: 0.001 }, { x: 5.25, y: 0.001 }],
-    3: [{ x: -5.25, y: 0.001 }, { x: 0, y: 1.601 }, { x: 5.25, y: 0.001 }],
+    2: [{ x: -5.65, y: 0.001 }, { x: 5.65, y: 0.001 }],
+    3: [{ x: -5.65, y: 0.001 }, { x: 0, y: 1.601 }, { x: 5.65, y: 0.001 }],
     4: [{ x: -7, y: 0.001 }, { x: -3.5, y: 0.001 }, { x: 3.5, y: 0.001 }, { x: 7, y: 0.001 }],
   },
   respawnY: 3.5,
