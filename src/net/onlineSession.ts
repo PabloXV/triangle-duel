@@ -53,6 +53,20 @@ const MARGIN_MAX = 12;
 const MARGIN_RELAX_STEPS = 600;
 /** Until a ping has been measured, assume this round trip. */
 const DEFAULT_RTT_MS = 100;
+/**
+ * The relay's clock, as this browser sees it. Steps leave the relay at a steady
+ * 60/s but don't arrive that way: measured on a real link, about twice a
+ * second nothing comes for ~100 ms, then several steps at once. Pacing by
+ * "the newest step received" froze everyone's screen at each hiccup (the
+ * host's too). Instead: the least-delayed arrivals show the relay's schedule
+ * (arrival time - step × 16.7 ms is smallest when nothing held the step up);
+ * the minimum over the last few seconds (so it can also go up, if the route
+ * gets slower) gives "where the relay is now", and the present paces by that.
+ * Through a hiccup it keeps moving, predicting a few steps further, and the
+ * late steps are folded in by rollback when they land.
+ */
+const CLOCK_BUCKET_STEPS = 60;
+const CLOCK_BUCKETS = 4;
 /** Never predict further than this past the confirmed timeline (½ s): stall instead. */
 export const MAX_PREDICTION = 30;
 /**
@@ -97,6 +111,10 @@ export class OnlineSession implements Session {
   private official = new Map<number, string>();
   private lastOfficial: string; // official inputs as of the newest official step
   private newest = -1; // newest official step received
+  /** Local time in ms (overridden by the test harness's fake network). */
+  clock: () => number = () => performance.now();
+  private clockBuckets: number[] = []; // per CLOCK_BUCKET_STEPS steps: min(arrival - t × STEP_MS)
+  private clockBucketMin = Infinity;
   /** Inputs actually used for each simulated step past `confirmed` (to detect mispredictions). */
   private used = new Map<number, string>();
   /** What I decided for the fighters I drive, by the step it takes effect (what I sent the relay): step → fighter → input. */
@@ -152,6 +170,23 @@ export class OnlineSession implements Session {
     this.lastOfficial = inputs.join("");
     this.official.set(t, this.lastOfficial);
     this.newest = t;
+    this.clockBucketMin = Math.min(this.clockBucketMin, this.clock() - t * STEP_MS);
+    if (t % CLOCK_BUCKET_STEPS === CLOCK_BUCKET_STEPS - 1) {
+      this.clockBuckets.push(this.clockBucketMin);
+      if (this.clockBuckets.length > CLOCK_BUCKETS) this.clockBuckets.shift();
+      this.clockBucketMin = Infinity;
+    }
+  }
+
+  /**
+   * The newest step the relay has (very likely) finalized and sent by now, by
+   * its schedule (see CLOCK_BUCKET_STEPS), even if it hasn't arrived yet;
+   * never less than what has arrived.
+   */
+  private relayStep(): number {
+    const offset = Math.min(this.clockBucketMin, ...this.clockBuckets);
+    if (!Number.isFinite(offset)) return this.newest;
+    return Math.max(this.newest, Math.floor((this.clock() - offset) / STEP_MS));
   }
 
   receiveDesync(step: number) {
@@ -194,7 +229,8 @@ export class OnlineSession implements Session {
    */
   step(): boolean {
     this.reconcile();
-    const target = this.newest + this.aheadSteps();
+    // Spectators follow what has arrived (they don't guess); players pace by the relay's clock.
+    const target = (this.spectating ? this.newest : this.relayStep()) + this.aheadSteps();
     const drift = this.sim.tick - target;
     // (Spectators never step past the newest official step: they don't guess.)
     if (drift > (this.spectating ? 0 : AHEAD_SLACK)) {

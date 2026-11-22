@@ -89,6 +89,15 @@ describe("online rollback (in-process relay + two clients)", () => {
     console.log(`present lives went back up ${presentUp} times; confirmed never`);
   });
 
+  it("relay hiccups (measured: ~100 ms of nothing, twice a second) don't freeze anyone's screen", () => {
+    const { a, b, desyncs } = playOnline({ latency: [1, 6], jitter: 1, ticks: 2400, bots: 2, hiccups: { every: 30, hold: 6 } });
+    // Pacing by "the newest step received" froze both screens ~93 times in this match.
+    expect(a.stats.stalls).toBeLessThanOrEqual(5);
+    expect(b.stats.stalls).toBeLessThanOrEqual(5);
+    expect(desyncs).toEqual([]);
+    expect(b.confirmedHash()).toBe(a.confirmedHash());
+  });
+
   it("a tab that slept (hidden: it got steps but didn't run them) catches up in a few frames, still in sync", () => {
     let framesAwake = 0;
     let caughtUpAt = -1;

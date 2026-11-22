@@ -29,6 +29,8 @@ export function playOnline(opts: {
   spectateAt?: number; // a spectator ("s") joins at this tick (same latency as A)
   asleep?: { id: string; from: number; to: number }; // this client's tab is hidden: it receives but doesn't step
   inputDelay?: number; // the players' input delay (default: OnlineSession's)
+  /** Relay → client hiccups (measured on a real link: ~100 ms, about twice a second): every `every` ticks, nothing arrives for `hold` ticks, then it all lands at once. */
+  hiccups?: { every: number; hold: number };
 }) {
   let now = 0;
   let seed = 12345;
@@ -36,7 +38,12 @@ export function playOnline(opts: {
   const inFlight: { at: number; deliver: () => void }[] = [];
   const lastAt = new Map<string, number>(); // per channel, to keep order
   const send = (channel: string, delay: number, deliver: () => void) => {
-    const at = Math.max(now + delay + Math.floor(rand() * ((opts.jitter ?? 0) + 1)), lastAt.get(channel) ?? 0);
+    let at = Math.max(now + delay + Math.floor(rand() * ((opts.jitter ?? 0) + 1)), lastAt.get(channel) ?? 0);
+    const h = opts.hiccups;
+    if (h && channel.startsWith("down-")) {
+      const phase = at % h.every;
+      if (phase < h.hold) at += h.hold - phase;
+    }
     lastAt.set(channel, at);
     inFlight.push({ at, deliver });
   };
@@ -59,6 +66,7 @@ export function playOnline(opts: {
       // Joined mid-match: watch, after catching up on everything so far.
       const transport = { sendInput: () => {}, sendHash: (step: number, hash: string) => toRoom(id, { type: "hash", step, hash }) };
       const spectator = new OnlineSession(msg.setup, -1, msg.names, new Map(), transport, "TEST", () => 2 * latencyOf(id) * (1000 / 60));
+      spectator.clock = () => now * (1000 / 60);
       spectator.catchUp(msg.log, msg.next);
       sessions.set(id, spectator);
     }
@@ -92,7 +100,9 @@ export function playOnline(opts: {
     };
     const trueRtt = 2 * latencyOf(id) * (1000 / 60);
     const rtt = () => (opts.rttMs ? opts.rttMs(id) : trueRtt);
-    sessions.set(id, new OnlineSession(mySetup, you, ["A", "B", "bot 1", "bot 2"], sources, transport, "TEST", rtt, opts.inputDelay));
+    const session = new OnlineSession(mySetup, you, ["A", "B", "bot 1", "bot 2"], sources, transport, "TEST", rtt, opts.inputDelay);
+    session.clock = () => now * (1000 / 60); // the fake network's time
+    sessions.set(id, session);
   }
 
   for (const id of ids) {
