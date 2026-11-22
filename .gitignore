@@ -3,6 +3,7 @@ dist
 .DS_Store
 .wrangler
 e2e-shots
+netlogs
 
 # Local concept art (not part of the game)
 concept/

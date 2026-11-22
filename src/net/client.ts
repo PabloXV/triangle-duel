@@ -104,10 +104,12 @@ export class NetClient implements MatchTransport {
       };
       if (typeof document !== "undefined") document.addEventListener("visibilitychange", this.onVisible);
     };
-    ws.onmessage = (e) => {
-      this.handle(JSON.parse(String(e.data)) as ServerMsg);
-      this.notify();
-    };
+    ws.onmessage = (e) =>
+      this.fakeLag.down(() => {
+        if (this.ws !== ws) return;
+        this.handle(JSON.parse(String(e.data)) as ServerMsg);
+        this.notify();
+      });
     ws.onclose = () => {
       if (this.ws !== ws) return; // a newer connection replaced this one
       this.cleanup();
@@ -280,8 +282,15 @@ export class NetClient implements MatchTransport {
   }
 
   private send(m: ClientMsg) {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(m));
+    const ws = this.ws;
+    const text = JSON.stringify(m);
+    this.fakeLag.up(() => {
+      if (ws?.readyState === WebSocket.OPEN) ws.send(text);
+    });
   }
+
+  /** Testing: ?lag=MS (one way, each direction) and &jitter=MS add a fake delay to every message. */
+  private fakeLag = FakeLag.fromUrl();
 
   private cleanup() {
     if (this.pingTimer) clearInterval(this.pingTimer);
@@ -298,5 +307,44 @@ export class NetClient implements MatchTransport {
     this.lastStep = -1;
     this.rttMs = null;
     this.settings = { ...DEFAULT_ROOM_SETTINGS };
+  }
+}
+
+/**
+ * A fake network delay for testing online play on localhost: each message
+ * waits `lag` ms plus up to `jitter` ms, in order (like a real WebSocket: a
+ * delayed message holds up the ones behind it).
+ */
+class FakeLag {
+  private queues = { up: [] as { at: number; fn: () => void }[], down: [] as { at: number; fn: () => void }[] };
+  constructor(
+    private lag: number,
+    private jitter: number,
+  ) {}
+  static fromUrl(): FakeLag {
+    const q = typeof location === "undefined" ? new URLSearchParams() : new URLSearchParams(location.search);
+    return new FakeLag(Math.max(0, Number(q.get("lag")) || 0), Math.max(0, Number(q.get("jitter")) || 0));
+  }
+  get active() {
+    return this.lag > 0 || this.jitter > 0;
+  }
+  up(fn: () => void) {
+    this.push("up", fn);
+  }
+  down(fn: () => void) {
+    this.push("down", fn);
+  }
+  /** One queue per direction, delivered strictly in order (separate timers could fire out of order). */
+  private push(dir: "up" | "down", fn: () => void) {
+    if (!this.active) return fn();
+    const q = this.queues[dir];
+    const at = Math.max(performance.now() + this.lag + Math.random() * this.jitter, q.at(-1)?.at ?? 0);
+    q.push({ at, fn });
+    if (q.length === 1) this.drain(dir);
+  }
+  private drain(dir: "up" | "down") {
+    const q = this.queues[dir];
+    while (q.length && q[0].at <= performance.now()) q.shift()!.fn();
+    if (q.length) setTimeout(() => this.drain(dir), q[0].at - performance.now());
   }
 }

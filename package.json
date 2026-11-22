@@ -18,6 +18,7 @@
     "deploy": "npm run build && wrangler deploy",
     "relay:smoke": "tsx scripts/relay-smoke.ts",
     "netsim": "tsx scripts/netsim.ts",
+    "netlog": "tsx scripts/netlog.ts",
     "e2e": "npm run build && tsx scripts/e2e/run.ts"
   },
   "dependencies": {

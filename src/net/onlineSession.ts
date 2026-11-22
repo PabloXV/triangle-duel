@@ -76,6 +76,15 @@ export const MAX_PREDICTION = 30;
  * catch up 2 steps per frame, or up to MAX_STEPS_PER_FRAME when far behind.
  */
 const AHEAD_SLACK = 2;
+/**
+ * Inside the slack, drift was never corrected: measured (npm run netlog, 4
+ * tabs), guests sat 2 steps past their target for a whole match, predicting
+ * 3 steps instead of 1 (15 rollbacks/s instead of 6). So: off target by a
+ * step or more, wait (or run an extra step) once every SLEW_EVERY frames.
+ * That's a 10% speed change for a moment, too small to see; GGPO-style
+ * games do the same ("time sync").
+ */
+const SLEW_EVERY = 10;
 const FAR_BEHIND = 12;
 /**
  * Further behind than this (a hidden tab doesn't draw, so it doesn't step, but
@@ -100,6 +109,10 @@ export interface RollbackStats {
   ownLate: number; // rollbacks caused by my own fighter's input arriving late (the relay moved it to a later step)
   stalls: number; // step() calls that ran no step (the present waited)
   bursts: number; // step() calls that ran 3+ steps at once (the present jumped)
+  resimMs: number; // total time spent rewinding and re-simulating (ms of CPU)
+  slews: number; // frames that waited or ran an extra step to stay on target (time sync)
+  capped: number; // steps refused because prediction hit MAX_PREDICTION (a freeze: the connection can't keep up)
+  maxResimMs: number; // the longest single rollback (ms)
 }
 
 export class OnlineSession implements Session {
@@ -128,6 +141,7 @@ export class OnlineSession implements Session {
   private lastSent = new Map<number, string>(); // per driven fighter
   private margin = MARGIN_MIN; // see MARGIN_MIN
   private jumped = false; // caught up at once since the last takeJumped()
+  private slewCount = 0; // frames since the last time-sync adjustment (SLEW_EVERY)
   private lastLate = 0; // confirmed step when my input last arrived late
   private recorder: Recorder;
 
@@ -137,9 +151,11 @@ export class OnlineSession implements Session {
   lastStepInputs = "";
   /** The latest rollback correction (present before vs after), until taken. For visual smoothing. */
   private correction: { before: FighterView[]; after: FighterView[] } | null = null;
-  readonly stats: RollbackStats = { rollbacks: 0, resimulated: 0, maxDepth: 0, maxCorrection: 0, totalCorrection: 0, ownLate: 0, stalls: 0, bursts: 0 };
+  readonly stats: RollbackStats = { rollbacks: 0, resimulated: 0, maxDepth: 0, maxCorrection: 0, totalCorrection: 0, ownLate: 0, stalls: 0, bursts: 0, resimMs: 0, maxResimMs: 0, slews: 0, capped: 0 };
   desync: { step: number } | null = null;
   disconnected = false;
+  /** Called after each rollback (the net log listens): steps redone, CPU ms, largest visible jump (m), caused by my own late input? */
+  onRollback: ((r: { depth: number; ms: number; jump: number; ownLate: boolean }) => void) | null = null;
 
   constructor(
     setup: MatchSetup,
@@ -238,7 +254,13 @@ export class OnlineSession implements Session {
       return false; // well ahead: let the relay catch up
     }
     if (drift < -CATCH_UP_FROM) return this.catchUpNow(target);
-    const steps = drift < -FAR_BEHIND ? MAX_STEPS_PER_FRAME : drift < -AHEAD_SLACK ? 2 : 1;
+    let steps = drift < -FAR_BEHIND ? MAX_STEPS_PER_FRAME : drift < -AHEAD_SLACK ? 2 : 1;
+    if (!this.spectating && Math.abs(drift) >= 1 && Math.abs(drift) <= AHEAD_SLACK && ++this.slewCount >= SLEW_EVERY) {
+      this.slewCount = 0;
+      this.stats.slews++;
+      if (drift > 0) return false; // a step ahead: wait one frame
+      steps = 2; // a step behind: catch one up
+    }
     let n = 0;
     while (n < steps && this.advance()) n++;
     if (n >= 3) this.stats.bursts++;
@@ -279,7 +301,10 @@ export class OnlineSession implements Session {
   /** Simulate one present step. False if we're too far past the confirmed timeline. */
   private advance(): boolean {
     const s = this.sim.tick;
-    if (s - this.confirmed >= MAX_PREDICTION) return false; // connection trouble: stall, don't guess wildly
+    if (s - this.confirmed >= MAX_PREDICTION) {
+      this.stats.capped++;
+      return false; // connection trouble: stall, don't guess wildly
+    }
     const at = s + this.inputDelay; // when what I decide now takes effect
     if (!this.asked.has(s) && this.official.has(at)) {
       this.asked.add(s); // already final (we're catching up): nothing to decide or send
@@ -355,15 +380,25 @@ export class OnlineSession implements Session {
       // other screens) for no gain in feel.
       const used = this.used.get(mismatch)!;
       const official = this.official.get(mismatch)!;
-      if (this.you >= 0 && used[this.you] !== official[this.you]) {
+      // Late inputs during the countdown don't matter (inputs are ignored then),
+      // and at the start the relay is always a little ahead of us: don't count those.
+      const ownLate = this.you >= 0 && used[this.you] !== official[this.you] && mismatch >= (this.sim.match.countdownTicks ?? 0);
+      if (ownLate) {
         this.stats.ownLate++;
-        this.margin = Math.min(MARGIN_MAX, this.margin + 1);
+        // Grow at most once per round trip: inputs already in flight were sent
+        // with the old margin, and would each count again (measured: 3 -> 11 in
+        // a second, then stuck at the max all match, predicting ~9 steps too far).
+        if (this.margin < MARGIN_MAX && this.confirmed - this.lastLate > this.aheadSteps() + this.inputDelay) this.margin++;
         this.lastLate = this.confirmed;
       }
       // Rewind to the first wrong step and redo everything up to the present.
       const before = this.sim.view();
+      const t0 = performance.now();
       this.sim.restore(this.snapshots.get(mismatch)!);
       for (let s = mismatch; s < present; s++) this.runStep(s);
+      const ms = performance.now() - t0;
+      this.stats.resimMs += ms;
+      this.stats.maxResimMs = Math.max(this.stats.maxResimMs, ms);
       const after = this.sim.view();
       const jump = Math.max(0, ...after.map((f, i) => Math.hypot(f.x - before[i].x, f.y - before[i].y)));
       this.stats.maxCorrection = Math.max(this.stats.maxCorrection, jump);
@@ -373,6 +408,7 @@ export class OnlineSession implements Session {
       this.stats.rollbacks++;
       this.stats.resimulated += depth;
       this.stats.maxDepth = Math.max(this.stats.maxDepth, depth);
+      this.onRollback?.({ depth, ms, jump, ownLate });
     }
     // Every simulated step that now has official inputs is final.
     while (this.confirmed <= this.newest && this.confirmed < this.sim.tick) this.confirm(this.confirmed);
@@ -448,6 +484,22 @@ export class OnlineSession implements Session {
   }
 
   /** How many steps the present is ahead of the confirmed timeline. */
+  /** Ping to the relay (ms, moving average), if measured. */
+  get rttMs(): number | null {
+    return this.rtt();
+  }
+
+  /** For the net log: the pacing's view of things. */
+  get pacing() {
+    return {
+      newest: this.newest, // newest official step received
+      relayStep: this.spectating ? this.newest : this.relayStep(), // where the relay is, by its clock (see CLOCK_BUCKET_STEPS)
+      target: (this.spectating ? this.newest : this.relayStep()) + this.aheadSteps(), // where the present is heading
+      margin: this.margin,
+      aheadSteps: this.aheadSteps(),
+    };
+  }
+
   get predicting(): number {
     return this.sim.tick - this.confirmed;
   }

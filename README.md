@@ -253,6 +253,20 @@ Corrections are smoothed visually (`src/smoothing.ts`): after a rollback the
 drawn fighter glides to its corrected spot over ~80 ms instead of snapping.
 Presentation only, so it can't affect sync.
 
+**Net log (`?netlog=1`):** an overlay with an online match's numbers, one row
+per second: ping, input delay, margin, frame advantage (present step minus
+newest step received), steps predicted, rollbacks (count, depth, CPU ms),
+how far fighters visibly jumped, late own inputs, freezes, time-sync
+adjustments, how steps arrive (count, longest gap) and frame timing. Press L
+to download the rows as JSON. Testing switches: `?autopilot=1` (a bot plays
+as you online), `?lag=MS&jitter=MS` (fake delay each way, in order).
+
+`npm run netlog` plays a real 4-player online match on this machine: builds,
+serves the game and relay with wrangler, opens a tab per player
+(autopilot + net log), and prints the players side by side; per-second logs
+go to `netlogs/`. Options: `--secs 60 --players 4 --lag 15,15,15,100
+--jitter 10,10,10,30 --headed --no-build`.
+
 `npm run netsim` measures rollback on simulated connections (bots playing).
 Typical: corrections of a fraction of a pixel to a few pixels, rare big ones
 (17–76 px; smoothing cuts the worst per-frame snap ~3×), and well under 1% CPU.

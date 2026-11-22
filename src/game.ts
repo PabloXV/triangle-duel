@@ -14,6 +14,7 @@ import { CameraRig, type CameraView } from "./camera";
 import { KeyboardSource, installKeyboard, isTouchDevice } from "./input";
 import { FinalKoReplay, History } from "./koReplay";
 import { NetClient } from "./net/client";
+import { NetLog } from "./net/netLog";
 import { OnlineSession } from "./net/onlineSession";
 import { loadParams } from "./panel";
 import { Renderer } from "./render";
@@ -228,6 +229,10 @@ export class Game {
 
   /** Test switch: with ?bots=still, local bots give no input (browser tests get a predictable opponent). */
   private readonly stillBots = new URLSearchParams(location.search).get("bots") === "still";
+  /** Testing: with ?autopilot=1, a bot plays as you online (scripts/netlog.ts runs 4 tabs this way). */
+  private readonly autopilot = new URLSearchParams(location.search).get("autopilot") === "1";
+  /** ?netlog=1: online matches by the numbers (src/net/netLog.ts). */
+  readonly netLog = NetLog.enabled() ? new NetLog() : null;
   private bots() {
     return botMaker(this.params, this.matchNumber, this.stillBots);
   }
@@ -257,6 +262,7 @@ export class Game {
     this.announcedLeaves.clear();
     this.backToRoomAt = 0;
     const me = mode === "local" ? 0 : next instanceof OnlineSession && !next.spectating ? next.you : null;
+    this.netLog?.attach(mode === "online" && next instanceof OnlineSession ? next : null);
     this.update({ mode, paused: false, ended: false, winnerName: null, notice: null, me });
   }
 
@@ -268,7 +274,7 @@ export class Game {
     net.onStart = (setup, you, drive) => {
       const looks = onlineLooks(net, setup.match.players);
       const bot = botMaker(setup.params, this.matchNumber);
-      const sources = new Map<number, InputSource>([[you, new KeyboardSource(0, you)]]);
+      const sources = new Map<number, InputSource>([[you, this.autopilot ? bot(you, DEFAULT_BOT.reactionTicks) : new KeyboardSource(0, you)]]);
       for (const f of drive) if (f !== you) sources.set(f, bot(f, DEFAULT_BOT.reactionTicks));
       this.onlineParams = setup.params;
       this.begin("online", new OnlineSession(setup, you, looks.names, sources, net, net.room, () => net.rttMs), looks);
@@ -287,6 +293,7 @@ export class Game {
       for (const f of fighters) s.takeOver(f, bot(f, DEFAULT_BOT.reactionTicks));
     };
     net.onTick = (t, changes) => {
+      this.netLog?.tickArrived();
       if (this.session instanceof OnlineSession) this.session.receiveTick(t, changes);
     };
     net.onDesync = (step) => {
@@ -396,6 +403,8 @@ export class Game {
     if (session instanceof OnlineSession && this.net.phase === "offline") session.disconnected = true;
     const sim = session.sim;
 
+    const workStart = performance.now();
+    const tickBefore = sim.tick;
     if (this.state.paused) {
       this.accumulator = 0;
     } else if (this.koReplay) {
@@ -442,6 +451,7 @@ export class Game {
         }
       }
     }
+    this.netLog?.frame(now, sim.tick - tickBefore, performance.now() - workStart);
     this.checkEnded(now);
 
     this.smoother.update(dt);
