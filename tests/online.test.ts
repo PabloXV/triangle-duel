@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_PREDICTION, OnlineSession } from "../src/net/onlineSession";
+import { MAX_PREDICTION, OnlineSession, inputDelayFor } from "../src/net/onlineSession";
 import type { MatchSetup } from "../src/net/protocol";
 import { playOnline } from "./onlineHarness";
 import { WINGS_STAGE } from "../src/sim/geometry";
@@ -139,6 +139,15 @@ describe("online rollback (in-process relay + two clients)", () => {
 });
 
 describe("online rollback: responsiveness", () => {
+  it("input delay comes from the ping: 4 steps nearby, more when far, at most 8", () => {
+    expect(inputDelayFor(1)).toBe(4); // localhost
+    expect(inputDelayFor(45)).toBe(4);
+    expect(inputDelayFor(100)).toBe(6);
+    expect(inputDelayFor(240)).toBe(8);
+    expect(inputDelayFor(600)).toBe(8);
+    expect(inputDelayFor(null)).toBe(6); // not measured yet: assume 100 ms
+  });
+
   it("with no input delay, my own input is used on the very next step, with no round-trip delay", () => {
     let mine: Input = NO_INPUT;
     const local: InputSource = { isHuman: true, describe: () => "me", next: () => mine };

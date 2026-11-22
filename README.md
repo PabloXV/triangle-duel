@@ -232,9 +232,12 @@ timeline, so they mean the same on every client: if two clients ever differ,
 the relay tells everyone the exact step (`DESYNC at step N`). Online matches
 can be watched/downloaded after.
 
-- **Input delay (3 steps, ~50 ms),** as in GGPO-style fighting games: what you
-  press at step s takes effect at step s + 3, on every screen including yours,
-  and is sent for that step. It covers part of the trip to the relay, so the
+- **Input delay (4-8 steps, ~67-133 ms, from your ping at match start):**
+  what you press at step s takes effect at step s + delay, on every screen
+  including yours, and is sent for that step. This is a physics game: a wrong
+  guess changes collisions and balance amplifies it, so waiting for real
+  inputs beats guessing; far players wait more and guess far less. Players
+  can have different delays (it only decides which step you schedule for). It covers part of the trip to the relay, so the
   present runs less far ahead: shallower, rarer-to-see corrections (netsim,
   steady link: average correction 2.2 px -> 0.4 px).
 - **Adaptive margin:** the present runs ahead by one round trip (a moving

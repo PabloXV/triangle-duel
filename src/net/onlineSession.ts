@@ -49,6 +49,22 @@ const MARGIN_MIN = 3;
  * rarely late. The cost is that many steps of responsiveness (about 50 ms).
  */
 export const INPUT_DELAY = 3;
+/**
+ * Each player's input delay, from their ping at match start: half a round
+ * trip in steps, plus INPUT_DELAY_BASE, between INPUT_DELAY_MIN and
+ * INPUT_DELAY_MAX. This is a physics game, not a fighting game: a wrong guess
+ * changes collisions, and balancing on a point amplifies small differences,
+ * so waiting for real inputs beats guessing. Far players wait more (their own
+ * presses feel a little later) and guess far less. Players can differ: the
+ * delay only decides which step each player schedules their own inputs for.
+ */
+const INPUT_DELAY_MIN = 4; // ~67 ms
+const INPUT_DELAY_MAX = 8; // ~133 ms
+const INPUT_DELAY_BASE = 3;
+export function inputDelayFor(rttMs: number | null): number {
+  const halfTrip = Math.round((rttMs ?? 100) / 2 / (1000 / 60));
+  return Math.min(INPUT_DELAY_MAX, Math.max(INPUT_DELAY_MIN, halfTrip + INPUT_DELAY_BASE));
+}
 const MARGIN_MAX = 12;
 const MARGIN_RELAX_STEPS = 600;
 /** Until a ping has been measured, assume this round trip. */

@@ -21,7 +21,7 @@ export async function inviteFlow() {
   const copiedShown = await host.p.getByText("link copied!").waitFor({ timeout: 2000 }).then(() => true, () => false);
   check(copiedShown, "room: Copy invite link → copied");
   const link = await host.p.evaluate(() => navigator.clipboard.readText());
-  check(link === `${URL}?join=${code}`, `the invite link is ${link}`);
+  check(link === `${URL.replace(/\/$/, "")}?join=${code}`, `the invite link is ${link} (no "/" before "?")`);
   await shot(host.p, "18-room-invite");
 
   // Someone new (no name yet): asked for a name, then straight into the room.

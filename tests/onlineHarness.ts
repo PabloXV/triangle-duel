@@ -3,7 +3,7 @@
 // player, connected by a fake network. Not a test file itself.
 
 import { BotSource, DEFAULT_BOT, HeuristicBot } from "../src/bots/heuristic";
-import { OnlineSession } from "../src/net/onlineSession";
+import { OnlineSession, inputDelayFor } from "../src/net/onlineSession";
 import { PROTOCOL_VERSION, type MatchSetup, type ServerMsg } from "../src/net/protocol";
 import { RoomCore, type Outgoing } from "../src/net/room";
 import { WINGS_STAGE } from "../src/sim/geometry";
@@ -100,7 +100,7 @@ export function playOnline(opts: {
     };
     const trueRtt = 2 * latencyOf(id) * (1000 / 60);
     const rtt = () => (opts.rttMs ? opts.rttMs(id) : trueRtt);
-    const session = new OnlineSession(mySetup, you, ["A", "B", "bot 1", "bot 2"], sources, transport, "TEST", rtt, opts.inputDelay);
+    const session = new OnlineSession(mySetup, you, ["A", "B", "bot 1", "bot 2"], sources, transport, "TEST", rtt, opts.inputDelay ?? inputDelayFor(rtt()));
     session.clock = () => now * (1000 / 60); // the fake network's time
     sessions.set(id, session);
   }

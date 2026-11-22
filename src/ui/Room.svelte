@@ -29,7 +29,8 @@
   }
 
   // An invite link: opening it joins this room (App.svelte reads ?join=).
-  const inviteUrl = $derived(`${location.origin}${location.pathname}?join=${$net.room}`);
+  // (No "/" before "?" at the site root: same address, looks cleaner when shared.)
+  const inviteUrl = $derived(`${location.origin}${location.pathname === "/" ? "" : location.pathname}?join=${$net.room}`);
   // Phones get the share sheet (Messages, WhatsApp, ...); elsewhere, copy.
   const canShare = typeof navigator.share === "function" && isTouchDevice();
   let copied = $state("");

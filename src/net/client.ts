@@ -96,6 +96,9 @@ export class NetClient implements MatchTransport {
       if (this.eyes) this.send({ type: "eyes", eyes: this.eyes });
       if (this.color !== null) this.send({ type: "color", color: this.color });
       this.pingTimer = setInterval(() => this.ping(), 1000);
+      // Measure right away (a few quick pings): the match's input delay is picked
+      // from the ping when it starts, and that can be soon after joining.
+      for (const ms of [0, 200, 400]) setTimeout(() => this.ws === ws && this.ping(), ms);
       // Back from a hidden tab: forget pings sent before it slept, and measure afresh.
       this.onVisible ??= () => {
         if (document.hidden) return;

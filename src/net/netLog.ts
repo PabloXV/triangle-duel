@@ -137,6 +137,12 @@ export class NetLog {
 
   private flush(now: number) {
     const s = this.session!;
+    if (s.sim.result.over) {
+      // Match over: the present stops while the relay keeps counting; nothing more to learn.
+      this.windowStart = now;
+      this.w = NetLog.emptyWindow();
+      return;
+    }
     const w = this.w;
     const p = s.pacing;
     const secs = (now - this.windowStart) / 1000;

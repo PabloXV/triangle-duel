@@ -15,7 +15,7 @@ import { KeyboardSource, installKeyboard, isTouchDevice } from "./input";
 import { FinalKoReplay, History } from "./koReplay";
 import { NetClient } from "./net/client";
 import { NetLog } from "./net/netLog";
-import { OnlineSession } from "./net/onlineSession";
+import { OnlineSession, inputDelayFor } from "./net/onlineSession";
 import { loadParams } from "./panel";
 import { Renderer } from "./render";
 import { hudIconLoads } from "./hud";
@@ -277,7 +277,8 @@ export class Game {
       const sources = new Map<number, InputSource>([[you, this.autopilot ? bot(you, DEFAULT_BOT.reactionTicks) : new KeyboardSource(0, you)]]);
       for (const f of drive) if (f !== you) sources.set(f, bot(f, DEFAULT_BOT.reactionTicks));
       this.onlineParams = setup.params;
-      this.begin("online", new OnlineSession(setup, you, looks.names, sources, net, net.room, () => net.rttMs), looks);
+      const session = new OnlineSession(setup, you, looks.names, sources, net, net.room, () => net.rttMs, inputDelayFor(net.rttMs));
+      this.begin("online", session, looks);
     };
     // Joined mid-match (or waiting in a full room): watch, caught up to now.
     net.onSpectate = (setup, names, log, next) => {

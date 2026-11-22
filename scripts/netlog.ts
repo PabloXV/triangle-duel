@@ -76,6 +76,7 @@ try {
   }
   for (let n = 0; n < 100 && (await host.locator(".roster .name").count()) < players; n++) await host.waitForTimeout(100);
   console.log(`room ${code}: ${players} players; lag ${lag.join("/")} ms, jitter ${jitter.join("/")} ms (one way); input delay comes from the game`);
+  await host.waitForTimeout(3000); // like real players in the lobby: pings settle (the input delay is picked from the ping)
   await host.getByRole("button", { name: "Start match" }).click();
   for (const p of pages) await p.waitForFunction(() => (window as any).triangleDuel.game.info.mode === "online", undefined, { timeout: 15_000 });
 
