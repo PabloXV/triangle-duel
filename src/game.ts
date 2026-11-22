@@ -122,6 +122,7 @@ export class Game {
     const stage = STAGES[this.matchNumber % STAGES.length].stage;
     const l = attractLineup(this.bots());
     const match = { players: l.sources.length, stocks: 2, shapes: l.shapes, dropIn: true, smartRespawn: true };
+    this.params.idleHop = true; // the menu backdrop always hops (lively)
     this.begin("attract", new LiveSession(stage, this.params, match, l.sources), l.looks);
   }
 
@@ -129,6 +130,7 @@ export class Game {
     this.localSetup = setup;
     const l = localLineup(setup, this.profile, this.bots());
     const match = { ...MATCH_START, players: l.sources.length, stocks: setup.stocks, shapes: l.shapes };
+    this.params.idleHop = setup.hops; // the match setting (the tuning panel can still flip it live)
     this.begin("local", new LiveSession(stageById(setup.stageId).stage, this.params, match, l.sources), l.looks);
   }
 
@@ -186,7 +188,7 @@ export class Game {
     // Everyone's shape, as the relay knows it (validated there; bots' picked by the relay).
     const shapes = net.roster.map((p) => p.shape);
     const match = { ...DEFAULT_MATCH, ...MATCH_START, players: net.roster.length, stocks: net.settings.stocks, shapes };
-    net.start({ stage: stageById(net.settings.stageId).stage, match, params: structuredClone(this.params) });
+    net.start({ stage: stageById(net.settings.stageId).stage, match, params: { ...structuredClone(this.params), idleHop: net.settings.hops } });
   }
 
   /** Set my color (an index into PLAYER_COLORS); also asks the room for it. */

@@ -53,8 +53,8 @@ describe("respawns", () => {
   }
 
   it("smart respawn: above the spawn point farthest from the opponent", () => {
-    // Wings' 4-player spawn points are x = -6, -2, 2, 6; the opponent is at -6.
-    expect(respawnX(true)).toBeCloseTo(6, 0);
+    // Wings' 4-player spawn points are x = -4.5, -1.5, 1.5, 4.5; the opponent is at the far left.
+    expect(respawnX(true)).toBeCloseTo(4.5, 0);
   });
 
   it("without it: above your own spawn point", () => {

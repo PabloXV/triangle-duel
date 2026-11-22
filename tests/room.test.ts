@@ -301,13 +301,14 @@ describe("room: bots", () => {
 });
 
 describe("room: settings and kick", () => {
-  const settings = (stageId: string, stocks: number) => send({ type: "settings", settings: { stageId, stocks } });
+  const settings = (stageId: string, stocks: number, hops: unknown = true) => send({ type: "settings", settings: { stageId, stocks, hops } });
 
   it("everyone sees the room's settings; the host changes them", () => {
     const { room } = roomWith(1);
     room.connect("b");
-    expect(ofType(room.receive("b", hello("b")), "roster")[0].settings).toEqual({ stageId: "wings", stocks: 3 });
-    expect(ofType(room.receive("a", settings("island", 1)), "roster")[0].settings).toEqual({ stageId: "island", stocks: 1 });
+    expect(ofType(room.receive("b", hello("b")), "roster")[0].settings).toEqual({ stageId: "wings", stocks: 3, hops: true });
+    expect(ofType(room.receive("a", settings("island", 1)), "roster")[0].settings).toEqual({ stageId: "island", stocks: 1, hops: true });
+    expect(ofType(room.receive("a", settings("island", 1, false)), "roster")[0].settings.hops).toBe(false);
   });
 
   it("only the host, only in the lobby, and only sane values", () => {
@@ -315,6 +316,7 @@ describe("room: settings and kick", () => {
     expect(room.receive("b", settings("island", 1))[0].msg).toEqual({ type: "error", message: "only the host can change settings" });
     expect(room.receive("a", settings("island", 9))[0].msg).toEqual({ type: "error", message: "malformed message" });
     expect(room.receive("a", settings("Bad Id!", 3))[0].msg).toEqual({ type: "error", message: "malformed message" });
+    expect(room.receive("a", settings("island", 3, "yes"))[0].msg).toEqual({ type: "error", message: "malformed message" });
     const { room: r2 } = started(2);
     expect(r2.receive("a", settings("island", 1))[0].msg).toEqual({ type: "error", message: "can't change settings during a match" });
   });
@@ -349,7 +351,7 @@ describe("room: settings and kick", () => {
     room.receive("a", settings("island", 1));
     room.disconnect("a");
     room.connect("z");
-    expect(ofType(room.receive("z", hello("z")), "roster")[0].settings).toEqual({ stageId: "wings", stocks: 3 });
+    expect(ofType(room.receive("z", hello("z")), "roster")[0].settings).toEqual({ stageId: "wings", stocks: 3, hops: true });
   });
 });
 

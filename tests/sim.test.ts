@@ -102,6 +102,15 @@ describe("auto jump mode", () => {
     expect(views.at(-1)!.ko).toBeNull();
   });
 
+  it("hops off (idleHop: false): with no input you just stand there; a charged jump still works", () => {
+    const NO_HOPS: Partial<Params> = { ...AUTO, idleHop: false };
+    const idle = record(NO_HOPS, 180, () => NO_INPUT);
+    expect(idle.slice(30).every((v) => v.grounded)).toBe(true); // settled, never leaves the ground
+    expect(peakY(idle.slice(30))).toBeLessThan(startY() + 0.05);
+    const full = peakY(record(NO_HOPS, 120, () => ({ turn: 0, charge: true })));
+    expect(full).toBeGreaterThan(startY() + 2);
+  });
+
   it("holding charge plants you, then auto-jumps at full power when the cap is hit", () => {
     const views = record(AUTO, 120, () => ({ turn: 0, charge: true }));
     // Spawned on the ground holding charge: planted while charging...

@@ -26,6 +26,7 @@ export interface Params {
   // jumping
   jumpMode: "auto" | "manual"; // see Sim.applyJump
   hopSpeed: number; // m/s along "up" for an auto-hop
+  idleHop: boolean; // auto mode: hop on every landing when not charging (default true; off: stand still, only charged jumps leave the ground)
   jumpMinSpeed: number; // m/s along "up" for a zero-charge jump
   jumpMaxSpeed: number; // m/s along "up" for a full charge
   jumpChargeTicks: number; // ticks of holding to reach full charge
@@ -55,6 +56,7 @@ export const DEFAULT_PARAMS: Params = {
   airRotationScale: 0.5,
   jumpMode: "auto",
   hopSpeed: 2.3,
+  idleHop: true,
   jumpMinSpeed: 5,
   jumpMaxSpeed: 7.5,
   jumpChargeTicks: 40,
@@ -98,6 +100,7 @@ export const PARAM_META: Record<keyof Params, ParamMeta> & Record<NumKey, { rang
   servoSpeed: { group: "Movement", live: true, range: [0, 15, 0.1], showIf: servo },
   airRotationScale: { group: "Movement", live: true, range: [0, 2, 0.05], showIf: (p) => p.airRotation },
   hopSpeed: { group: "Movement", live: true, range: [0, 15, 0.1], showIf: (p) => p.jumpMode === "auto" },
+  idleHop: { group: "Movement", live: true, showIf: (p) => p.jumpMode === "auto" },
 
   jumpMinSpeed: { group: "Charge jump", live: true, range: [0, 30, 0.5] },
   jumpMaxSpeed: { group: "Charge jump", live: true, range: [0, 40, 0.5] },

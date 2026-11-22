@@ -67,10 +67,10 @@ describe("stocks", () => {
 });
 
 describe("free-for-all", () => {
-  it("4 players spawn evenly spaced across the floor", () => {
+  it("4 players spawn at Wings' 4-player points (on the floor, clear of the wings)", () => {
     const sim = new Sim(WINGS_STAGE, DEFAULT_PARAMS, { players: 4 });
     const feet = sim.view().map((f) => f.vertices[f.footIndex].x);
-    expect(feet.map((x) => Math.round(x))).toEqual([-6, -2, 2, 6]);
+    expect(feet.map((x) => Math.round(x * 2) / 2)).toEqual([-4.5, -1.5, 1.5, 4.5]);
   });
 
   it("4-bot FFA plays out to a single winner", () => {

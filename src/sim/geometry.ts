@@ -84,7 +84,14 @@ export const WINGS_STAGE: Stage = {
     { center: { x: -7, y: 1.85 }, halfWidth: 1.5, halfHeight: 0.15, oneWay: true },
     { center: { x: 7, y: 1.85 }, halfWidth: 1.5, halfHeight: 0.15, oneWay: true },
   ],
-  spawnLine: { minX: -8, maxX: 8, y: 0.001 }, // 2 players: ±4; 4 players: -6, -2, 2, 6
+  spawnLine: { minX: -8, maxX: 8, y: 0.001 },
+  // Everyone drops in from above: the outer spawns stay clear of the wings
+  // (evenly spaced, they landed on a wing's edge and slid off).
+  spawns: {
+    2: [{ x: -4, y: 0.001 }, { x: 4, y: 0.001 }],
+    3: [{ x: -4.5, y: 0.001 }, { x: 0, y: 0.001 }, { x: 4.5, y: 0.001 }],
+    4: [{ x: -4.5, y: 0.001 }, { x: -1.5, y: 0.001 }, { x: 1.5, y: 0.001 }, { x: 4.5, y: 0.001 }],
+  },
   respawnY: 3.5,
   blastZone: { minX: -20, maxX: 20, minY: -8, maxY: 20 },
   camera: { center: { x: 0, y: 2.5 }, width: 22, height: 11 },
@@ -104,6 +111,14 @@ export const OVERPASS_STAGE: Stage = {
     { center: { x: 0, y: 3.45 }, halfWidth: 1.5, halfHeight: 0.15, oneWay: true },
   ],
   spawnLine: { minX: -4.5, maxX: 4.5, y: 0.001 },
+  // Dropping in from above, the floor is mostly covered by the three
+  // platforms: spawn on them, centered (evenly spaced, the 2- and 4-player
+  // spawns landed half off a platform edge; respawns use the 4-player set).
+  spawns: {
+    2: [{ x: -3.6, y: 2.101 }, { x: 3.6, y: 2.101 }],
+    3: [{ x: -3.6, y: 2.101 }, { x: 0, y: 3.601 }, { x: 3.6, y: 2.101 }],
+    4: [{ x: -3.6, y: 2.101 }, { x: -0.75, y: 3.601 }, { x: 0.75, y: 3.601 }, { x: 3.6, y: 2.101 }],
+  },
   respawnY: 5,
   blastZone: { minX: -16, maxX: 16, minY: -8, maxY: 20 },
   camera: { center: { x: 0, y: 2.7 }, width: 20, height: 11 },

@@ -65,7 +65,7 @@ export async function localFlow(page: Page) {
   check((await page.locator("button.me .name").textContent()) === "Pablo", "after reload: name remembered");
   await page.getByRole("button", { name: "Play locally" }).click();
   check((await page.getByRole("button", { name: /Island/ }).getAttribute("aria-pressed")) === "true", "after reload: map choice remembered");
-  check((await page.locator("output").first().textContent()) === "2", "after reload: bot count remembered");
+  check((await page.locator(`output[aria-label="bots"]`).textContent()) === "2", "after reload: bot count remembered");
 
   // 6. Play to the end (idle human vs 2 hard bots, 1 stock), then play again.
   await page.getByRole("button", { name: "Start" }).click();

@@ -26,8 +26,9 @@ export interface LocalSetup {
   stocks: number;
   botLevel: BotLevel;
   secondPlayer: boolean; // a 2nd human on the same keyboard (A/D/S)
+  hops: boolean; // idle hopping (Params.idleHop)
 }
-export const DEFAULT_LOCAL_SETUP: LocalSetup = { stageId: STAGES[0].id, bots: 1, stocks: 3, botLevel: "normal", secondPlayer: false };
+export const DEFAULT_LOCAL_SETUP: LocalSetup = { stageId: STAGES[0].id, bots: 1, stocks: 3, botLevel: "normal", secondPlayer: false, hops: true };
 
 /** You, as set up in the menus. */
 export interface Profile {

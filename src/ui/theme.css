@@ -268,3 +268,18 @@ body {
   color: var(--muted);
   margin: 0;
 }
+
+/* ---- segmented choice (e.g. bot level, hops) ---- */
+.segmented {
+  display: flex;
+}
+.card .segmented button {
+  border-radius: 0;
+  padding: 0.4rem 0.7rem;
+}
+.card .segmented button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.card .segmented button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+}

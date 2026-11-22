@@ -54,7 +54,9 @@ export function applyRotation(ctx: MatchContext, f: Fighter, input: Input) {
 /**
  * Two jump modes, both driven by the one charge button:
  *
- *   "auto":   Not holding: you hop (hopSpeed) every time your foot lands.
+ *   "auto":   Not holding: you hop (hopSpeed) every time your foot lands,
+ *             unless idleHop is off (then you just stand: only charged
+ *             jumps leave the ground; a match setting, "Hops").
  *             Holding: the next landing plants you instead and you charge.
  *             Releasing jumps at the current charge; reaching full charge
  *             jumps automatically. Losing your footing (past coyote time)
@@ -90,7 +92,7 @@ export function applyJump(ctx: MatchContext, f: Fighter, input: Input) {
   } else if (s.ticksSinceGrounded === 0) {
     // Just landed (or still standing) and not yet charging.
     if (input.charge) s.charging = true;
-    else launch(ctx, f, p.hopSpeed);
+    else if (p.idleHop !== false) launch(ctx, f, p.hopSpeed); // (missing in old recordings: on)
   }
   s.chargeWasHeld = input.charge;
 }

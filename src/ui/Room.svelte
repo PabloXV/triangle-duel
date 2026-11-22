@@ -2,13 +2,13 @@
   // A room before (and between) matches: who's here and the settings. The host
   // changes settings, adds bots, kicks, and starts; everyone else waits.
   import type { NetClient } from "../net/client";
-  import { MAX_PLAYERS, MAX_STOCKS } from "../net/protocol";
+  import { MAX_PLAYERS } from "../net/protocol";
   import { playerColor } from "../theme";
   import { isTouchDevice } from "../input";
   import ColorPicker from "./ColorPicker.svelte";
   import Panel from "./Panel.svelte";
   import FighterIcon from "./FighterIcon.svelte";
-  import MapPicker from "./MapPicker.svelte";
+  import MatchSettings from "./MatchSettings.svelte";
   import Stepper from "./Stepper.svelte";
 
   let { net, onStart, onLeave, onColor }: { net: NetClient; onStart: () => void; onLeave: () => void; onColor: (color: number) => void } = $props();
@@ -108,13 +108,7 @@
     </section>
   {/if}
 
-  <section>
-    <div class="section-head">
-      <p class="label">Match{host ? "" : " (the host decides)"}</p>
-      <span class="bots"><span class="label">Stocks</span><Stepper value={$net.settings.stocks} min={1} max={MAX_STOCKS} label="stocks" disabled={!host} onChange={(stocks) => net.setSettings({ ...$net.settings, stocks })} /></span>
-    </div>
-    <MapPicker value={$net.settings.stageId} disabled={!host} onPick={(stageId) => host && net.setSettings({ ...$net.settings, stageId })} />
-  </section>
+  <MatchSettings value={$net.settings} disabled={!host} label={host ? "Match" : "Match (the host decides)"} onChange={(s) => host && net.setSettings(s)} />
 
   {#snippet footer()}
     <button onclick={onLeave}>Leave room</button>

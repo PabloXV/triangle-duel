@@ -22,6 +22,23 @@ describe("stages", () => {
         for (const p of spawnPoints(stage, n)) expect(standing(stage, p), `spawn ${JSON.stringify(p)}`).toBe("ok");
       });
 
+  // Everyone drops in from above (and respawns at the 4-player points): the
+  // whole fighter must land on one platform, clear of its edges, or it lands on
+  // a corner and slides off.
+  for (const { id, stage } of STAGES)
+    it(`${id}: dropping in at any spawn (2-4 players), the whole fighter lands on one platform, 0.1 m+ from its edges`, () => {
+      const half = DEFAULT_PARAMS.triWidth / 2;
+      for (const n of [2, 3, 4])
+        for (const p of spawnPoints(stage, n)) {
+          const [lo, hi] = [p.x - half, p.x + half];
+          const hit = stage.platforms
+            .filter((pl) => hi > pl.center.x - pl.halfWidth && lo < pl.center.x + pl.halfWidth)
+            .sort((a, b) => b.center.y + b.halfHeight - (a.center.y + a.halfHeight))[0];
+          const room = hit ? Math.min(lo - (hit.center.x - hit.halfWidth), hit.center.x + hit.halfWidth - hi) : -1;
+          expect(room, `${n} players, spawn x=${p.x}`).toBeGreaterThanOrEqual(0.1);
+        }
+    });
+
   it.each(STAGES.map((s) => s.id))("%s: a 4-bot match runs, and nobody is KO'd in the first second", (id) => {
     const stage = STAGES.find((s) => s.id === id)!.stage;
     const sim = new Sim(stage, DEFAULT_PARAMS, { players: 4, stocks: 2 });

@@ -99,12 +99,18 @@ export const DEFAULT_BOT: BotConfig = {
 
 export type BotMode = "move" | "brake" | "attack" | "recover" | "climb" | "drop";
 
+/** Hops off: a step holds charge this many ticks (the smallest jump), then waits STEP_GAP; only when leaning at least STEP_MIN_LEAN (rad) toward somewhere. */
+const STEP_HOLD = 4;
+const STEP_GAP = 24;
+const STEP_MIN_LEAN = 0.05;
+
 export class HeuristicBot {
   private history: FighterView[][] = [];
   private rng: () => number;
   private chargeHeldTicks = 0;
   private cooldown = 0; // ticks before the next attack is allowed
   private turn: Input["turn"] = 0; // current turn input (kept between ticks for hysteresis and hold)
+  private stepTimer = 0; // hops off: ticks left in the current step (hold charge, then release and wait)
   /** What the bot is doing, for the debug overlay. */
   mode: BotMode = "move";
 
@@ -186,6 +192,18 @@ export class HeuristicBot {
         desiredLean = leanForSpeed(me, targetVx, c);
       }
     }
+
+    // Hops off (the match setting): standing still is standing still, so to
+    // travel, step: a short charge (the smallest jump), released while leaning
+    // the way we want to go, then a pause, like a hop but bigger.
+    if (params.idleHop === false && !charge && (this.mode === "move" || this.mode === "brake" || this.mode === "drop")) {
+      const wantToMove = Math.abs(desiredLean) > STEP_MIN_LEAN;
+      if (this.stepTimer === 0 && wantToMove && me.grounded) this.stepTimer = STEP_HOLD + STEP_GAP;
+      if (this.stepTimer > 0) {
+        charge = this.stepTimer > STEP_GAP; // hold, then release (= jump) and wait
+        this.stepTimer--;
+      }
+    } else this.stepTimer = 0;
 
     return { turn: this.steer(me, desiredLean), charge };
   }

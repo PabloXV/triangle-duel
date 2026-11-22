@@ -1,9 +1,10 @@
 <script lang="ts">
-  // Set up a match on this machine: map, bots, stocks, difficulty, 2nd player.
+  // Set up a match on this machine: the match rules (shared with the online
+  // room: MatchSettings), bots, difficulty, 2nd player.
   import { untrack } from "svelte";
   import type { BotLevel, LocalSetup } from "../lineup";
   import { isTouchDevice } from "../input";
-  import MapPicker from "./MapPicker.svelte";
+  import MatchSettings, { type MatchRules } from "./MatchSettings.svelte";
   import Stepper from "./Stepper.svelte";
   import Panel from "./Panel.svelte";
 
@@ -11,9 +12,8 @@
 
   // The form starts from `initial` once; later changes to the prop don't reset it.
   const init = untrack(() => initial);
-  let stageId = $state(init.stageId);
+  let rules = $state<MatchRules>({ stageId: init.stageId, stocks: init.stocks, hops: init.hops ?? true });
   let bots = $state(init.bots);
-  let stocks = $state(init.stocks);
   let botLevel = $state<BotLevel>(init.botLevel);
   // A second player needs a keyboard: not offered on touch screens.
   const touchScreen = isTouchDevice();
@@ -28,15 +28,12 @@
   });
 
   function start() {
-    onStart({ stageId, bots, stocks, botLevel, secondPlayer });
+    onStart({ ...rules, bots, botLevel, secondPlayer });
   }
 </script>
 
 <Panel size="wide" title="Play locally">
-  <section>
-    <p class="label">Map</p>
-    <MapPicker value={stageId} onPick={(id) => (stageId = id)} />
-  </section>
+  <MatchSettings value={rules} onChange={(r) => (rules = r)} />
 
   <div class="row">
     <section>
@@ -50,10 +47,6 @@
           <button class:selected={botLevel === level} onclick={() => (botLevel = level)} aria-pressed={botLevel === level}>{level}</button>
         {/each}
       </div>
-    </section>
-    <section>
-      <p class="label">Stocks</p>
-      <Stepper bind:value={stocks} min={1} max={5} label="stocks" />
     </section>
   </div>
 
@@ -80,19 +73,6 @@
   }
   .label {
     margin-bottom: 0.4rem;
-  }
-  .segmented {
-    display: flex;
-  }
-  .segmented button {
-    border-radius: 0;
-    padding: 0.4rem 0.7rem;
-  }
-  .segmented button:first-child {
-    border-radius: var(--radius) 0 0 var(--radius);
-  }
-  .segmented button:last-child {
-    border-radius: 0 var(--radius) var(--radius) 0;
   }
   .check {
     display: flex;

@@ -17,7 +17,7 @@ import type { FighterShape, Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { MatchOptions } from "../sim/sim";
 
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 export const MAX_PLAYERS = 4;
 /** Spectators per room (watching a match, or waiting for a free seat). */
 export const MAX_SPECTATORS = 8;
@@ -41,9 +41,10 @@ export interface MatchSetup {
 export interface RoomSettings {
   stageId: string; // see src/stages.ts
   stocks: number;
+  hops: boolean; // idle hopping on (fighters hop whenever they land) or off (they stand; only charged jumps): Params.idleHop
 }
 
-export const DEFAULT_ROOM_SETTINGS: RoomSettings = { stageId: "wings", stocks: 3 };
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = { stageId: "wings", stocks: 3, hops: true };
 export const MAX_STOCKS = 5;
 
 export interface RosterEntry {
@@ -154,7 +155,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       const s = m.settings;
       if (!isObj(s) || typeof s.stageId !== "string" || !/^[a-z0-9-]{1,24}$/.test(s.stageId)) return null;
       if (!isInt(s.stocks) || s.stocks < 1 || s.stocks > MAX_STOCKS) return null;
-      return { type: "settings", settings: { stageId: s.stageId, stocks: s.stocks } };
+      if (typeof s.hops !== "boolean") return null;
+      return { type: "settings", settings: { stageId: s.stageId, stocks: s.stocks, hops: s.hops } };
     }
     case "kick":
       return isInt(m.slot) && m.slot >= 0 ? { type: "kick", slot: m.slot } : null;
