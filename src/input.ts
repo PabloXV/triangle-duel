@@ -55,33 +55,37 @@ export function installKeyboard(onKey: (code: string) => void) {
   });
 }
 
-function readInput(player: number): Input {
-  const b = BINDINGS[player];
-  const t = player === 0 ? touch : { left: false, right: false, charge: false };
-  const turn = (held.has(b.right) || t.right ? 1 : 0) - (held.has(b.left) || t.left ? 1 : 0);
-  return { turn: turn as Input["turn"], charge: held.has(b.charge) || t.charge };
+/** Input from any of `bindings` (keys held on either count); binding 0 also takes the touch controls. */
+function readInput(bindings: number[]): Input {
+  const t = bindings.includes(0) ? touch : { left: false, right: false, charge: false };
+  const any = (key: "left" | "right" | "charge") => t[key] || bindings.some((i) => held.has(BINDINGS[i][key]));
+  const turn = (any("right") ? 1 : 0) - (any("left") ? 1 : 0);
+  return { turn: turn as Input["turn"], charge: any("charge") };
 }
 
 /**
- * A player driven by keyboard binding `binding` (0 = arrows, 1 = A/D/S),
- * controlling fighter `fighter`. Binding 0 also takes the touch controls; with
- * the touch stick, the turn comes from StickController (speed / aim), unless
- * an arrow key is held.
+ * A player driven by keyboard binding `binding` (0 = arrows, 1 = A/D/S, or a
+ * list: online, you get both), controlling fighter `fighter`. Binding 0 also
+ * takes the touch controls; with the touch stick, the turn comes from
+ * StickController (speed / aim), unless a turn key is held.
  */
 export class KeyboardSource implements InputSource {
   readonly isHuman = true;
   private stick = new StickController();
+  private bindings: number[];
   constructor(
-    private binding: number,
+    binding: number | number[],
     private fighter: number,
-  ) {}
+  ) {
+    this.bindings = typeof binding === "number" ? [binding] : binding;
+  }
   describe() {
     return "human";
   }
   next(view: FighterView[]): Input {
-    const input = readInput(this.binding);
+    const input = readInput(this.bindings);
     const me = view[this.fighter];
-    if (this.binding === 0 && touch.stickX !== null && input.turn === 0 && me && !me.ko) {
+    if (this.bindings.includes(0) && touch.stickX !== null && input.turn === 0 && me && !me.ko) {
       input.turn = this.stick.next(me, touch.stickX, input.charge);
     } else this.stick.reset();
     return input;

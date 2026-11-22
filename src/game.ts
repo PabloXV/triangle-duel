@@ -15,6 +15,7 @@ import { KeyboardSource, installKeyboard, isTouchDevice } from "./input";
 import { FinalKoReplay, History } from "./koReplay";
 import { NetClient } from "./net/client";
 import { NetLog } from "./net/netLog";
+import { decodeInput } from "./sim/inputCodec";
 import { OnlineSession, inputDelayFor } from "./net/onlineSession";
 import { loadParams } from "./panel";
 import { Renderer } from "./render";
@@ -156,6 +157,8 @@ export class Game {
       hudIconLoads: hudIconLoads(),
       grounded: sim.view().map((f) => f.grounded),
       lastInputs: (this.session as { lastInputs?: unknown }).lastInputs ?? null,
+      // Online: the input my fighter used in the newest simulated step.
+      myOnlineInput: this.session instanceof OnlineSession && this.session.you >= 0 ? decodeInput(this.session.lastStepInputs[this.session.you] ?? "0") : null,
       charge: sim.view().map((f) => f.charge),
       positions: sim.view().map((f) => ({ x: f.x, y: f.y, vx: f.vx })),
       camera: this.lastCamera,
@@ -274,7 +277,7 @@ export class Game {
     net.onStart = (setup, you, drive) => {
       const looks = onlineLooks(net, setup.match.players);
       const bot = botMaker(setup.params, this.matchNumber);
-      const sources = new Map<number, InputSource>([[you, this.autopilot ? bot(you, DEFAULT_BOT.reactionTicks) : new KeyboardSource(0, you)]]);
+      const sources = new Map<number, InputSource>([[you, this.autopilot ? bot(you, DEFAULT_BOT.reactionTicks) : new KeyboardSource([0, 1], you)]]); // online: arrows or A/D/S
       for (const f of drive) if (f !== you) sources.set(f, bot(f, DEFAULT_BOT.reactionTicks));
       this.onlineParams = setup.params;
       const session = new OnlineSession(setup, you, looks.names, sources, net, net.room, () => net.rttMs, inputDelayFor(net.rttMs));
@@ -380,7 +383,7 @@ export class Game {
     const s = this.session;
     // On a touch screen the on-screen buttons are the hint.
     if (this.touchScreen) return s instanceof OnlineSession && s.spectating ? ["spectating"] : [];
-    if (s instanceof OnlineSession) return s.spectating ? ["spectating · Esc to leave"] : [`you (P${s.you + 1}): ${KEYS[0]}`];
+    if (s instanceof OnlineSession) return s.spectating ? ["spectating · Esc to leave"] : [`you (P${s.you + 1}): ←/→ or A/D rotate, ↓ or S charge`];
     const players = Array.from({ length: s.sim.match.players }, (_, i) => i);
     return players.filter((i) => s.isHuman(i)).map((i) => `${this.looks.names[i] ?? `P${i + 1}`}: ${KEYS[i]}`);
   }

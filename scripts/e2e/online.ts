@@ -70,7 +70,11 @@ export async function onlineFlow() {
   check(String(ic.status).startsWith("SPECTATING"), `Cy is spectating ("${ic.status}")`);
   await shot(cy, "9b-spectating");
   await ana.keyboard.down("ArrowRight");
-  await bo.keyboard.down("ArrowRight");
+  await bo.keyboard.down("KeyD"); // online takes A/D/S too
+  await bo.waitForFunction(() => (window as any).triangleDuel.game.info.tick > 200, null, { timeout: 10_000 }); // past the countdown
+  await bo.waitForTimeout(300);
+  const boInput = (await info(bo)).myOnlineInput;
+  check(boInput?.turn === 1, `online: holding D turns right (Bo's input ${JSON.stringify(boInput)})`);
   await ana.locator("button.code").waitFor({ timeout: 60_000 });
   await bo.locator("button.code").waitFor({ timeout: 10_000 });
   await cy.locator("button.code").waitFor({ timeout: 10_000 });
@@ -78,6 +82,7 @@ export async function onlineFlow() {
   await ana.waitForTimeout(300);
   check(JSON.stringify(await rosterNames(ana)) === JSON.stringify(["Ana", "bot 1", "Bo", "Cy"]), `the spectator got a seat: ${await rosterNames(ana)}`);
   await ana.keyboard.up("ArrowRight");
+  await bo.keyboard.up("KeyD");
   await bo.keyboard.up("ArrowRight");
 
   // Second match: Ana (host) leaves mid-match. Bo inherits host and the bot.
