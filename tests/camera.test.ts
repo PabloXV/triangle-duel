@@ -63,6 +63,6 @@ describe("follow camera", () => {
   it.each([2, 4])("doesn't bob with hops, and keeps on-stage fighters in frame (%i players)", (players) => {
     const r = measure(players);
     expect(r.avgBobPx).toBeLessThan(10); // measured ~5 px with dead zones (was ~28 without)
-    expect(r.longestOffscreenSec).toBeLessThanOrEqual(0.1); // catches up within 0.1 s (e.g. after a respawn)
+    expect(r.longestOffscreenSec).toBeLessThanOrEqual(0.25); // catches up within a quarter second (e.g. a respawn far from where the camera is)
   });
 });

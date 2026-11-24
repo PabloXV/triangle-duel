@@ -13,6 +13,9 @@ await initPhysics();
  * real physics; count how many land, upright, on platform `to`. More = easier.
  * (Wings' wings, the reference "takes a decent charge" jump, score ~10.)
  */
+// Time windows scale with how slow the physics runs (sqrt of gravity, relative to the 10.5 it was tuned at).
+const SLOW = Math.sqrt(10.5 / DEFAULT_PARAMS.gravity);
+
 function ease(stage: Stage, from: number, x: number, to: number): number {
   const top = (i: number) => stage.platforms[i].center.y + stage.platforms[i].halfHeight;
   const target = stage.platforms[to];
@@ -21,12 +24,12 @@ function ease(stage: Stage, from: number, x: number, to: number): number {
     for (let charge = 0; charge <= 42; charge += 6) {
       const sim = new Sim({ ...stage, spawns: { 1: [{ x, y: top(from) + 0.001 }] } }, DEFAULT_PARAMS, { players: 1, stocks: 1 });
       const ctl = new StickController();
-      for (let t = 0; t < 40; t++) sim.step([{ turn: 0, charge: false }]);
+      for (let t = 0; t < 40 * SLOW; t++) sim.step([{ turn: 0, charge: false }]);
       let left = false;
-      for (let t = 0; t < 150; t++) {
+      for (let t = 0; t < 150 * SLOW; t++) {
         const f = sim.view()[0];
         if (f.ko) break;
-        const holding = t < 12 + charge; // pull down (plants on the next landing), hold, release
+        const holding = t < 12 * SLOW + charge; // pull down (plants on the next landing), hold, release
         sim.step([{ turn: holding ? ctl.next(f, aim, true) : 0, charge: holding && charge > 0 }]);
         const g = sim.view()[0];
         const foot = g.vertices[g.footIndex];

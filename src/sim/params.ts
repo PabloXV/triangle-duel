@@ -41,7 +41,7 @@ export interface Params {
 }
 
 export const DEFAULT_PARAMS: Params = {
-  gravity: 10.5,
+  gravity: 5.25, // was 10.5; halved, with jump and hop speeds × √0.5 (2.3, 5, 7.5 before): same jump heights, slower and floatier, so more forgiving (online too)
   triWidth: 1.25,
   triHeight: 1.2,
   density: 1.0,
@@ -55,10 +55,10 @@ export const DEFAULT_PARAMS: Params = {
   airRotation: true,
   airRotationScale: 0.5,
   jumpMode: "auto",
-  hopSpeed: 2.3,
+  hopSpeed: 1.6,
   idleHop: true,
-  jumpMinSpeed: 5,
-  jumpMaxSpeed: 7.5,
+  jumpMinSpeed: 3.5,
+  jumpMaxSpeed: 5.3,
   jumpChargeTicks: 40,
   footTolerance: 0.05,
   coyoteTicks: 6,

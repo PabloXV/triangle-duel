@@ -76,7 +76,7 @@ export const FLAT_STAGE: Stage = {
 /**
  * Wide main platform (16 m) plus two one-way wing platforms up and out at the
  * sides, overhanging the edges a bit. A wing top at 2 m needs roughly a
- * 60% charge to reach at gravity 10.5 / jumpMaxSpeed 7.5.
+ * 60% charge to reach (jump heights stayed the same when gravity was halved to 5.25).
  */
 export const WINGS_STAGE: Stage = {
   platforms: [

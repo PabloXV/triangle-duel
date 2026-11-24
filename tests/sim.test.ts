@@ -92,7 +92,7 @@ describe("auto jump mode", () => {
   const cap = DEFAULT_PARAMS.jumpChargeTicks;
 
   it("with no input, hops repeatedly, small hops, and stays alive", () => {
-    const views = record(AUTO, 180, () => NO_INPUT);
+    const views = record(AUTO, Math.round(180 * Math.sqrt(10.5 / DEFAULT_PARAMS.gravity)), () => NO_INPUT); // 3 s at the gravity it was tuned for, scaled for slow-mo
     // The hop fires on the landing tick, so `grounded` is never visible after a
     // step. Count takeoffs instead: local minima of the foot's height.
     const footY = views.map((v) => v.vertices[v.footIndex].y);

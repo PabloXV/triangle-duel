@@ -41,7 +41,7 @@ describe("touch stick: moving sets your speed", () => {
   });
 
   it("let go to center: brakes to a stop and stays upright", () => {
-    const { trace, ko } = run((t) => ({ x: t < 60 ? 1 : 0, charge: false }), 150);
+    const { trace, ko } = run((t) => ({ x: t < 60 ? 1 : 0, charge: false }), 60 + Math.round((90 * 10.5) / DEFAULT_PARAMS.gravity)); // 1.5 s to brake at gravity 10.5; lower gravity = less friction, so braking takes longer (same distance)
     expect(ko).toBeNull();
     const end = trace.slice(-30);
     console.log(`after braking: speed ${avg(end.map((p) => p.vx)).toFixed(2)} m/s, lean ${avg(end.map((p) => p.angle)).toFixed(2)} rad`);
