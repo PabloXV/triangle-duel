@@ -76,9 +76,17 @@
     screen = "room";
   }
 
+  /** The room as it is now (settings, bots), to remember or to carry over. */
+  const currentSetup = (): RoomSetup => ({ settings: $net.settings, bots: $net.roster.filter((p) => p.bot).map((p) => p.level ?? "normal") });
+
+  /** Offline room: try the server again, keeping the bots and settings. */
+  function retry() {
+    net.connect(randomRoomCode(), name, currentSetup());
+  }
+
   /** Host: start (and remember this setup for the next room). */
   function start() {
-    saveJSON(KEYS.roomSetup, { settings: $net.settings, bots: $net.roster.filter((p) => p.bot).map((p) => p.level ?? "normal") } satisfies RoomSetup);
+    saveJSON(KEYS.roomSetup, currentSetup());
     game.playRoom();
     if (game.current.mode === "local") screen = "game"; // (online, the screen follows the relay: the match starts when it says so)
   }
@@ -201,7 +209,7 @@
   {:else if screen === "join"}
     <JoinRoom {net} {name} onBack={leaveRoom} />
   {:else if screen === "room"}
-    <Room {net} onStart={start} onLeave={leaveRoom} onColor={setColor} />
+    <Room {net} onStart={start} onLeave={leaveRoom} onColor={setColor} onRetry={retry} />
   {:else if screen === "game"}
     <InGame {game} gs={$game} bind:menuOpen onLeave={leave} />
   {/if}

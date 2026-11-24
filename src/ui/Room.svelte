@@ -4,7 +4,7 @@
   // removes bots and kicks players, changes the settings, and starts; everyone
   // else waits. Just you and bots: the match runs on this machine; anyone else
   // here: online, through the relay (Game.playRoom).
-  import type { NetClient } from "../net/client";
+  import { RELAY_URL, type NetClient } from "../net/client";
   import { BOT_LEVELS, MAX_PLAYERS, type BotLevel } from "../net/protocol";
   import { playerColor } from "../theme";
   import { isTouchDevice } from "../input";
@@ -13,7 +13,13 @@
   import FighterIcon from "./FighterIcon.svelte";
   import MatchSettings from "./MatchSettings.svelte";
 
-  let { net, onStart, onLeave, onColor }: { net: NetClient; onStart: () => void; onLeave: () => void; onColor: (color: number) => void } = $props();
+  let {
+    net,
+    onStart,
+    onLeave,
+    onColor,
+    onRetry,
+  }: { net: NetClient; onStart: () => void; onLeave: () => void; onColor: (color: number) => void; onRetry: () => void } = $props();
 
   const me = $derived($net.roster.find((p) => p.slot === $net.slot));
   /** One row per seat, by slot (fighter order), empty seats included, so adding a bot never moves anything. */
@@ -59,8 +65,11 @@
       {#if connecting}
         <h2>Opening a room…</h2>
       {:else if $net.local}
-        <h2>Room</h2>
-        <span class="hint offline">Offline: couldn't reach the server, so it's just you and bots.</span>
+        <h2>Offline room</h2>
+        <button class="primary" onclick={onRetry}>Try again</button>
+        <p class="offline" role="alert">
+          Couldn't reach the server ({RELAY_URL}), so there's no code to share and friends can't join. You can still play the bots.
+        </p>
       {:else}
         <h2>Room <button class="code" onclick={() => copy($net.room, "code copied!")} title="Copy the room code">{$net.room}</button></h2>
         <span class="invite-wrap">
@@ -151,6 +160,12 @@
   }
   .offline {
     flex-basis: 100%;
+    margin: 0;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius);
+    border: 2px solid var(--accent);
+    color: var(--halo);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
   }
   :global(.card) .code {
     font: 400 1.6rem var(--font-label);
