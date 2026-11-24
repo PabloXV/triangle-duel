@@ -1,34 +1,25 @@
 // Who's in a match: the input source driving each fighter, their shapes (part
 // of the sim), and their looks (names, eye styles, colors: presentation only).
-// Built here for local play and the bot match behind the menus; online, the
-// room decides (the relay's roster), see onlineLooks.
+// Built here for matches on this machine (a room with just you and bots: roomLineup)
+// and the bot match behind the menus; online, every client builds the looks
+// from the room's roster (onlineLooks).
 
 import { BotSource, DEFAULT_BOT, HeuristicBot } from "./bots/heuristic";
 import { randomBotShape } from "./bots/shapes";
 import { KeyboardSource } from "./input";
 import { EYE_STYLES } from "./look/eyes";
 import type { NetClient } from "./net/client";
+import type { BotLevel, RosterEntry } from "./net/protocol";
 import type { InputSource } from "./session";
 import type { FighterShape } from "./sim/geometry";
 import type { Params } from "./sim/params";
-import { STAGES } from "./stages";
 import { assignColors } from "./theme";
 
-export type BotLevel = "easy" | "normal" | "hard";
+export type { BotLevel } from "./net/protocol";
 /** Bot reaction delay (ticks) per difficulty. */
-const BOT_REACTION: Record<BotLevel, number> = { easy: 24, normal: 12, hard: 4 };
+export const BOT_REACTION: Record<BotLevel, number> = { easy: 24, normal: 12, hard: 4 };
 /** The bots behind the menus. */
 const ATTRACT_REACTION = 12;
-
-export interface LocalSetup {
-  stageId: string;
-  bots: number; // 1–3 (fewer if a second player joins)
-  stocks: number;
-  botLevel: BotLevel;
-  secondPlayer: boolean; // a 2nd human on the same keyboard (A/D/S)
-  hops: boolean; // idle hopping (Params.idleHop)
-}
-export const DEFAULT_LOCAL_SETUP: LocalSetup = { stageId: STAGES[0].id, bots: 1, stocks: 3, botLevel: "normal", secondPlayer: false, hops: true };
 
 /** You, as set up in the menus. */
 export interface Profile {
@@ -71,22 +62,16 @@ export function randomEyes(): number {
 }
 
 /**
- * A local match: you (P1, arrow keys), maybe a 2nd keyboard player, then bots.
- * You get your shape, eyes and color; a 2nd player the defaults; bots random
- * shapes and eyes; everyone else the first free colors.
+ * A match on this machine from a room's roster (you and bots: online matches
+ * go through the relay instead). Fighter i = the i-th seat, as online. You
+ * play with the arrow keys or A/D/S; bots play at their level. Shapes, eyes
+ * and colors are the room's.
  */
-export function localLineup(setup: LocalSetup, me: Profile, bot: BotMaker): Lineup {
-  const humans = setup.secondPlayer ? 2 : 1;
-  const players = humans + setup.bots;
-  const isBot = (i: number) => i >= humans;
+export function roomLineup(roster: RosterEntry[], bot: BotMaker): Lineup {
   return {
-    sources: Array.from({ length: players }, (_, i) => (isBot(i) ? bot(i, BOT_REACTION[setup.botLevel]) : new KeyboardSource(i, i))),
-    shapes: Array.from({ length: players }, (_, i) => (i === 0 ? me.shape : isBot(i) ? randomBotShape(Math.random) : null)),
-    looks: {
-      names: Array.from({ length: players }, (_, i) => (i === 0 ? me.name : isBot(i) ? `bot ${i - humans + 1}` : "player 2")),
-      eyes: Array.from({ length: players }, (_, i) => (i === 0 ? me.eyes : isBot(i) ? randomEyes() : 0)),
-      colors: assignColors(players, [me.color]),
-    },
+    sources: roster.map((p, i) => (p.bot ? bot(i, BOT_REACTION[p.level ?? "normal"]) : new KeyboardSource([0, 1], i))),
+    shapes: roster.map((p) => p.shape),
+    looks: { names: roster.map((p) => p.name), eyes: roster.map((p) => p.eyes), colors: roster.map((p) => p.color) },
   };
 }
 

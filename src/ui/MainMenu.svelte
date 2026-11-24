@@ -1,5 +1,6 @@
 <script lang="ts">
-  // The title screen: your fighter (tap it to edit), then where to play.
+  // The title screen: your fighter (tap it to edit), Play (opens a room: add
+  // bots, or invite friends), or join a friend's room by its code.
   import type { FighterShape } from "../sim/geometry";
   import { playerColor } from "../theme";
   import FighterIcon from "./FighterIcon.svelte";
@@ -9,16 +10,18 @@
     shape,
     eyes,
     color,
-    onLocal,
-    onOnline,
+    notice = null,
+    onPlay,
+    onJoin,
     onCustomize,
   }: {
     name: string;
     shape: FighterShape | null;
     eyes: number;
     color: number;
-    onLocal: () => void;
-    onOnline: () => void;
+    notice?: string | null;
+    onPlay: () => void;
+    onJoin: () => void;
     onCustomize: () => void;
   } = $props();
 </script>
@@ -32,13 +35,18 @@
       <span class="edit">Edit fighter</span>
     </span>
   </button>
+  {#if notice}<p class="notice" role="alert">{notice}</p>{/if}
   <div class="stack">
-    <button class="primary" onclick={onLocal}>Play locally</button>
-    <button onclick={onOnline}>Play online</button>
+    <button class="primary" onclick={onPlay}>Play</button>
+    <button onclick={onJoin}>Join a room</button>
   </div>
 </section>
 
 <style>
+  .notice {
+    color: var(--accent);
+    margin: 0 0 1rem;
+  }
   :global(.card) button.me {
     display: flex;
     align-items: center;

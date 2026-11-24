@@ -5,8 +5,8 @@ import { check, enterName, info, NAME_FIELD, shot } from "./lib";
 
 export async function customizeFlow(page: Page) {
   if (await page.getByLabel(NAME_FIELD).isVisible().catch(() => false)) await enterName(page, "Pablo");
-  await page.keyboard.press("Escape").catch(() => {});
-  if (await page.getByRole("button", { name: "Menu" }).isVisible().catch(() => false)) await page.getByRole("button", { name: "Menu" }).click();
+  // From wherever the last flow left off (mid-match, in a room): a fresh page, on the menu.
+  if (!(await page.getByRole("button", { name: "edit your fighter" }).isVisible().catch(() => false))) await page.goto(page.url());
   await page.getByRole("button", { name: "edit your fighter" }).click();
   const handle = (name: string) => page.getByRole("slider", { name });
   const center = async (name: string) => {
@@ -60,8 +60,9 @@ export async function customizeFlow(page: Page) {
   await page.getByRole("button", { name: "Back" }).click();
 
   // 4. In a local match, my fighter has that shape, at the standard fighter's mass (area).
-  await page.getByRole("button", { name: "Play locally" }).click();
-  await page.getByRole("button", { name: "Start" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await page.locator(".roster .name", { hasText: "bot" }).first().waitFor({ timeout: 10_000 });
+  await page.getByRole("button", { name: "Start", exact: true }).click();
   await page.waitForTimeout(300);
   const { shapes } = await info(page);
   const [mine, bot] = shapes;
@@ -73,5 +74,6 @@ export async function customizeFlow(page: Page) {
   check(look.colors[0] === 7 && new Set(look.colors).size === look.colors.length, `in the match: I'm Sky, everyone has a different color (${JSON.stringify(look.colors)})`);
   await shot(page, "13-custom-in-game");
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Leave to menu" }).click();
+  await page.getByRole("button", { name: "Back to room" }).click();
+  await page.getByRole("button", { name: "Leave", exact: true }).click();
 }

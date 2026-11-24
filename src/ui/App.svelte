@@ -3,26 +3,26 @@
   // The menus around the game. The game itself (canvas, sim, netcode) is plain
   // TypeScript in src/game.ts; screens only call its small API.
   import type { Game } from "../game";
-  import { DEFAULT_LOCAL_SETUP, type LocalSetup } from "../lineup";
   import type { FighterShape } from "../sim/geometry";
   import { shapeIssue } from "../sim/shapes";
   import { eyeStyle } from "../look/eyes";
   import { colorIndex } from "../theme";
   import { KEYS, load, loadJSON, save, saveJSON } from "../storage";
-  import { ROOM_CODE } from "../net/protocol";
+  import { BOT_LEVELS, DEFAULT_ROOM_SETTINGS, MAX_STOCKS, ROOM_CODE, randomRoomCode, type BotLevel } from "../net/protocol";
+  import type { RoomSetup } from "../net/client";
+  import { stageById } from "../stages";
   import InGame from "./InGame.svelte";
-  import LocalSetupScreen from "./LocalSetup.svelte";
   import MainMenu from "./MainMenu.svelte";
   import CustomizeScreen from "./CustomizeScreen.svelte";
   import NameScreen from "./NameScreen.svelte";
-  import OnlineMenu from "./OnlineMenu.svelte";
+  import JoinRoom from "./JoinRoom.svelte";
   import Room from "./Room.svelte";
 
   let { game }: { game: Game } = $props();
 
   const savedName = load(KEYS.name) ?? "";
   let name = $state(savedName);
-  type Screen = "name" | "menu" | "local" | "online" | "room" | "game" | "customize";
+  type Screen = "name" | "menu" | "join" | "room" | "game" | "customize";
   const net = untrack(() => game.net); // `game` never changes
   let screen = $state<Screen>(savedName ? "menu" : "name");
 
@@ -42,7 +42,7 @@
     if (!pendingJoin) return false;
     net.connect(pendingJoin, name);
     pendingJoin = null;
-    screen = "online"; // → the room once joined (or the reason it failed)
+    screen = "join"; // → the room once joined (or the reason it failed)
     return true;
   }
   untrack(() => {
@@ -53,7 +53,35 @@
     game.profile.name = name || "player";
   });
 
-  let setup = $state<LocalSetup>({ ...DEFAULT_LOCAL_SETUP, ...loadJSON<Partial<LocalSetup>>(KEYS.localSetup, {}) });
+  /** Why we're back on the main menu, if something went wrong (kicked, disconnected). */
+  let notice = $state<string | null>(null);
+
+  // Play opens a new room set up like your last match (re-checked on load:
+  // anything unknown falls back to the defaults). New players start with one bot.
+  function savedSetup(): RoomSetup {
+    const s = loadJSON<Partial<RoomSetup>>(KEYS.roomSetup, {});
+    const st = { ...DEFAULT_ROOM_SETTINGS, ...(s.settings ?? {}) };
+    const settings = {
+      stageId: stageById(st.stageId).id,
+      stocks: Number.isInteger(st.stocks) && st.stocks >= 1 && st.stocks <= MAX_STOCKS ? st.stocks : DEFAULT_ROOM_SETTINGS.stocks,
+      hops: typeof st.hops === "boolean" ? st.hops : DEFAULT_ROOM_SETTINGS.hops,
+    };
+    const bots = Array.isArray(s.bots) ? s.bots.filter((l): l is BotLevel => BOT_LEVELS.includes(l)).slice(0, 3) : ["normal" as BotLevel];
+    return { settings, bots };
+  }
+
+  function play() {
+    notice = null;
+    net.connect(randomRoomCode(), name, savedSetup());
+    screen = "room";
+  }
+
+  /** Host: start (and remember this setup for the next room). */
+  function start() {
+    saveJSON(KEYS.roomSetup, { settings: $net.settings, bots: $net.roster.filter((p) => p.bot).map((p) => p.level ?? "normal") } satisfies RoomSetup);
+    game.playRoom();
+    if (game.current.mode === "local") screen = "game"; // (online, the screen follows the relay: the match starts when it says so)
+  }
 
   // My fighter shape: re-checked on load, so a stale or corrupted save falls back to standard.
   const savedShape = ((): FighterShape | null => {
@@ -95,31 +123,43 @@
     joinPending(); // came from an invite link: straight to that room
   }
 
-  function startLocal(s: LocalSetup) {
-    setup = s;
-    saveJSON(KEYS.localSetup, s);
-    menuOpen = false;
-    game.playLocal(s);
-    screen = "game";
-  }
-
+  // Leaving a match: online, that's leaving the room too (back to the menu);
+  // a match on this machine goes back to the room.
   function leave() {
     menuOpen = false;
-    const wasOnline = $game.mode === "online";
     game.leaveToMenu(); // (online: also leaves the room)
-    screen = wasOnline ? "online" : "menu";
+    screen = $net.phase === "lobby" ? "room" : "menu";
   }
 
-  // Online, the screen follows the connection: joined → room; host started →
-  // game; match over (host sent everyone back) → room; kicked or
-  // disconnected → the online menu, which shows why.
+  function leaveRoom() {
+    net.leave();
+    notice = null;
+    screen = "menu";
+  }
+
+  // The screen follows the connection: joined → room; an online match started
+  // → game; match over (host sent everyone back) → room; kicked or
+  // disconnected → the main menu, which says why.
   $effect(() => {
     const phase = $net.phase;
     const mode = $game.mode;
     if (mode === "online") screen = "game";
-    else if (screen === "online" && phase === "lobby") screen = "room";
-    else if (screen === "room" && phase === "offline") screen = "online";
-    else if (screen === "game" && mode === "attract" && phase === "lobby") screen = "room";
+    else if (screen === "join" && phase === "lobby") screen = "room";
+    else if (screen === "room" && phase === "offline") {
+      notice = $net.error;
+      screen = "menu";
+    } else if (screen === "game" && mode === "attract" && phase === "lobby") screen = "room";
+  });
+
+  // Playing bots on this machine while someone joins the room: say so.
+  let humansSeen = new Set<string>();
+  $effect(() => {
+    const humans = $net.roster.filter((p) => !p.bot && p.slot !== $net.slot).map((p) => `${p.slot}:${p.name}`);
+    if (screen === "game" && $game.mode === "local") {
+      const joined = humans.filter((h) => !humansSeen.has(h));
+      if (joined.length) game.announce(`${joined.map((h) => h.slice(h.indexOf(":") + 1)).join(" and ")} joined the room`);
+    }
+    humansSeen = new Set(humans);
   });
 
   function onKey(e: KeyboardEvent) {
@@ -140,8 +180,12 @@
       {shape}
       {eyes}
       {color}
-      onLocal={() => (screen = "local")}
-      onOnline={() => (screen = "online")}
+      {notice}
+      onPlay={play}
+      onJoin={() => {
+        notice = null;
+        screen = "join";
+      }}
       onCustomize={() => (screen = "customize")}
     />
   {:else if screen === "customize"}
@@ -154,14 +198,12 @@
       onSave={saveFighter}
       onBack={() => (screen = "menu")}
     />
-  {:else if screen === "local"}
-    <LocalSetupScreen initial={setup} onStart={startLocal} onBack={() => (screen = "menu")} />
-  {:else if screen === "online"}
-    <OnlineMenu {net} {name} onBack={() => (screen = "menu")} />
+  {:else if screen === "join"}
+    <JoinRoom {net} {name} onBack={leaveRoom} />
   {:else if screen === "room"}
-    <Room {net} onStart={() => game.startOnline()} onLeave={() => net.leave()} onColor={setColor} />
+    <Room {net} onStart={start} onLeave={leaveRoom} onColor={setColor} />
   {:else if screen === "game"}
-    <InGame {game} gs={$game} bind:menuOpen onLeave={leave} onChangeSetup={() => { game.leaveToMenu(); screen = "local"; }} />
+    <InGame {game} gs={$game} bind:menuOpen onLeave={leave} />
   {/if}
 </div>
 

@@ -6,9 +6,11 @@ import { decodeInput } from "../sim/inputCodec";
 import type { Input } from "../sim/types";
 import type { FighterShape } from "../sim/geometry";
 import type { MatchTransport } from "./onlineSession";
+import { LoopbackSocket, type SocketLike } from "./loopback";
 import {
   DEFAULT_ROOM_SETTINGS,
   PROTOCOL_VERSION,
+  type BotLevel,
   type ClientMsg,
   type MatchSetup,
   type RoomSettings,
@@ -27,6 +29,12 @@ export const RELAY_URL: string =
 
 export type NetPhase = "offline" | "connecting" | "lobby" | "match";
 
+/** A room to set up when creating it: its settings and bots (your last setup, remembered). */
+export interface RoomSetup {
+  settings: RoomSettings;
+  bots: BotLevel[];
+}
+
 export class NetClient implements MatchTransport {
   phase: NetPhase = "offline";
   room = "";
@@ -42,6 +50,8 @@ export class NetClient implements MatchTransport {
   color: number | null = null;
   rttMs: number | null = null;
   error: string | null = null;
+  /** The room is on this machine (the relay couldn't be reached): nobody else can join. */
+  local = false;
   /** During a match: my fighter index, and the latest official step and inputs. */
   you: number | null = null;
   setup: MatchSetup | null = null;
@@ -61,7 +71,9 @@ export class NetClient implements MatchTransport {
   /** During a match: the lobby slot of each fighter. */
   fighters: number[] = [];
 
-  private ws: WebSocket | null = null;
+  private ws: SocketLike | null = null;
+  /** Creating a room: set it up like this once we're in (see handle "roster"). */
+  private createWith: RoomSetup | null = null;
   private listeners = new Set<(c: NetClient) => void>();
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pingSent = new Map<number, number>();
@@ -83,12 +95,22 @@ export class NetClient implements MatchTransport {
     return this.roster.find((p) => p.slot === this.slot)?.host ?? false;
   }
 
-  connect(room: string, name: string) {
+  /**
+   * Join room `room` on the relay. With `create`, it's a new room: set it up
+   * like that once in, and if the relay can't be reached, open it on this
+   * machine instead (bots only).
+   */
+  connect(room: string, name: string, create?: RoomSetup) {
+    this.open(room, name, new WebSocket(`${RELAY_URL}/api/room/${room}/ws`), create ?? null);
+  }
+
+  private open(room: string, name: string, ws: SocketLike, create: RoomSetup | null) {
     this.leave();
     this.phase = "connecting";
     this.room = room;
     this.error = null;
-    const ws = new WebSocket(`${RELAY_URL}/api/room/${room}/ws`);
+    this.local = ws instanceof LoopbackSocket;
+    this.createWith = create;
     this.ws = ws;
     ws.onopen = () => {
       this.send({ type: "hello", version: PROTOCOL_VERSION, name });
@@ -107,7 +129,7 @@ export class NetClient implements MatchTransport {
       };
       if (typeof document !== "undefined") document.addEventListener("visibilitychange", this.onVisible);
     };
-    ws.onmessage = (e) =>
+    ws.onmessage = (e: { data: unknown }) =>
       this.fakeLag.down(() => {
         if (this.ws !== ws) return;
         this.handle(JSON.parse(String(e.data)) as ServerMsg);
@@ -120,6 +142,11 @@ export class NetClient implements MatchTransport {
       this.notify();
     };
     ws.onerror = () => {
+      if (this.phase === "connecting" && create && !this.local) {
+        // No relay: the room opens on this machine instead.
+        this.open(room, name, new LoopbackSocket(room), create);
+        return;
+      }
       if (this.phase === "connecting") this.error = `couldn't reach the relay at ${RELAY_URL}`;
       this.notify();
     };
@@ -176,13 +203,19 @@ export class NetClient implements MatchTransport {
     this.send({ type: "input", tick, input, fighter });
   }
 
-  /** Host, in the lobby: add or remove a bot seat. */
-  addBot() {
-    this.send({ type: "addBot" });
+  /** Host, in the lobby: add a bot (in `slot`, if given). Remove one with kick(). */
+  addBot(slot?: number, level: BotLevel = "normal") {
+    this.send({ type: "addBot", ...(slot !== undefined && { slot }), level });
   }
 
-  removeBot() {
-    this.send({ type: "removeBot" });
+  /** Host, in the lobby: change a bot's difficulty. */
+  setBotLevel(slot: number, level: BotLevel) {
+    this.send({ type: "botLevel", slot, level });
+  }
+
+  /** The level of the bot playing fighter `i` this match (normal if unknown). */
+  levelOf(i: number): BotLevel {
+    return this.roster.find((p) => p.slot === this.fighters[i])?.level ?? "normal";
   }
 
   /** My state fingerprint after step `step` (the relay compares everyone's). */
@@ -220,6 +253,15 @@ export class NetClient implements MatchTransport {
         this.roster = m.players;
         this.spectators = m.spectators;
         this.settings = m.settings;
+        // A room we just created (we're alone in it, hosting): set it up.
+        if (this.createWith) {
+          const setup = this.createWith;
+          this.createWith = null;
+          if (this.isHost && m.players.length === 1) {
+            this.send({ type: "settings", settings: setup.settings });
+            for (const level of setup.bots) this.send({ type: "addBot", level });
+          }
+        }
         break;
       case "spectate":
         this.phase = "match";
@@ -310,6 +352,8 @@ export class NetClient implements MatchTransport {
     this.lastStep = -1;
     this.rttMs = null;
     this.settings = { ...DEFAULT_ROOM_SETTINGS };
+    this.createWith = null;
+    this.local = false;
   }
 }
 

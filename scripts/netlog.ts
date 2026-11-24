@@ -65,9 +65,10 @@ try {
   const host = pages[0];
   await host.goto(pageUrl(0));
   await enterName(host, NAMES[0]);
-  await host.getByRole("button", { name: "Play online" }).click();
-  await host.getByRole("button", { name: "Create a room" }).click();
+  await host.getByRole("button", { name: "Play", exact: true }).click();
   const code = (await host.locator("button.code").textContent({ timeout: 15_000 }))!.trim();
+  // A new room starts with one bot: remove it (this measures players only).
+  await host.getByRole("button", { name: "remove bot 1" }).click({ timeout: 10_000 });
   const more = host.getByRole("button", { name: "more stocks" });
   while (await more.isEnabled()) await more.click(); // the most stocks: a longer match
   for (let i = 1; i < players; i++) {
@@ -77,7 +78,7 @@ try {
   for (let n = 0; n < 100 && (await host.locator(".roster .name").count()) < players; n++) await host.waitForTimeout(100);
   console.log(`room ${code}: ${players} players; lag ${lag.join("/")} ms, jitter ${jitter.join("/")} ms (one way); input delay comes from the game`);
   await host.waitForTimeout(3000); // like real players in the lobby: pings settle (the input delay is picked from the ping)
-  await host.getByRole("button", { name: "Start match" }).click();
+  await host.getByRole("button", { name: "Start", exact: true }).click();
   for (const p of pages) await p.waitForFunction(() => (window as any).triangleDuel.game.info.mode === "online", undefined, { timeout: 15_000 });
 
   const t0 = Date.now();

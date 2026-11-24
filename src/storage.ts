@@ -5,7 +5,7 @@
 
 export const KEYS = {
   name: "triangle-duel.name",
-  localSetup: "triangle-duel.localSetup",
+  roomSetup: "triangle-duel.roomSetup", // the settings and bots of your last match, for the next room you open
   shape: "triangle-duel.shape",
   eyes: "triangle-duel.eyes",
   color: "triangle-duel.color",

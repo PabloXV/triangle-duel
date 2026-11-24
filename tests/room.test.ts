@@ -41,8 +41,8 @@ describe("room: joining", () => {
     room.connect("b");
     const out = room.receive("b", hello("Bo"));
     expect(ofType(out, "roster")[0].players).toEqual([
-      { slot: 0, name: "Ana", host: true, bot: false, shape: null, eyes: 0, color: 0 },
-      { slot: 1, name: "Bo", host: false, bot: false, shape: null, eyes: 0, color: 1 },
+      { slot: 0, name: "Ana", host: true, bot: false, level: null, shape: null, eyes: 0, color: 0 },
+      { slot: 1, name: "Bo", host: false, bot: false, level: null, shape: null, eyes: 0, color: 1 },
     ]);
   });
 
@@ -198,14 +198,13 @@ describe("room: desync detection", () => {
 
 describe("room: bots", () => {
   const addBot = send({ type: "addBot" });
-  const removeBot = send({ type: "removeBot" });
 
   it("the host can add bot seats, which show in the roster with a random (legal) shape", () => {
     const { room } = roomWith(1);
     const out = room.receive("a", addBot);
     const [human, bot] = ofType(out, "roster")[0].players;
-    expect(human).toEqual({ slot: 0, name: "a", host: true, bot: false, shape: null, eyes: 0, color: 0 });
-    expect(bot).toMatchObject({ slot: 1, name: "bot 1", host: false, bot: true });
+    expect(human).toEqual({ slot: 0, name: "a", host: true, bot: false, level: null, shape: null, eyes: 0, color: 0 });
+    expect(bot).toMatchObject({ slot: 1, name: "bot 1", host: false, bot: true, level: "normal" });
     expect(bot.shape).not.toBeNull();
     expect(shapeIssue(bot.shape!)).toBeNull();
     // It keeps that shape while seated.
@@ -233,14 +232,27 @@ describe("room: bots", () => {
     expect(r2.receive("a", addBot)[0].msg).toEqual({ type: "error", message: "can't change seats during a match" });
   });
 
-  it("removing takes away the last bot", () => {
+  it("removing (kicking) a bot frees its seat; a new bot can go in any free seat, and takes the lowest free name", () => {
     const { room } = roomWith(1);
     room.receive("a", addBot);
     room.receive("a", addBot);
-    const out = room.receive("a", removeBot);
-    expect(ofType(out, "roster")[0].players.map((p) => p.name)).toEqual(["a", "bot 1"]);
-    room.receive("a", removeBot);
-    expect(room.receive("a", removeBot)[0].msg).toEqual({ type: "error", message: "there are no bots" });
+    room.receive("a", addBot);
+    const out = room.receive("a", send({ type: "kick", slot: 1 }));
+    expect(ofType(out, "roster")[0].players.map((p) => [p.slot, p.name])).toEqual([[0, "a"], [2, "bot 2"], [3, "bot 3"]]);
+    const back = ofType(room.receive("a", send({ type: "addBot", slot: 1, level: "hard" })), "roster")[0].players[1];
+    expect(back).toMatchObject({ slot: 1, name: "bot 1", level: "hard" });
+    room.receive("a", send({ type: "kick", slot: 2 }));
+    expect(ofType(room.receive("a", send({ type: "addBot", slot: 3 })), "roster")[0].players.map((p) => p.slot)).toEqual([0, 1, 2, 3]); // seat 3 taken: the first free one
+  });
+
+  it("the host sets each bot's level, in the lobby", () => {
+    const { room } = roomWith(2);
+    room.receive("a", addBot);
+    const out = room.receive("a", send({ type: "botLevel", slot: 2, level: "easy" }));
+    expect(ofType(out, "roster")[0].players[2].level).toBe("easy");
+    expect(room.receive("b", send({ type: "botLevel", slot: 2, level: "hard" }))[0].msg).toEqual({ type: "error", message: "only the host can change bots" });
+    expect(room.receive("a", send({ type: "botLevel", slot: 1, level: "hard" }))[0].msg).toEqual({ type: "error", message: "no bot in that seat" });
+    expect(room.receive("a", send({ type: "botLevel", slot: 2, level: "insane" }))[0].msg).toEqual({ type: "error", message: "malformed message" });
   });
 
   it("you can start against bots alone; the host drives them", () => {
@@ -404,7 +416,7 @@ describe("room: spectators", () => {
     room.receive("a", send({ type: "addBot" })); // full: a, b, c, bot
     room.connect("e");
     room.receive("e", hello("E"));
-    expect(room.receive("a", send({ type: "removeBot" }))).toContainEqual({ to: "e", msg: { type: "welcome", room: "ABCD", slot: 3 } });
+    expect(room.receive("a", send({ type: "kick", slot: 3 }))).toContainEqual({ to: "e", msg: { type: "welcome", room: "ABCD", slot: 3 } });
   });
 
   it("spectators waiting in a full lobby watch the next match", () => {

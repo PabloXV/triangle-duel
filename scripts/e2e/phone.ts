@@ -37,9 +37,10 @@ export async function phoneFlow() {
   await p.goto(`${URL}?bots=still`);
   await enterName(p, "Thumbs");
   await shot(p, "14-phone-menu");
-  await p.getByRole("button", { name: "Play locally" }).click();
-  await shot(p, "15-phone-setup");
-  await p.getByRole("button", { name: "Start" }).click();
+  await p.getByRole("button", { name: "Play", exact: true }).click();
+  await p.locator(".roster .name", { hasText: "bot 1" }).waitFor({ timeout: 10_000 });
+  await shot(p, "15-phone-room");
+  await p.getByRole("button", { name: "Start", exact: true }).click();
   await p.waitForTimeout(600);
 
   // Portrait: a pad below the game; the game area shrinks to make room.

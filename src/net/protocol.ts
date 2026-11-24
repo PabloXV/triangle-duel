@@ -17,7 +17,7 @@ import type { FighterShape, Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { MatchOptions } from "../sim/sim";
 
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 export const MAX_PLAYERS = 4;
 /** Spectators per room (watching a match, or waiting for a free seat). */
 export const MAX_SPECTATORS = 8;
@@ -47,11 +47,17 @@ export interface RoomSettings {
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = { stageId: "wings", stocks: 3, hops: true };
 export const MAX_STOCKS = 5;
 
+/** How quickly a bot reacts (src/lineup.ts BOT_REACTION). Chosen per bot by the host. */
+export type BotLevel = "easy" | "normal" | "hard";
+export const BOT_LEVELS: readonly BotLevel[] = ["easy", "normal", "hard"];
+
 export interface RosterEntry {
   slot: number;
   name: string;
   host: boolean;
   bot: boolean; // a bot seat, driven by the host's browser
+  /** A bot's difficulty (null for players). */
+  level: BotLevel | null;
   /** Their custom fighter shape (balanced, unit area), or null for the standard fighter. */
   shape: FighterShape | null;
   /** Their eye style (an index into EYE_STYLES; cosmetic, not part of the sim). */
@@ -67,9 +73,10 @@ export type ClientMsg =
   | { type: "start"; setup: MatchSetup }
   /** During a match: an input (encodeInput char) from step `tick` on, for my fighter or (host) a bot's. */
   | { type: "input"; tick: number; input: string; fighter?: number }
-  /** Host, in the lobby: add or remove a bot seat. */
-  | { type: "addBot" }
-  | { type: "removeBot" }
+  /** Host, in the lobby: add a bot (in `slot` if given and free, else the first free seat). Remove one with "kick". */
+  | { type: "addBot"; slot?: number; level?: BotLevel }
+  /** Host, in the lobby: change a bot's difficulty. */
+  | { type: "botLevel"; slot: number; level: BotLevel }
   /** My fighter shape for upcoming matches (null = the standard fighter). The relay validates it. */
   | { type: "shape"; shape: FighterShape | null }
   /** My eye style for upcoming matches. */
@@ -119,6 +126,7 @@ export type ServerMsg =
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
 const isInputChar = (v: unknown): v is string => typeof v === "string" && /^[0-5]$/.test(v);
+const isLevel = (v: unknown): v is BotLevel => BOT_LEVELS.includes(v as BotLevel);
 
 /**
  * Parse and validate a message from a client. Returns null for anything
@@ -148,9 +156,13 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       if (m.fighter === undefined) return { type: "input", tick: m.tick, input: m.input };
       return isInt(m.fighter) && m.fighter >= 0 ? { type: "input", tick: m.tick, input: m.input, fighter: m.fighter } : null;
     }
-    case "addBot":
-    case "removeBot":
-      return { type: m.type };
+    case "addBot": {
+      if (m.slot !== undefined && !(isInt(m.slot) && m.slot >= 0)) return null;
+      if (m.level !== undefined && !isLevel(m.level)) return null;
+      return { type: "addBot", ...(m.slot !== undefined && { slot: m.slot as number }), ...(m.level !== undefined && { level: m.level as BotLevel }) };
+    }
+    case "botLevel":
+      return isInt(m.slot) && m.slot >= 0 && isLevel(m.level) ? { type: "botLevel", slot: m.slot, level: m.level } : null;
     case "settings": {
       const s = m.settings;
       if (!isObj(s) || typeof s.stageId !== "string" || !/^[a-z0-9-]{1,24}$/.test(s.stageId)) return null;

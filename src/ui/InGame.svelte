@@ -10,8 +10,7 @@
     gs,
     menuOpen = $bindable(false),
     onLeave,
-    onChangeSetup,
-  }: { game: Game; gs: GameState; menuOpen?: boolean; onLeave: () => void; onChangeSetup: () => void } = $props();
+  }: { game: Game; gs: GameState; menuOpen?: boolean; onLeave: () => void } = $props();
 
   const canPause = $derived(gs.mode === "local" || gs.mode === "replay");
 
@@ -79,7 +78,7 @@
         {#if touchScreen}
           <button onclick={toggleScheme}>Touch controls: {scheme === "stick" ? "stick" : "buttons"}</button>
         {/if}
-        <button onclick={onLeave}>{gs.mode === "online" ? "Leave match" : "Leave to menu"}</button>
+        <button onclick={onLeave}>{gs.mode === "online" ? "Leave room" : gs.mode === "local" ? "Back to room" : "Leave"}</button>
       </div>
     </div>
   </div>
@@ -93,9 +92,10 @@
     <div class="stack row">
       {#if gs.mode === "local"}
         <button class="sticker primary" onclick={() => game.playAgain()}>Play again</button>
-        <button class="sticker" onclick={onChangeSetup}>Change setup</button>
+        <button class="sticker" onclick={onLeave}>Back to room</button>
+      {:else}
+        <button class="sticker" onclick={onLeave}>Menu</button>
       {/if}
-      <button class="sticker" onclick={onLeave}>Menu</button>
     </div>
     {/if}
   </div>

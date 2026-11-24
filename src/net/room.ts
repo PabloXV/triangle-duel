@@ -20,6 +20,7 @@ import {
   PROTOCOL_VERSION,
   cleanName,
   parseClientMsg,
+  type BotLevel,
   type MatchSetup,
   type RoomSettings,
   type RosterEntry,
@@ -51,6 +52,7 @@ interface Seat {
   slot: number;
   name: string;
   conn: string | null; // null = bot
+  level: BotLevel | null; // bots only
   shape: FighterShape | null;
   eyes: number;
   color: number;
@@ -60,7 +62,7 @@ const IDLE = encodeInput(NO_INPUT);
 
 export class RoomCore {
   private conns = new Map<string, Conn>();
-  private bots = new Map<number, { name: string; shape: FighterShape; eyes: number; color: number }>(); // slot → bot
+  private bots = new Map<number, { name: string; shape: FighterShape; eyes: number; color: number; level: BotLevel }>(); // slot → bot
   private settings: RoomSettings = { ...DEFAULT_ROOM_SETTINGS };
   phase: "lobby" | "match" = "lobby";
   private setup: MatchSetup | null = null;
@@ -195,10 +197,15 @@ export class RoomCore {
       case "addBot": {
         if (!this.isHost(id)) return [error(id, "only the host can add bots")];
         if (this.phase !== "lobby") return [error(id, "can't change seats during a match")];
-        const slot = this.freeSlot();
+        const taken = new Set(this.seats().map((s) => s.slot));
+        const slot = m.slot !== undefined && m.slot < MAX_PLAYERS && !taken.has(m.slot) ? m.slot : this.freeSlot();
         if (slot === null) return [error(id, `room is full (${MAX_PLAYERS} players)`)];
-        // Each bot gets a random shape near the standard one, kept for as long as it's seated.
-        this.bots.set(slot, { name: `bot ${this.bots.size + 1}`, shape: randomBotShape(this.random), eyes: Math.floor(this.random() * EYE_STYLES.length), color: this.freeColor(null) });
+        // Named "bot N" with the lowest free N. Each bot gets a random shape near
+        // the standard one, kept for as long as it's seated.
+        const names = new Set([...this.bots.values()].map((b) => b.name));
+        let n = 1;
+        while (names.has(`bot ${n}`)) n++;
+        this.bots.set(slot, { name: `bot ${n}`, shape: randomBotShape(this.random), eyes: Math.floor(this.random() * EYE_STYLES.length), color: this.freeColor(null), level: m.level ?? "normal" });
         return [this.roster()];
       }
       case "color": {
@@ -241,13 +248,13 @@ export class RoomCore {
         // Tell them, close their connection, and treat it as them leaving.
         return [{ to: seat.conn, msg: { type: "kicked" }, close: true }, ...this.disconnect(seat.conn)];
       }
-      case "removeBot": {
-        if (!this.isHost(id)) return [error(id, "only the host can remove bots")];
-        if (this.phase !== "lobby") return [error(id, "can't change seats during a match")];
-        const last = Math.max(-1, ...this.bots.keys());
-        if (last < 0) return [error(id, "there are no bots")];
-        this.bots.delete(last);
-        return [...this.seatSpectators(), this.roster()];
+      case "botLevel": {
+        if (!this.isHost(id)) return [error(id, "only the host can change bots")];
+        if (this.phase !== "lobby") return [error(id, "can't change bots during a match")];
+        const bot = this.bots.get(m.slot);
+        if (!bot) return [error(id, "no bot in that seat")];
+        bot.level = m.level;
+        return [this.roster()];
       }
       case "ping":
         return [{ to: id, msg: { type: "pong", id: m.id } }];
@@ -285,8 +292,8 @@ export class RoomCore {
 
   /** Every seat (joined players and bots), in slot order. */
   private seats(): Seat[] {
-    const players: Seat[] = [...this.conns].flatMap(([id, c]) => (c.slot === null ? [] : [{ slot: c.slot, name: c.name, conn: id, shape: c.shape, eyes: c.eyes, color: c.color }]));
-    const bots: Seat[] = [...this.bots].map(([slot, b]) => ({ slot, name: b.name, conn: null, shape: b.shape, eyes: b.eyes, color: b.color }));
+    const players: Seat[] = [...this.conns].flatMap(([id, c]) => (c.slot === null ? [] : [{ slot: c.slot, name: c.name, conn: id, shape: c.shape, eyes: c.eyes, color: c.color, level: null }]));
+    const bots: Seat[] = [...this.bots].map(([slot, b]) => ({ slot, name: b.name, conn: null, shape: b.shape, eyes: b.eyes, color: b.color, level: b.level }));
     return [...players, ...bots].sort((a, b) => a.slot - b.slot);
   }
 
@@ -337,7 +344,7 @@ export class RoomCore {
 
   private roster(): Outgoing {
     const host = this.hostId();
-    const players: RosterEntry[] = this.seats().map((s) => ({ slot: s.slot, name: s.name, host: s.conn !== null && s.conn === host, bot: s.conn === null, shape: s.shape, eyes: s.eyes, color: s.color }));
+    const players: RosterEntry[] = this.seats().map((s) => ({ slot: s.slot, name: s.name, host: s.conn !== null && s.conn === host, bot: s.conn === null, level: s.level, shape: s.shape, eyes: s.eyes, color: s.color }));
     const spectators = this.spectators().map(([, c]) => c.name);
     return { to: "all", msg: { type: "roster", phase: this.phase, players, spectators, settings: this.settings } };
   }

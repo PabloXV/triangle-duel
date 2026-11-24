@@ -22,10 +22,16 @@ npm run e2e        # browser test, ~50 s (screenshots in e2e-shots/); one part: 
                    # (parts: local, customize, phone, online, invite)
 ```
 
-Open it, pick a name (remembered in this browser), then play locally (map,
-bots, stocks, bot level, optional 2nd player on the same keyboard) or online.
-Controls: `←`/`→` rotate, `↓` charge (2nd local player: `A`/`D`/`S`).
-`Esc` pauses (local) or opens the match menu (online); `R` restarts a local match.
+Open it, pick a name (remembered in this browser), then Play: that opens a
+room. Fill its empty seats with bots (each with its own level: click it to
+change), pick the map, stocks and hops, and Start. Just you and bots: the
+match runs on your machine (no network, pausable). Invite friends with the
+room's link or code (Join a room) and the next Start plays online instead.
+A new room is set up like your last match. If the relay can't be reached,
+the room opens offline (`src/net/loopback.ts`: the relay's room logic, run
+in the browser), bots only.
+Controls: `←`/`→` or `A`/`D` rotate, `↓` or `S` charge.
+`Esc` pauses (bots match) or opens the match menu (online); `R` restarts a bots match.
 `` ` `` (backtick) toggles the debug panel (params, juice, recordings, dev online controls).
 The param panel edits the live match. Values persist in localStorage. Params
 marked "(restart)" apply on restart because they change the body itself. Mode
@@ -284,10 +290,11 @@ bit-identical, rollbacks must actually occur, late own inputs must be
 corrected, prediction must stay bounded, your own input must apply on the
 next step, and a client with a corrupted setup must be caught as a desync.
 
-To try it: `npm run relay` and `npm run dev`, two tabs, Play online: create a
-room in one, join with its code in the other. The host picks the map and
-stocks (everyone sees them live; the relay only accepts changes from the
-host), adds bots, kicks, and starts. Online, everyone uses the arrow keys.
+To try it: `npm run relay` and `npm run dev`, two tabs: Play in one, Join a
+room with its code in the other. The host picks the map and stocks
+(everyone sees them live; the relay only accepts changes from the host),
+adds bots in empty seats and sets their levels, kicks, and starts. The
+host's browser drives the bots, at their levels.
 When a match ends, everyone returns to the room together: the relay doesn't
 simulate, so the host's browser tells it, a few seconds after the *confirmed*
 timeline shows the result (the present can briefly show a win a rollback

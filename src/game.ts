@@ -5,7 +5,7 @@
 //
 // Modes:
 //   attract  a bot match playing behind the menus
-//   local    a match on this machine (you, maybe a 2nd keyboard player, bots)
+//   local    a match on this machine (a room with just you and bots)
 //   online   a match through the relay (OnlineSession)
 //   replay   watching a recording
 
@@ -22,7 +22,8 @@ import { Renderer } from "./render";
 import { hudIconLoads } from "./hud";
 import { colorIndex, playerColor } from "./theme";
 import { eyeStyle } from "./look/eyes";
-import { DEFAULT_LOCAL_SETUP, attractLineup, botMaker, localLineup, onlineLooks, type LocalSetup, type Looks, type Profile } from "./lineup";
+import { BOT_REACTION, attractLineup, botMaker, onlineLooks, roomLineup, type Looks, type Profile } from "./lineup";
+import type { RoomSettings, RosterEntry } from "./net/protocol";
 import { facesReady, preloadFaces } from "./look/sticker";
 import { LiveSession, PlaybackSession, type InputSource, type Session } from "./session";
 import type { FighterShape } from "./sim/geometry";
@@ -31,8 +32,6 @@ import type { Recording } from "./sim/recording";
 import { DEFAULT_MATCH, DT, type FighterView, type MatchResult, type SimEvent } from "./sim/sim";
 import { CorrectionSmoother } from "./smoothing";
 import { STAGES, stageById } from "./stages";
-
-export type { LocalSetup } from "./lineup";
 
 /** How real matches start and respawn: drop in during a 3 s countdown; respawn away from the action. */
 const MATCH_START = { countdownTicks: 180, dropIn: true, smartRespawn: true };
@@ -60,7 +59,7 @@ export interface GameSettings {
   finalKoReplay: boolean;
 }
 
-const KEYS = ["←/→ rotate, ↓ charge", "A/D rotate, S charge"]; // by keyboard binding
+const KEYS = "←/→ or A/D rotate, ↓ or S charge";
 /** After an online match ends, how long the winner shows before everyone returns to the room. */
 const BACK_TO_ROOM_MS = 3500;
 
@@ -84,7 +83,8 @@ export class Game {
   private koReplay: FinalKoReplay | null = null;
   private lastRecording: Recording | null = null;
   private matchNumber = 0;
-  private localSetup: LocalSetup = DEFAULT_LOCAL_SETUP;
+  /** The last match on this machine (who, which settings, which fighter was me), for "play again" if the room is gone. */
+  private lastLocal: { roster: RosterEntry[]; settings: RoomSettings; me: number } | null = null;
   private attractRestartAt = 0; // when the attract match should restart (ms), after it ends
   private backToRoomAt = 0; // host: when to send the room back to the lobby after an online match (ms)
 
@@ -126,17 +126,31 @@ export class Game {
     this.begin("attract", new LiveSession(stage, this.params, match, l.sources), l.looks);
   }
 
-  playLocal(setup: LocalSetup) {
-    this.localSetup = setup;
-    const l = localLineup(setup, this.profile, this.bots());
-    const match = { ...MATCH_START, players: l.sources.length, stocks: setup.stocks, shapes: l.shapes };
-    this.params.idleHop = setup.hops; // the match setting (the tuning panel can still flip it live)
-    this.begin("local", new LiveSession(stageById(setup.stageId).stage, this.params, match, l.sources), l.looks);
+  /**
+   * Host: start a match with everyone in the room. Just you and bots: it runs
+   * on this machine (no relay, no input delay, pausable). Anyone else here:
+   * online, through the relay.
+   */
+  playRoom() {
+    const net = this.net;
+    if (!net.isHost) return;
+    if (net.roster.some((p) => !p.bot && p.slot !== net.slot)) return this.startOnline();
+    const me = net.roster.findIndex((p) => p.slot === net.slot);
+    this.playLocal(net.roster, net.settings, me);
   }
 
-  /** Same local setup again (R, or "play again"). */
+  /** Again (R, or "play again"): with whoever's in the room now, or (the room is gone) the same lineup. */
   playAgain() {
-    this.playLocal(this.localSetup);
+    if (this.net.phase === "lobby" && this.net.isHost) this.playRoom();
+    else if (this.lastLocal) this.playLocal(this.lastLocal.roster, this.lastLocal.settings, this.lastLocal.me);
+  }
+
+  private playLocal(roster: RosterEntry[], settings: RoomSettings, me: number) {
+    this.lastLocal = { roster, settings, me };
+    const l = roomLineup(roster, this.bots());
+    const match = { ...MATCH_START, players: roster.length, stocks: settings.stocks, shapes: l.shapes };
+    this.params.idleHop = settings.hops; // the match setting (the tuning panel can still flip it live)
+    this.begin("local", new LiveSession(stageById(settings.stageId).stage, this.params, match, l.sources), l.looks);
   }
 
   /** For tests and the console: the running match at a glance. */
@@ -175,10 +189,6 @@ export class Game {
       }),
       status: this.session.status(),
     };
-  }
-
-  get lastLocalSetup(): LocalSetup {
-    return this.localSetup;
   }
 
   /** Host: start an online match with everyone in the room, using the room's settings. */
@@ -266,7 +276,7 @@ export class Game {
     this.attractRestartAt = 0;
     this.announcedLeaves.clear();
     this.backToRoomAt = 0;
-    const me = mode === "local" ? 0 : next instanceof OnlineSession && !next.spectating ? next.you : null;
+    const me = mode === "local" ? (this.lastLocal?.me ?? 0) : next instanceof OnlineSession && !next.spectating ? next.you : null;
     this.netLog?.attach(mode === "online" && next instanceof OnlineSession ? next : null);
     this.update({ mode, paused: false, ended: false, winnerName: null, notice: null, me });
   }
@@ -280,7 +290,7 @@ export class Game {
       const looks = onlineLooks(net, setup.match.players);
       const bot = botMaker(setup.params, this.matchNumber);
       const sources = new Map<number, InputSource>([[you, this.autopilot ? bot(you, DEFAULT_BOT.reactionTicks) : new KeyboardSource([0, 1], you)]]); // online: arrows or A/D/S
-      for (const f of drive) if (f !== you) sources.set(f, bot(f, DEFAULT_BOT.reactionTicks));
+      for (const f of drive) if (f !== you) sources.set(f, bot(f, BOT_REACTION[net.levelOf(f)]));
       this.onlineParams = setup.params;
       const session = new OnlineSession(setup, you, looks.names, sources, net, net.room, () => net.rttMs, inputDelayFor(net.rttMs));
       this.begin("online", session, looks);
@@ -296,7 +306,7 @@ export class Game {
       const s = this.session;
       if (!(s instanceof OnlineSession) || !this.onlineParams) return;
       const bot = botMaker(this.onlineParams, this.matchNumber);
-      for (const f of fighters) s.takeOver(f, bot(f, DEFAULT_BOT.reactionTicks));
+      for (const f of fighters) s.takeOver(f, bot(f, BOT_REACTION[this.net.levelOf(f)]));
     };
     net.onTick = (t, changes) => {
       this.netLog?.tickArrived();
@@ -329,6 +339,11 @@ export class Game {
       }
     }
     return final;
+  }
+
+  /** Show a short message over the match (e.g. "Ivy joined the room"). */
+  announce(message: string) {
+    this.notify(message);
   }
 
   private notify(message: string) {
@@ -387,7 +402,7 @@ export class Game {
     if (this.touchScreen) return s instanceof OnlineSession && s.spectating ? ["spectating"] : [];
     if (s instanceof OnlineSession) return s.spectating ? ["spectating · Esc to leave"] : [`you (P${s.you + 1}): ←/→ or A/D rotate, ↓ or S charge`];
     const players = Array.from({ length: s.sim.match.players }, (_, i) => i);
-    return players.filter((i) => s.isHuman(i)).map((i) => `${this.looks.names[i] ?? `P${i + 1}`}: ${KEYS[i]}`);
+    return players.filter((i) => s.isHuman(i)).map((i) => `${this.looks.names[i] ?? `P${i + 1}`}: ${KEYS}`);
   }
 
   // Fixed timestep: the sim always advances in exact 1/60 s ticks regardless of
