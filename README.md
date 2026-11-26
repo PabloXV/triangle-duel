@@ -1,7 +1,8 @@
 # Triangle Duel
 
 Triangles balanced on their points, bumping each other off the stage. Touch
-the stage with a top vertex, or fall off, and you lose a stock. 2–4 players,
+the stage with anything but your foot (a corner, or an edge: lying flat
+counts), or fall off, and you lose a stock. 2–4 players,
 local or online.
 
 ```
@@ -99,9 +100,12 @@ stays smooth on 120Hz screens.
 **Rapier vs. our rules:** Rapier handles bodies, contacts, friction and
 collisions. `sim.ts` adds everything game-specific on top: rotation control,
 jump charging, coyote time, foot grip and KO detection. Grounded and KO checks
-are plain geometry (vertex distance to platform rectangles), not Rapier contact
-events. That's simpler to reason about and gives one consistent definition of
-"touching".
+are plain geometry (foot distance, and outline-segment distance, to platform
+rectangles), not Rapier contact events. That's simpler to reason about and gives
+one consistent definition of "touching". The KO check covers the whole outline
+except the foot and the first `koFootZone` (0.25 m) of the two edges leaving it,
+so standing and pivoting on a ledge corner are fine, but lying flat across a
+ledge with the top corners hanging off is a KO.
 
 ## Jumping: two modes (`jumpMode`)
 

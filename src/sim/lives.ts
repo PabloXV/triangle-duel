@@ -1,26 +1,24 @@
 // KOs, stocks, respawning, ghosting, and deciding when the match is over.
 
 import { worldVertices, type Fighter, type MatchContext } from "./fighter";
-import { spawnPoints } from "./geometry";
-import { distanceToSolid } from "./platforms";
+import { koEdges, spawnPoints, type Vec2 } from "./geometry";
+import { distanceToSolid, segmentDistanceToSolid } from "./platforms";
 import type { KoReason } from "./types";
 
 /**
- * After physics: KO anyone touching a solid surface with a non-foot vertex, or
- * whose center left the blast zone. Then end the match if at most one fighter
+ * After physics: KO anyone touching a solid surface with anything but its foot
+ * (a corner, or an edge away from the foot: lying flat across a ledge, top
+ * corners hanging off, is a KO too), or whose center left the blast zone. Then end the match if at most one fighter
  * has stocks left. Uses this tick's one-way solidity (decided before physics),
  * so a fighter passing up through a wing can't be KO'd by brushing it.
  */
 export function checkKOs(ctx: MatchContext) {
-  const p = ctx.params;
   const bz = ctx.stage.blastZone;
   ctx.fighters.forEach((f, i) => {
     if (f.state.ko) return;
     const verts = worldVertices(f);
     // Ghosts (just respawned) can't be KO'd by touching, only by falling off.
-    const touched =
-      f.state.ghostTimer === 0 &&
-      verts.some((v, idx) => idx !== f.shape.footIndex && distanceToSolid(ctx, v, i) <= p.koTolerance);
+    const touched = f.state.ghostTimer === 0 && touchingSolid(ctx, verts, f.shape.footIndex, i);
     const c = f.body.translation();
     const fell = c.x < bz.minX || c.x > bz.maxX || c.y < bz.minY || c.y > bz.maxY;
     if (touched) knockOut(ctx, i, "touched");
@@ -35,6 +33,14 @@ export function checkKOs(ctx: MatchContext) {
       for (const e of ctx.events) if (e.type === "ko") e.final = true;
     }
   }
+}
+
+/** Is anything but the foot within koTolerance of a solid surface? */
+function touchingSolid(ctx: MatchContext, verts: Vec2[], footIndex: number, i: number): boolean {
+  const p = ctx.params;
+  // Old recordings (no koFootZone) replay with the old rule: corners only.
+  if (p.koFootZone === undefined) return verts.some((v, idx) => idx !== footIndex && distanceToSolid(ctx, v, i) <= p.koTolerance);
+  return koEdges(verts, footIndex, p.koFootZone).some(([a, b]) => segmentDistanceToSolid(ctx, a, b, i) <= p.koTolerance);
 }
 
 function knockOut(ctx: MatchContext, i: number, reason: KoReason) {

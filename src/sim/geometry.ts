@@ -205,6 +205,79 @@ export function distanceToPlatform(p: Vec2, plat: Platform): number {
   return Math.sqrt(dx * dx + dy * dy); // not Math.hypot: see detmath.ts
 }
 
+/** Distance from point p to segment ab. */
+function distanceToSegment(p: Vec2, a: Vec2, b: Vec2): number {
+  const ex = b.x - a.x;
+  const ey = b.y - a.y;
+  const len2 = ex * ex + ey * ey;
+  const t = len2 > 0 ? clamp(((p.x - a.x) * ex + (p.y - a.y) * ey) / len2, 0, 1) : 0;
+  const dx = a.x + t * ex - p.x;
+  const dy = a.y + t * ey - p.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/** Does segment ab pass through the platform rectangle? (Liang–Barsky clipping.) */
+function segmentHitsPlatform(a: Vec2, b: Vec2, plat: Platform): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const axes: [number, number, number, number][] = [
+    [a.x, b.x - a.x, plat.center.x - plat.halfWidth, plat.center.x + plat.halfWidth],
+    [a.y, b.y - a.y, plat.center.y - plat.halfHeight, plat.center.y + plat.halfHeight],
+  ];
+  for (const [start, d, lo, hi] of axes) {
+    if (d === 0) {
+      if (start < lo || start > hi) return false;
+      continue;
+    }
+    let ta = (lo - start) / d;
+    let tb = (hi - start) / d;
+    if (ta > tb) [ta, tb] = [tb, ta];
+    t0 = Math.max(t0, ta);
+    t1 = Math.min(t1, tb);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+
+/**
+ * Distance from segment ab to the platform rectangle (0 if they overlap). Two
+ * disjoint convex shapes are closest at a corner of one of them, so it's the
+ * smallest of: either end to the rectangle, or a rectangle corner to the segment.
+ */
+export function segmentDistanceToPlatform(a: Vec2, b: Vec2, plat: Platform): number {
+  if (segmentHitsPlatform(a, b, plat)) return 0;
+  let best = Math.min(distanceToPlatform(a, plat), distanceToPlatform(b, plat));
+  for (const sx of [-1, 1])
+    for (const sy of [-1, 1]) {
+      const corner = { x: plat.center.x + sx * plat.halfWidth, y: plat.center.y + sy * plat.halfHeight };
+      best = Math.min(best, distanceToSegment(corner, a, b));
+    }
+  return best;
+}
+
+/**
+ * The parts of a fighter that KO it when they touch a surface: its whole
+ * outline except the foot and the first `footZone` meters of the two edges
+ * leaving it (so standing, leaning and pivoting on a ledge's corner are
+ * fine). As segments; `verts` in the world.
+ */
+export function koEdges(verts: readonly Vec2[], footIndex: number, footZone: number): [Vec2, Vec2][] {
+  const foot = verts[footIndex];
+  const [a, b] = verts.filter((_, i) => i !== footIndex);
+  const pastFootZone = (v: Vec2): Vec2 => {
+    const dx = v.x - foot.x;
+    const dy = v.y - foot.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const t = len > footZone ? footZone / len : 1;
+    return { x: foot.x + dx * t, y: foot.y + dy * t };
+  };
+  return [
+    [a, b],
+    [pastFootZone(a), a],
+    [pastFootZone(b), b],
+  ];
+}
+
 
 /** A single 10 m platform, no wings: tighter and more aggressive than Wings. */
 export const ISLAND_STAGE: Stage = {

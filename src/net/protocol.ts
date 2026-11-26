@@ -17,7 +17,7 @@ import type { FighterShape, Stage } from "../sim/geometry";
 import type { Params } from "../sim/params";
 import type { MatchOptions } from "../sim/sim";
 
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12; // 12: KO when an edge (not just a corner) touches a surface
 export const MAX_PLAYERS = 4;
 /** Spectators per room (watching a match, or waiting for a free seat). */
 export const MAX_SPECTATORS = 8;

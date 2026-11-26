@@ -37,7 +37,8 @@ export interface Params {
   gripStrength: number; // foot-pull force, as a multiple of body weight. 0 = off
   gripRange: number; // grip pulls the foot only while within this distance of the surface (m)
   // KO
-  koTolerance: number; // a top vertex within this distance of a surface = KO (m)
+  koTolerance: number; // anything but the foot within this distance of a surface = KO (m)
+  koFootZone: number; // the first this-many meters of the two edges at the foot may touch (standing, pivoting on a ledge); the rest of the outline can't (m)
 }
 
 export const DEFAULT_PARAMS: Params = {
@@ -66,6 +67,7 @@ export const DEFAULT_PARAMS: Params = {
   gripStrength: 2,
   gripRange: 0.3,
   koTolerance: 0.03,
+  koFootZone: 0.25,
 };
 
 type NumKey = { [K in keyof Params]: Params[K] extends number ? K : never }[keyof Params];
@@ -117,6 +119,7 @@ export const PARAM_META: Record<keyof Params, ParamMeta> & Record<NumKey, { rang
   jumpCooldownTicks: { group: "Advanced", live: true, range: [0, 30, 1] },
   gripRange: { group: "Advanced", live: true, range: [0, 1, 0.01] },
   koTolerance: { group: "Advanced", live: true, range: [0, 0.2, 0.005] },
+  koFootZone: { group: "Advanced", live: true, range: [0, 1, 0.05] },
 };
 
 export const PARAM_GROUPS: ParamGroup[] = ["World", "Body", "Movement", "Charge jump", "Advanced"];

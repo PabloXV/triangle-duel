@@ -53,16 +53,19 @@ describe("recordings", () => {
   });
 
   it("one changed input → desync reported at the next fingerprint", () => {
-    // Replace one of P1's inputs with LEFT ("left the match"), which always
-    // changes the state. (Flipping a turn doesn't always: in servo mode, "no
-    // input" brakes the spin, so when spinning left, "none" and "turn right"
-    // can both saturate the same max torque and give identical physics.)
+    // Replace one input of a fighter still in the match with LEFT ("left the
+    // match"), which always changes the state. (Flipping a turn doesn't always:
+    // in servo mode, "no input" brakes the spin, so when spinning left, "none"
+    // and "turn right" can both saturate the same max torque and give
+    // identical physics.)
     const n = recording.match.players;
     const p = new Playback(recording);
-    while (p.sim.tick < 700 || p.sim.view()[0].stocks === 0) p.step();
+    while (p.sim.tick < 700 && !p.done) p.step();
     const at = p.sim.tick;
+    const who = p.sim.view().findIndex((f) => f.stocks > 0);
     p.sim.free();
-    const i = at * n;
+    expect(who).toBeGreaterThanOrEqual(0);
+    const i = at * n + who;
     const tampered = { ...recording, inputs: recording.inputs.slice(0, i) + LEFT + recording.inputs.slice(i + 1) };
     const r = verifyRecording(tampered);
     expect(r.ok).toBe(false);

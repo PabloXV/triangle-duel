@@ -3,7 +3,7 @@
 // sim goes through distanceToSolid, so the contact hook, grounded check, grip,
 // and KO checks always agree.
 
-import { distanceToPlatform, platformTop, type Vec2 } from "./geometry";
+import { distanceToPlatform, platformTop, segmentDistanceToPlatform, type Vec2 } from "./geometry";
 import { worldVertices, type MatchContext } from "./fighter";
 import { DT } from "./types";
 
@@ -44,6 +44,16 @@ export function updateOneWaySolidity(ctx: MatchContext) {
       ctx.oneWaySolid[i][pi] = lowest >= platformTop(plat) - allowance;
     });
   });
+}
+
+/** Distance from segment ab to the nearest platform that is solid for fighter i. */
+export function segmentDistanceToSolid(ctx: MatchContext, a: Vec2, b: Vec2, i: number): number {
+  let best = Infinity;
+  ctx.stage.platforms.forEach((plat, pi) => {
+    if (!isSolidFor(ctx, i, pi)) return;
+    best = Math.min(best, segmentDistanceToPlatform(a, b, plat));
+  });
+  return best;
 }
 
 /** Distance from a point to the nearest platform that is solid for fighter i. */
