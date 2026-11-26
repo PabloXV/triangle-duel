@@ -56,15 +56,40 @@ export const WALL = { top: "#2a2140", bottom: "#40305f" };
 export const LINES = {
   /** The ink line on every object. */
   line: 0.07,
-  /** Visible white past the ink line: thin on things that move and collide, fat on static ones. */
-  bandMoving: 0.025,
-  bandStatic: 0.1,
+  /**
+   * White sticker outline past the ink line. The ink line's outer edge is the
+   * collision edge; the white is backing paper drawn behind every object, so
+   * where two things touch it's hidden and ink meets ink.
+   */
+  bandFighter: 0.03,
+  bandPlatform: 0.08,
   /** Block shadow offset, down and right. */
-  shadowMoving: 0.04,
-  shadowStatic: 0.18,
+  shadowFighter: 0.04,
+  shadowPlatform: 0.18,
   /** Ink line on small effects (marks). */
   markLine: 0.035,
 };
+
+/**
+ * The hand-painted finish, kept inside a small "slop budget" so the art never
+ * visibly misses a contact the physics makes (hitboxes stay sharp; §2).
+ */
+export const PAINT = {
+  /** Edge wiggle: how far an edge strays from its true line (m), at most. */
+  wiggle: 0.012,
+  /** Rounded corners: how far a corner's tip may move in (m). Blunt corners get round, needle-sharp ones stay pointy. */
+  cornerGap: 0.02,
+  /** The same for a fighter's foot, which stands on the floor all the time. */
+  footGap: 0.006,
+  /** The roundest any corner gets (m). */
+  cornerMax: 0.06,
+};
+
+/** Corner radius for a corner of interior angle `angle` (rad) whose tip may move in at most `gap`: r(1/sin(a/2) − 1) = gap. */
+export function cornerRadius(angle: number, gap = PAINT.cornerGap): number {
+  const s = Math.sin(angle / 2);
+  return s >= 1 ? PAINT.cornerMax : Math.min(PAINT.cornerMax, gap / (1 / s - 1));
+}
 
 // ---- fonts (visual-language.md §11) ----
 export const FONTS = {

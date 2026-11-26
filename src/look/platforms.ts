@@ -1,16 +1,19 @@
 // Platforms in the "Cut gem" style (docs/visual-language.md §9;
 // concept/platforms-world.html): a beveled slab with the fighters' recipe
-// (white outline, block shadow, top-lit gradient, gloss, sparkles), white
-// paint drips off the outline, and a bright ground line exactly on the
-// collision top.
+// (white outline, block shadow, top-lit gradient, gloss, sparkles) and white
+// paint drips off the outline.
 //
-// Each platform is baked once (an SVG with the mockups' edge-warp filter,
-// rasterized), then drawn as an image. The ground line is drawn crisp on top
-// every frame, so the warp never blurs where the floor is.
+// As for every object, the ink line's outer edge is the collision edge: a
+// fighter's foot meets the platform's top ink line. Each platform is baked
+// once as two images: the back (shadow, white outline, drips, with the
+// mockups' edge warp) is drawn before any fighter, and the front (slab and ink)
+// after their backs. The front gets rounded top corners and a much gentler
+// warp, both inside the slop budget (theme.ts PAINT), so the floor is where it
+// looks.
 
 import type { Platform } from "../sim/geometry";
 import { mulberry32 } from "../rng";
-import { DRIP_SHADE, HALO, INK, LINES, PLATFORM_COLORS, WHITE, mix, withAlpha } from "../theme";
+import { DRIP_SHADE, HALO, INK, LINES, PAINT, PLATFORM_COLORS, WHITE, cornerRadius, mix, withAlpha } from "../theme";
 import { sparkleSVG } from "./sparkle";
 import { SvgImages } from "./svgImage";
 
@@ -25,11 +28,11 @@ const BIG = {
   chamfer: 0.36,
   bevel: 0.24, // top bevel inset
   cap: 0.26, // top bevel height
-  band: LINES.bandStatic,
-  shadow: { x: 0.18, y: 0.2 },
+  band: LINES.bandPlatform,
+  shadow: { x: LINES.shadowPlatform, y: LINES.shadowPlatform + 0.02 },
   facet: 0.05,
   drip: { w: [0.1, 0.18], len: [0.24, 1.44], perCluster: 3, spacing: 0.44 },
-  ground: 0.12,
+  ground: 0.08,
   glossy: true,
 };
 const SMALL = {
@@ -37,11 +40,11 @@ const SMALL = {
   chamfer: 0.12,
   bevel: 0.08,
   cap: 0.1,
-  band: 0.065,
+  band: LINES.bandPlatform * 0.65,
   shadow: { x: 0.12, y: 0.14 },
   facet: 0.03,
   drip: { w: [0.06, 0.108], len: [0.1, 0.58], perCluster: 2, spacing: 0.26 },
-  ground: 0.08,
+  ground: 0.05,
   glossy: false,
 };
 type Size = typeof BIG;
@@ -106,30 +109,33 @@ function dropletPath(d: Drip, y: number) {
 }
 
 interface Baked {
-  svg: string;
-  /** Where the image's top-left corner is, in the world (m), and its size (m). */
+  back: string;
+  front: string;
+  /** Where the images' top-left corner is, in the world (m), and their size (m). */
   x: number;
   top: number;
   width: number;
   height: number;
 }
 
-/** The platform as an SVG image, plus where it goes in the world. */
+/** The platform as two SVG images (back and front, same size), plus where they go in the world. */
 function bakePlatform(p: Platform, color = PLATFORM_COLOR, seed = 1): Baked {
   const s = sizeOf(p);
   const width = p.halfWidth * 2;
-  const haloW = (LINES.line + 2 * s.band) * PX;
+  const haloW = 2 * s.band * PX;
+  const line = LINES.line * PX;
   const margin = { x: s.shadow.x * PX + 0.2 * PX, top: 0.2 * PX };
-  // The slab is inset by half the white outline, so the outline's outer edge
-  // is exactly the collision box's top and sides (§9: nothing visible past
-  // them at or above the top). Below the top is decoration.
-  const inset = haloW / 2;
-  const boxLeft = margin.x;
-  const x0 = boxLeft + inset;
-  const x1 = boxLeft + width * PX - inset;
-  const y0 = margin.top + inset;
-  const D = s.depth * PX - inset;
+  // The slab's outline is the collision box's top and sides (below the box
+  // bottom is decoration). The ink line is inside it, the white outside.
+  const x0 = margin.x;
+  const x1 = margin.x + width * PX;
+  const y0 = margin.top;
+  const D = s.depth * PX;
   const c = s.chamfer * PX;
+  // Bevel and facets sit inside the ink line.
+  const ix0 = x0 + line;
+  const ix1 = x1 - line;
+  const iy0 = y0 + line;
   const bev = s.bevel * PX;
   const cap = s.cap * PX;
   const sx = s.shadow.x * PX;
@@ -137,86 +143,99 @@ function bakePlatform(p: Platform, color = PLATFORM_COLOR, seed = 1): Baked {
   const lite = (k: number) => mix(color, WHITE, k);
   const dark = (k: number) => mix(color, INK, k);
 
-  const ds = drips(width, s, seed).map((d) => ({ ...d, x: d.x + boxLeft }));
-  const dripY = y0 + D + (s.band + 0.03) * PX;
+  const ds = drips(width, s, seed).map((d) => ({ ...d, x: d.x + x0 }));
+  const dripY = y0 + D + s.band * PX * 0.7; // out of the white outline's bottom edge
   const dripShapes = [...ds.map((d) => dripPath(d, dripY)), ...ds.filter((d) => d.droplet).map((d) => dropletPath(d, dripY))];
   const lowest = Math.max(y0 + D, ...ds.map((d) => dripY + d.len * 1.3 + d.w * 2 + 12));
-  const W = boxLeft + width * PX + margin.x;
+  const W = x1 + margin.x;
   const H = lowest + sy + 0.2 * PX;
 
-  const body = `M${f(x0)} ${f(y0)}H${f(x1)}V${f(y0 + D - c)}L${f(x1 - c)} ${f(y0 + D)}H${f(x0 + c)}L${f(x0)} ${f(y0 + D - c)}Z`;
+  // Top corners rounded as far as the slop budget allows (a right angle: ~5 cm).
+  const rc = cornerRadius(Math.PI / 2) * PX;
+  const body = `M${f(x0 + rc)} ${f(y0)}H${f(x1 - rc)}A${f(rc)} ${f(rc)} 0 0 1 ${f(x1)} ${f(y0 + rc)}V${f(y0 + D - c)}L${f(x1 - c)} ${f(y0 + D)}H${f(x0 + c)}L${f(x0)} ${f(y0 + D - c)}V${f(y0 + rc)}A${f(rc)} ${f(rc)} 0 0 1 ${f(x0 + rc)} ${f(y0)}Z`;
   const shadowFill = withAlpha(INK, 0.8);
-  let g = "";
-  // Shadows (drips and body), then the white outline and white drips.
-  g += dripShapes.map((d) => `<path d="${d}" fill="${shadowFill}" transform="translate(${f(sx)} ${f(sy)})"/>`).join("");
-  g += `<path d="${body}" fill="${shadowFill}" stroke="${shadowFill}" stroke-width="${f(haloW)}" stroke-linejoin="round" transform="translate(${f(sx)} ${f(sy)})"/>`;
-  g += `<path d="${body}" fill="${HALO}" stroke="${HALO}" stroke-width="${f(haloW)}" stroke-linejoin="round"/>`;
-  g += dripShapes.map((d) => `<path d="${d}" fill="${HALO}"/>`).join("");
+
+  // Back: shadows (drips and body), then the white outline and white drips.
+  let back = "";
+  back += dripShapes.map((d) => `<path d="${d}" fill="${shadowFill}" transform="translate(${f(sx)} ${f(sy)})"/>`).join("");
+  back += `<path d="${body}" fill="${shadowFill}" stroke="${shadowFill}" stroke-width="${f(haloW)}" stroke-linejoin="round" transform="translate(${f(sx)} ${f(sy)})"/>`;
+  back += `<path d="${body}" fill="${HALO}" stroke="${HALO}" stroke-width="${f(haloW)}" stroke-linejoin="round"/>`;
+  back += dripShapes.map((d) => `<path d="${d}" fill="${HALO}"/>`).join("");
   for (const d of ds)
-    if (d.len > 12) g += `<path d="M${f(d.x + d.w * 0.18)} ${f(dripY + d.w)}V${f(dripY + d.len)}" stroke="${DRIP_SHADE}" stroke-width="${f(Math.max(1.2, d.w * 0.2))}" stroke-linecap="round" opacity=".55"/>`;
-  // The slab: top-lit gradient, top bevel, bottom chamfer, facet lines, ink line.
+    if (d.len > 12) back += `<path d="M${f(d.x + d.w * 0.18)} ${f(dripY + d.w)}V${f(dripY + d.len)}" stroke="${DRIP_SHADE}" stroke-width="${f(Math.max(1.2, d.w * 0.2))}" stroke-linecap="round" opacity=".55"/>`;
+
+  // Front: the slab (top-lit gradient, top bevel, bottom chamfer, facet lines,
+  // ground highlight), then the ink line: the outline stroked twice its width
+  // and clipped to the slab, so its outer edge is the slab's edge and its
+  // corners stay sharp.
+  let g = "";
   g += `<path d="${body}" fill="url(#grad)"/>`;
-  g += `<polygon points="${f(x0)},${f(y0)} ${f(x1)},${f(y0)} ${f(x1 - bev)},${f(y0 + cap)} ${f(x0 + bev)},${f(y0 + cap)}" fill="${lite(0.5)}"/>`;
+  g += `<polygon points="${f(ix0)},${f(iy0)} ${f(ix1)},${f(iy0)} ${f(ix1 - bev)},${f(iy0 + cap)} ${f(ix0 + bev)},${f(iy0 + cap)}" fill="${lite(0.5)}"/>`;
   g += `<polygon points="${f(x0)},${f(y0 + D - c)} ${f(x1)},${f(y0 + D - c)} ${f(x1 - c)},${f(y0 + D)} ${f(x0 + c)},${f(y0 + D)}" fill="${dark(0.45)}"/>`;
-  g += `<path d="M${f(x0)} ${f(y0)}L${f(x0 + bev)} ${f(y0 + cap)}H${f(x1 - bev)}L${f(x1)} ${f(y0)}M${f(x0)} ${f(y0 + D - c)}H${f(x1)}M${f(x0 + bev)} ${f(y0 + cap)}L${f(x0)} ${f(y0 + D - c)}M${f(x1 - bev)} ${f(y0 + cap)}L${f(x1)} ${f(y0 + D - c)}" stroke="${INK}" stroke-width="${f(s.facet * PX)}" fill="none" opacity=".55"/>`;
-  g += `<path d="${body}" fill="none" stroke="${INK}" stroke-width="${f(LINES.line * PX)}" stroke-linejoin="round"/>`;
+  g += `<path d="M${f(ix0)} ${f(iy0)}L${f(ix0 + bev)} ${f(iy0 + cap)}H${f(ix1 - bev)}L${f(ix1)} ${f(iy0)}M${f(x0)} ${f(y0 + D - c)}H${f(x1)}M${f(ix0 + bev)} ${f(iy0 + cap)}L${f(ix0)} ${f(y0 + D - c)}M${f(ix1 - bev)} ${f(iy0 + cap)}L${f(ix1)} ${f(y0 + D - c)}" stroke="${INK}" stroke-width="${f(s.facet * PX)}" fill="none" opacity=".55"/>`;
+  // Ground highlight: a bright line right under the top ink line (the floor).
+  g += `<path d="M${f(ix0)} ${f(iy0 + (s.ground * PX) / 2)}H${f(ix1)}" stroke="${lite(0.75)}" stroke-width="${f(s.ground * PX)}"/>`;
+  g += `<path d="${body}" fill="none" stroke="${INK}" stroke-width="${f(2 * line)}" clip-path="url(#slab)"/>`;
   if (s.glossy) {
-    const gx = x0 + 0.52 * PX;
-    const gy = y0 + cap + 0.24 * PX;
+    const gx = ix0 + 0.52 * PX;
+    const gy = iy0 + cap + 0.24 * PX;
     g += `<path d="M${f(gx)} ${f(gy)}H${f(gx + 0.8 * PX)}" stroke="${WHITE}" stroke-width="${f(0.1 * PX)}" stroke-linecap="round" opacity=".9"/><circle cx="${f(gx + 0.8 * PX + 0.22 * PX)}" cy="${f(gy)}" r="${f(0.05 * PX)}" fill="${WHITE}" opacity=".9"/>`;
     g += `<path d="M${f(gx)} ${f(gy + 0.24 * PX)}H${f(gx + 0.4 * PX)}" stroke="${WHITE}" stroke-width="${f(0.06 * PX)}" stroke-linecap="round" opacity=".6"/>`;
-    g += sparkleSVG(x1 - 0.68 * PX, y0 + cap + 0.36 * PX, 0.2 * PX, HALO) + sparkleSVG(x1 - 1.16 * PX, y0 + cap + 0.68 * PX, 0.1 * PX, HALO);
+    g += sparkleSVG(ix1 - 0.68 * PX, iy0 + cap + 0.36 * PX, 0.2 * PX, HALO) + sparkleSVG(ix1 - 1.16 * PX, iy0 + cap + 0.68 * PX, 0.1 * PX, HALO);
   }
 
-  // The mockups' edge warp (§5): low-frequency displacement, whole object.
+  // The mockups' edge warp (§5): full strength on the back (white paint and
+  // drips), and only PAINT.wiggle on the front, so the floor's ink line stays
+  // within a centimeter or so of the collision top. Same noise, so they move together.
   const warpFreq = 0.04 * (50 / PX);
-  const warpScale = 4 * (PX / 50);
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(W)}" height="${Math.ceil(H)}">` +
-    `<defs><linearGradient id="grad" x1="0" y1="0" x2=".12" y2="1"><stop offset="0" stop-color="${lite(0.32)}"/><stop offset=".45" stop-color="${color}"/><stop offset="1" stop-color="${dark(0.38)}"/></linearGradient>` +
-    `<filter id="warp" x="0" y="0" width="100%" height="100%" filterUnits="userSpaceOnUse"><feTurbulence type="fractalNoise" baseFrequency="${warpFreq}" numOctaves="2" seed="5" result="w"/><feDisplacementMap in="SourceGraphic" in2="w" scale="${f(warpScale)}" xChannelSelector="R" yChannelSelector="G"/></filter></defs>` +
-    `<g filter="url(#warp)">${g}</g></svg>`;
-  return { svg, x: p.center.x - p.halfWidth - margin.x / PX, top: p.center.y + p.halfHeight + margin.top / PX, width: Math.ceil(W) / PX, height: Math.ceil(H) / PX };
+  const warp = (scale: number) =>
+    `<filter id="warp" x="0" y="0" width="100%" height="100%" filterUnits="userSpaceOnUse"><feTurbulence type="fractalNoise" baseFrequency="${warpFreq}" numOctaves="2" seed="5" result="w"/><feDisplacementMap in="SourceGraphic" in2="w" scale="${f(scale)}" xChannelSelector="R" yChannelSelector="G"/></filter>`;
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(W)}" height="${Math.ceil(H)}">`;
+  const backSvg = open + `<defs>${warp(4 * (PX / 50))}</defs><g filter="url(#warp)">${back}</g></svg>`;
+  // Displacement is scale × (noise − 0.5): a scale of 2 × wiggle strays up to the wiggle.
+  const frontSvg =
+    open +
+    `<defs>${warp(2 * PAINT.wiggle * PX)}<linearGradient id="grad" x1="0" y1="0" x2=".12" y2="1"><stop offset="0" stop-color="${lite(0.32)}"/><stop offset=".45" stop-color="${color}"/><stop offset="1" stop-color="${dark(0.38)}"/></linearGradient>` +
+    `<clipPath id="slab"><path d="${body}"/></clipPath></defs><g filter="url(#warp)">${g}</g></svg>`;
+  return { back: backSvg, front: frontSvg, x: p.center.x - p.halfWidth - margin.x / PX, top: p.center.y + p.halfHeight + margin.top / PX, width: Math.ceil(W) / PX, height: Math.ceil(H) / PX };
 }
 
 // ---- drawing ----
 const baked = new SvgImages();
+const placement = new Map<string, Baked>();
 
-function art(p: Platform, index: number) {
+function art(p: Platform, index: number, layer: "back" | "front") {
   const key = `${p.center.x},${p.center.y},${p.halfWidth},${p.halfHeight},${p.oneWay ?? false}`;
   let at = placement.get(key);
   if (!at) placement.set(key, (at = bakePlatform(p, PLATFORM_COLOR, index + 1)));
-  const img = baked.get(key, () => at.svg);
+  const img = baked.get(`${key}|${layer}`, () => at[layer]);
   return img ? { img, at } : null;
 }
-const placement = new Map<string, Baked>();
 
-/** Draw a platform (world units, y up). */
-export function drawPlatform(ctx: CanvasRenderingContext2D, p: Platform, index: number) {
-  const s = sizeOf(p);
-  const left = p.center.x - p.halfWidth;
-  const right = p.center.x + p.halfWidth;
-  const top = p.center.y + p.halfHeight;
-  const a = art(p, index);
-  if (a) {
-    ctx.save();
-    ctx.translate(a.at.x, a.at.top);
-    ctx.scale(a.at.width / a.img.width, -a.at.height / a.img.height);
-    ctx.drawImage(a.img, 0, 0);
-    ctx.restore();
-  } else {
-    // Still baking: a plain slab, so the floor is never invisible.
-    ctx.fillStyle = PLATFORM_COLOR;
-    ctx.fillRect(left, top - s.depth, right - left, s.depth);
-  }
-  // Ground line: a bright stroke, its top flush with the collision top.
+function drawLayer(ctx: CanvasRenderingContext2D, p: Platform, index: number, layer: "back" | "front") {
+  const a = art(p, index, layer);
+  if (!a) return false;
   ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(left + 0.1, top - s.ground / 2);
-  ctx.lineTo(right - 0.1, top - s.ground / 2);
-  ctx.strokeStyle = mix(PLATFORM_COLOR, WHITE, 0.75);
-  ctx.lineWidth = s.ground;
-  ctx.lineCap = "round";
-  ctx.stroke();
+  ctx.translate(a.at.x, a.at.top);
+  ctx.scale(a.at.width / a.img.width, -a.at.height / a.img.height);
+  ctx.drawImage(a.img, 0, 0);
   ctx.restore();
+  return true;
+}
+
+/** The back pass (world units, y up): shadow, white outline and drips. Draw every object's back before any front. */
+export function drawPlatformBack(ctx: CanvasRenderingContext2D, p: Platform, index: number) {
+  drawLayer(ctx, p, index, "back");
+}
+
+/** The front pass: the slab and its ink line, whose top edge is the collision top. */
+export function drawPlatformFront(ctx: CanvasRenderingContext2D, p: Platform, index: number) {
+  if (drawLayer(ctx, p, index, "front")) return;
+  // Still baking: a plain slab, so the floor is never invisible.
+  const top = p.center.y + p.halfHeight;
+  const depth = sizeOf(p).depth;
+  ctx.fillStyle = INK;
+  ctx.fillRect(p.center.x - p.halfWidth, top - depth, p.halfWidth * 2, depth);
+  ctx.fillStyle = PLATFORM_COLOR;
+  ctx.fillRect(p.center.x - p.halfWidth + LINES.line, top - depth + LINES.line, p.halfWidth * 2 - 2 * LINES.line, depth - 2 * LINES.line);
 }

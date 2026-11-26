@@ -151,7 +151,7 @@
   const poly = (p: Vec2[]) => p.map((v) => `${v.x},${-v.y}`).join(" ");
 
   /** Your fighter exactly as it looks in a match (same drawing as the game: look/stickerSVG.ts), at true size. */
-  const fighterSvg = $derived(triangleArea(pts) > 1e-6 ? stickerInWorld(pts, FOOT, playerColor(color), eyes) : "");
+  const fighterSvg = $derived(triangleArea(pts) > 1e-6 ? stickerInWorld(pts, FOOT, playerColor(color), eyes) : { back: "", front: "" });
 </script>
 
 <svelte:window onpointermove={onMove} onpointerup={onUp} />
@@ -162,11 +162,13 @@
 
   <p class="label">Shape</p>
   <svg bind:this={svg} viewBox="-2.6 -3.3 5.2 3.7" class="editor" role="application" aria-label="fighter shape editor">
-    <!-- The floor, like a platform top: slab, ink line, ground line on the top edge. -->
-    <rect x="-2.7" y="0" width="5.4" height="0.6" class="slab" />
-    <line x1="-2.7" y1="0.06" x2="2.7" y2="0.06" class="ground" />
+    <!-- As in play: the fighter's white outline and shadow behind the floor;
+         the floor's ink line has its top edge at y = 0, where the foot is. -->
+    <g class="face">{@html fighterSvg.back}</g>
+    <rect x="-2.7" y="0.035" width="5.4" height="0.6" class="slab" />
+    <line x1="-2.7" y1="0.11" x2="2.7" y2="0.11" class="ground" />
     <polygon points={poly(outline)} class="standard" />
-    <g class="face">{@html fighterSvg}</g>
+    <g class="face">{@html fighterSvg.front}</g>
     {#each pts as p, i}
       <circle
         cx={p.x}
@@ -230,7 +232,7 @@
   }
   .ground {
     stroke: var(--platform-light);
-    stroke-width: 0.12;
+    stroke-width: 0.08;
   }
   .standard {
     fill: none;

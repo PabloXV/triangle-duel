@@ -13,7 +13,7 @@ import { GOLD, HALO, INK, WHITE, mix, withAlpha } from "../theme";
 import { band, mark, sparkle, spike } from "./marks";
 import { SvgImages } from "./svgImage";
 import { EYE_MOODS, FACE_EXTENT, eyesSVG, type EyeMood } from "./eyes";
-import { PLAY_OUTLINE, SHEET_PX, cornersFromWorld, fighterLayout } from "./fighterLayout";
+import { FIGHTER_OUTLINE, SHEET_PX, cornersFromWorld, fighterLayout } from "./fighterLayout";
 
 /** Leaning past this (rad), the eyes go "wobble" (close to tipping). */
 const WOBBLE_LEAN = 0.42;
@@ -57,28 +57,71 @@ export function facesReady(): number {
 }
 
 // ---- drawing ----
-function tri(ctx: CanvasRenderingContext2D, [F, L, R]: readonly Vec2[]) {
+/** A closed polygon path. */
+function tri(ctx: CanvasRenderingContext2D, pts: readonly Vec2[]) {
   ctx.beginPath();
-  ctx.moveTo(F.x, F.y);
-  ctx.lineTo(L.x, L.y);
-  ctx.lineTo(R.x, R.y);
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
   ctx.closePath();
 }
 
-/**
- * Draw one fighter (world units, y up). `verts` are its corners in the world,
- * `mood` picks the eyes and effects. Layout: fighterLayout.ts.
- */
-export function drawSticker(ctx: CanvasRenderingContext2D, verts: Vec2[], footIndex: number, look: StickerLook, mood: EyeMood, hopping = false, charge = 0) {
+/** Move the canvas into the fighter's upright frame (origin at the foot, y up). */
+function enter(ctx: CanvasRenderingContext2D, verts: Vec2[], footIndex: number) {
   const c = cornersFromWorld(verts, footIndex);
-  const lay = fighterLayout(c, PLAY_OUTLINE);
-  const k = SHEET_PX; // effects keep the eye sheet's sizes
-  const col = look.color;
   ctx.save();
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   ctx.translate(c.foot.x, c.foot.y);
   ctx.rotate(c.angle);
+  return { c, lay: fighterLayout(c, FIGHTER_OUTLINE) };
+}
+
+/**
+ * The back pass: block shadow and white outline, both outside the ink edge.
+ * Drawn for every object before any body (render.ts), so where a fighter
+ * touches a platform or another fighter, ink meets ink and the white is hidden.
+ */
+export function drawStickerBack(ctx: CanvasRenderingContext2D, verts: Vec2[], footIndex: number) {
+  const { c, lay } = enter(ctx, verts, footIndex);
+  // Block shadow (with the white outline's thickness): offset down-right in
+  // the world, so there's one light for everyone, whichever way they lean.
+  ctx.save();
+  ctx.rotate(-c.angle);
+  ctx.translate(lay.shadow, -lay.shadow);
+  ctx.rotate(c.angle);
+  tri(ctx, lay.edge);
+  ctx.fillStyle = ctx.strokeStyle = withAlpha(INK, 0.8);
+  ctx.lineWidth = lay.haloWidth;
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  tri(ctx, lay.edge);
+  ctx.fillStyle = ctx.strokeStyle = HALO;
+  ctx.lineWidth = lay.haloWidth;
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Clear the fighter's own silhouette (for fading a fighter: its back pass mustn't show through its body). */
+export function clearStickerSilhouette(ctx: CanvasRenderingContext2D, verts: Vec2[], footIndex: number) {
+  const { lay } = enter(ctx, verts, footIndex);
+  ctx.globalCompositeOperation = "destination-out";
+  tri(ctx, lay.edge);
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * The front pass: mood effects, the body inside its ink edge, gloss, sparkle,
+ * face. World units, y up; `verts` are the fighter's corners (the collision
+ * edge, which is the ink line's outer edge). Layout: fighterLayout.ts.
+ */
+export function drawStickerFront(ctx: CanvasRenderingContext2D, verts: Vec2[], footIndex: number, look: StickerLook, mood: EyeMood, hopping = false, charge = 0) {
+  const { c, lay } = enter(ctx, verts, footIndex);
+  const k = SHEET_PX; // effects keep the eye sheet's sizes
+  const col = look.color;
 
   // Mood effects behind the body: fill-style marks (flat fill + ink line,
   // visual-language.md §6), level with the ground rather than the lean.
@@ -109,27 +152,13 @@ export function drawSticker(ctx: CanvasRenderingContext2D, verts: Vec2[], footIn
   }
   ctx.restore();
 
-  // Block shadow (with the white outline's thickness): offset down-right in
-  // the world, so there's one light for everyone, whichever way they lean.
-  ctx.save();
-  ctx.rotate(-c.angle);
-  ctx.translate(lay.shadow, -lay.shadow);
-  ctx.rotate(c.angle);
-  tri(ctx, lay.body);
-  ctx.fillStyle = ctx.strokeStyle = withAlpha(INK, 0.8);
-  ctx.lineWidth = lay.haloWidth;
+  // Ink: the whole real triangle (just rounded and wiggled within the slop
+  // budget), so the foot touches the floor exactly where the physics does.
+  tri(ctx, lay.edge);
+  ctx.fillStyle = INK;
   ctx.fill();
-  ctx.stroke();
-  ctx.restore();
 
-  // White outline.
-  tri(ctx, lay.body);
-  ctx.fillStyle = ctx.strokeStyle = HALO;
-  ctx.lineWidth = lay.haloWidth;
-  ctx.fill();
-  ctx.stroke();
-
-  // Body: lit from the top left.
+  // Body: lit from the top left, inside the ink line.
   const g = ctx.createLinearGradient(lay.gradient.from.x, lay.gradient.from.y, lay.gradient.to.x, lay.gradient.to.y);
   g.addColorStop(0, mix(col, WHITE, 0.35));
   g.addColorStop(0.55, col);
@@ -146,12 +175,6 @@ export function drawSticker(ctx: CanvasRenderingContext2D, verts: Vec2[], footIn
   }
   ctx.strokeStyle = WHITE;
   ctx.lineWidth = lay.glossWidth;
-  ctx.stroke();
-
-  // Ink line.
-  tri(ctx, lay.body);
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = lay.lineWidth;
   ctx.stroke();
 
   sparkle(ctx, lay.sparkle.x, lay.sparkle.y, lay.sparkle.r, WHITE);

@@ -35,30 +35,49 @@ Everything drawn falls into one of four classes. The class decides which layers 
 
 ## 2. The Object stack
 
-Draw these layers from back to front. Fighters (`src/look/sticker.ts`) already do this, and every other Object must match.
+### The contact rule: the ink line is the edge
 
-1. **Block shadow:** the silhouette, solid ink at 75–80% opacity, offset down and right. It includes the white outline's thickness.
-2. **White outline:** the silhouette stroked in `HALO`, with round joins.
-3. **Body fill:** a top-lit gradient (see §4).
-4. **Inner detail:** faces, bevels, facets, the 3D block.
-5. **Ink line:** the silhouette stroked in `INK`, with round joins.
-6. **Highlights:** a gloss streak and a sparkle (§4).
-7. **Ground line** (platforms only): a bright stroke exactly on the collision top.
+**The outer edge of an Object's ink line is its collision edge.** The ink line sits just inside it, and the white outline and shadow sit outside it. They are backing paper: they never collide, and they're drawn **behind every Object**. Where two things touch, the white is hidden and **ink meets ink**. That's how a player reads "touching": a fighter's foot on the platform's top ink line, or two fighters' ink lines against each other.
+
+- Draw the ink as the real shape, not as a stroke centered on it: fill the exact silhouette in `INK`, then the body inset by `LINE` (or stroke at 2 × `LINE` clipped to the silhouette). Corners stay sharp, so a skinny fighter's foot touches the floor exactly where its physics does. (A centered stroke with round joins blunts sharp corners. It once made the tallest custom fighters float 0.4 m above the floor.)
+- Very sharp corners get a long solid ink point. That's expected.
+
+### The slop budget: wiggle and rounded corners
+
+Hitboxes stay sharp; the sim's rules are built on exact corner points (grounded = foot point near a floor, KO = another corner touching one). The art may stray from them only within a small budget (`PAINT` in `src/theme.ts`), small enough that it never visibly misses a contact:
+
+- **Wiggle:** edges stray at most `PAINT.wiggle` (1.2 cm) from their true line. Fighters get a fixed wiggle field that rotates with them and fades to nothing at the foot. Platforms get a gentle copy of the edge warp (§5) on the slab and ink; the white paint keeps the full warp.
+- **Rounded corners:** each corner is rounded so its tip moves in at most `PAINT.cornerGap` (2 cm), capped at 6 cm. Blunt corners (platform tops, a fighter's top corners) get visibly round; needle-sharp ones stay pointy. A fighter's foot uses the smaller `PAINT.footGap` (6 mm).
+
+### Draw order
+
+The scene draws in **two passes** (`src/render.ts`):
+
+1. **Back pass, for every Object:** the block shadow (the silhouette with the white outline's thickness, solid ink at 75–80%, offset down and right), then the white outline (the silhouette stroked in `HALO`, round joins, plus drips on static Objects).
+2. **Front pass, for every Object:**
+   1. Mood marks behind the body (fighters).
+   2. Ink: the silhouette.
+   3. Body fill, inside the ink: a top-lit gradient (§4).
+   4. Inner detail: faces, bevels, facets, the 3D block.
+   5. Highlights: a gloss streak and a sparkle (§4).
+   6. Ground highlight (platforms only): a bright line right under the top ink line.
+
+A single Object drawn on its own (a menu icon) is the same stack in one go.
 
 ### Line weights (world units, so they're identical at the same zoom)
 
-Every Object shares one ink line weight. Only the white outline and shadow differ, for a gameplay reason.
+Every Object shares one ink line weight. Since the white never collides, its width is a style choice. It's kept thin on fighters so the gap between two of them stays readable, and thicker on big static things.
 
 | Token | Value | Notes |
 |---|---|---|
-| `LINE` | 0.07 m | The ink line on every Object. The current fighter uses 7 sheet px × k ≈ 0.072 m. Match it. |
-| `BAND_MOVING` | ≈ 0.025 m visible white | Fighters and anything that collides while moving. Kept thin so bodies don't look like they touch early (decision already made in `sticker.ts`). |
-| `BAND_STATIC` | up to 0.1 m visible white | Platforms, UI, signs. Static, so the band can be fatter. This is the "sticker" read from the mockups. |
-| `SHADOW_MOVING` | 0.04 m down and right | Fighters (current `SHADOW_OFFSET`). |
-| `SHADOW_STATIC` | 0.16–0.2 m down and right | Platforms. UI uses the screen-pixel equivalent (§8). |
+| `LINE` | 0.07 m | The ink line on every Object. |
+| `bandFighter` | 0.03 m of white | Fighters, in play and in every menu and HUD icon (one look). Chunky white on fighters filled the gap between two of them and made them look fused. |
+| `bandPlatform` | 0.08 m of white | Platforms (pass-throughs use 0.65 × this). UI uses the CSS px equivalent (§11). |
+| `shadowFighter` | 0.04 m down and right | Fighters. |
+| `shadowPlatform` | 0.18 m down and right | Platforms. UI uses the screen-pixel equivalent (§11). |
 | `MARK_LINE` | ≥ 0.035 m (half of `LINE`) | Ink line on Marks. |
 
-"Visible white" means how far the white outline shows past the ink line. If the white stroke is `w` wide and the ink stroke is `LINE` wide, the visible band is `(w − LINE) / 2`.
+Tokens live in `LINES` in `src/theme.ts`.
 
 ---
 
@@ -91,7 +110,7 @@ Light always comes from the **top left**.
   - Stop 1: `mix(c, INK, 0.3–0.38)`
 - **Gloss streak:** a white stroke with round caps, 0.07–0.1 m thick, near the upper-left edge and pushed about 16–18% toward the shape's center. On fighters it runs along the upper-left side from 30% to 70% of that edge. On platforms it's a short horizontal dash plus a dot, just under the top bevel.
 - **Sparkle:** one 4-point star near the upper-right corner. Fighters have one. Platforms have one or two, small. These are Marks (§6).
-- **Ground line** (platforms): a stroke in `mix(c, white, 0.75)`, 0.12 m thick, with its top flush with the collision top. This is how players read where the floor is. Never hide it.
+- **Ground highlight** (platforms): a stroke in `mix(c, white, 0.75)`, 0.08 m thick, right under the top ink line. The ink line is the floor and the highlight makes it pop. Never hide either.
 
 ---
 
@@ -112,7 +131,7 @@ Texture is what makes this look like paint on a wall instead of vector clip art.
 
 - Everything gets grain, including UI. Nothing on screen is perfectly clean.
 - The edge warp is subtle. The ink line must still read as one confident line.
-- Texture never changes color or lowers contrast enough to hurt readability, especially on the ground line and stock icons.
+- Texture never changes color or lowers contrast enough to hurt readability, especially on ink lines, the ground highlight and stock icons.
 
 ### Implementation options (dev's call)
 
@@ -152,7 +171,7 @@ The mockups weren't consistent here. Sparkles had thin outlines, and motion arcs
 
 ## 7. Paint: drips and splatter
 
-Drips are white paint running off the **white outline**, not the body dripping. Only static Objects drip (platforms, UI panels). Fighters don't.
+Drips are white paint running off the **white outline** (back pass), not the body dripping. Only static Objects drip (platforms, UI panels). Fighters don't.
 
 - **Color:** `HALO`, with a shadow at the same offset as the Object's block shadow. No ink line.
 - **Where they start:** at the bottom of the white outline, joined with a smooth curve so they look like part of it.
@@ -180,12 +199,13 @@ Drips are white paint running off the **white outline**, not the body dripping. 
 
 ## 9. Platforms
 
-**Approved styles:** Cut gem and Graffiti 3D (`concept/platforms-world.html`). Both are Objects with `BAND_STATIC` and `SHADOW_STATIC`, plus white Clustered drips.
+**Approved styles:** Cut gem and Graffiti 3D (`concept/platforms-world.html`). Both are Objects with `bandPlatform` and `shadowPlatform`, plus white Clustered drips.
 
 **Hard rules:**
 - Collision stays an axis-aligned box.
-- The art's top edge is exactly the box top. The ground line sits on it.
-- The art's sides line up with the box sides. Nothing visible sticks out past them at or above the top.
+- The outer edge of the top ink line is exactly the box top (§2). The ground highlight sits just under it.
+- The ink's sides line up with the box sides. Only the white outline and shadow (back pass) show past them.
+- The ink line and slab get only the slop-budget warp and corner rounding (§2), never the back pass's full edge warp.
 - Anything below the top is decoration and may go deeper than the box (bevels, the 3D block, drips). For solid platforms, keep the decoration shallow. Players can't tell that the box ends before the art does.
 - Platform hue is never a player color.
 

@@ -6,7 +6,7 @@
 
 import type { FighterShape, Vec2 } from "../sim/geometry";
 import { DEFAULT_PARAMS } from "../sim/params";
-import { LINES } from "../theme";
+import { LINES, PAINT, cornerRadius } from "../theme";
 
 /** The standard fighter's area (m²); every fighter has this area. */
 export const STANDARD_AREA = (DEFAULT_PARAMS.triWidth * DEFAULT_PARAMS.triHeight) / 2;
@@ -22,18 +22,15 @@ export interface Corners {
   R: Vec2;
 }
 
-/** How the outline is drawn: thin and inset for fighters in play, chunky for menu icons. */
+/** The white outline and shadow, both outside the ink edge (they never collide). */
 export interface OutlineStyle {
-  /** Visible white past the ink line (m). */
+  /** White past the ink line (m). */
   band: number;
   /** Block shadow offset, down and right (m). */
   shadow: number;
-  /** Draw inside the body, so the white outline's outer edge is the physics edge (what looks like a collision is one). */
-  inset: boolean;
 }
-export const PLAY_OUTLINE: OutlineStyle = { band: LINES.bandMoving, shadow: LINES.shadowMoving, inset: true };
-/** The eye sheet's chunky proportions; fine where nothing collides. */
-export const ICON_OUTLINE: OutlineStyle = { band: LINES.bandStatic, shadow: 0.1, inset: false };
+/** One fighter look everywhere: in play, in menus and in the HUD. */
+export const FIGHTER_OUTLINE: OutlineStyle = { band: LINES.bandFighter, shadow: LINES.shadowFighter };
 
 /** World corners → the upright frame, plus where that frame sits in the world. */
 export function cornersFromWorld(verts: readonly Vec2[], footIndex: number): Corners & { foot: Vec2; angle: number } {
@@ -66,11 +63,16 @@ function topsFrom(tops: Vec2[]): Corners {
 const lerp = (a: Vec2, b: Vec2, t: number) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 
 export interface FighterLayout {
-  /** The drawn triangle (inset from the corners if the style says so): F, L, R. */
-  body: [Vec2, Vec2, Vec2];
-  /** Stroke widths: the white outline (behind) and the ink line. */
+  /**
+   * The ink line's outer edge, filled in ink: the real triangle (the collision
+   * edge) with slightly rounded corners and a little wiggle, within the slop
+   * budget (theme.ts PAINT). A closed polyline.
+   */
+  edge: Vec2[];
+  /** The body fill: the edge moved in by the ink line's width. A closed polyline. */
+  body: Vec2[];
+  /** The white outline: the edge stroked this wide (round joins), so the white shows `band` past it. */
   haloWidth: number;
-  lineWidth: number;
   /** Block shadow offset (down and right, in the world). */
   shadow: number;
   /** Body gradient, top-left (light) to bottom (dark). */
@@ -96,20 +98,32 @@ export function fighterLayout(c: Corners, style: OutlineStyle): FighterLayout {
   const I = { x: (a * F.x + b * L.x + cc * R.x) / per, y: (a * F.y + b * L.y + cc * R.y) / per };
   const r = (2 * area) / per;
 
-  const haloWidth = LINES.line + 2 * style.band;
-  const shrink = style.inset ? Math.max(0.5, (r - haloWidth / 2) / r) : 1;
+  // Scaling about the incenter moves every edge in by the same distance: the
+  // ink line's width. (Never a stroke centered on the edge: round joins would
+  // blunt sharp corners, and a skinny fighter's foot would float above the
+  // floor it stands on.)
+  const shrink = Math.max(0.3, (r - LINES.line) / r);
   const inset = (v: Vec2) => lerp(I, v, shrink);
-  const body: [Vec2, Vec2, Vec2] = [inset(F), inset(L), inset(R)];
-  const [Fi, Li, Ri] = body;
+  const tri = [inset(F), inset(L), inset(R)];
+  const [Fi, Li, Ri] = tri;
 
-  const xs = body.map((v) => v.x);
-  const ys = body.map((v) => v.y);
+  // Rounded corners: each as round as the slop budget allows (the foot,
+  // always on the floor, gets a smaller one). The body's corners share the
+  // ink's arc centers, so the ink line keeps its width around them.
+  const corners = [F, L, R];
+  const radii = corners.map((_, i) => cornerRadius(angleAt(corners, i), i === 0 ? PAINT.footGap : PAINT.cornerGap));
+  const paint = (pts: Vec2[], rs: number[]) => rounded(pts, rs).map((q) => wiggled(q, F));
+  const edge = paint(corners, radii);
+  const body = paint(tri, radii.map((rr) => Math.max(0, rr - LINES.line)));
+
+  const xs = tri.map((v) => v.x);
+  const ys = tri.map((v) => v.y);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   return {
+    edge,
     body,
-    haloWidth,
-    lineWidth: LINES.line,
+    haloWidth: 2 * style.band,
     shadow: style.shadow,
     gradient: { from: { x: minX, y: Math.max(...ys) }, to: { x: minX + 0.25 * (maxX - minX), y: Math.min(...ys) } },
     gloss: [
@@ -120,4 +134,80 @@ export function fighterLayout(c: Corners, style: OutlineStyle): FighterLayout {
     sparkle: { x: Ri.x - 22 * SHEET_PX, y: Ri.y - 15 * SHEET_PX, r: 6 * SHEET_PX },
     face: { x: I.x, y: I.y, angle: Math.atan2(Ri.y - Li.y, Ri.x - Li.x), scale: r * shrink * FACE_SCALE },
   };
+}
+
+// ---- the painted outline ----
+
+/** Interior angle at corner i of a triangle (rad). */
+function angleAt(v: readonly Vec2[], i: number): number {
+  const p = v[i];
+  const a = v[(i + 2) % 3];
+  const b = v[(i + 1) % 3];
+  const u = { x: a.x - p.x, y: a.y - p.y };
+  const w = { x: b.x - p.x, y: b.y - p.y };
+  return Math.acos(Math.max(-1, Math.min(1, (u.x * w.x + u.y * w.y) / (Math.hypot(u.x, u.y) * Math.hypot(w.x, w.y)))));
+}
+
+/** Points along the edges, this far apart at most, so the wiggle shows. */
+const STEP = 0.06;
+
+/** A triangle with corner i rounded to radius rs[i], as a closed polyline sampled finely enough to wiggle. */
+function rounded(v: readonly Vec2[], rs: number[]): Vec2[] {
+  const out: Vec2[] = [];
+  const ends: { t1: Vec2; t2: Vec2 }[] = [];
+  const arcs: Vec2[][] = [];
+  for (let i = 0; i < 3; i++) {
+    const p = v[i];
+    const a = v[(i + 2) % 3];
+    const b = v[(i + 1) % 3];
+    const la = Math.hypot(a.x - p.x, a.y - p.y);
+    const lb = Math.hypot(b.x - p.x, b.y - p.y);
+    const u1 = { x: (a.x - p.x) / la, y: (a.y - p.y) / la };
+    const u2 = { x: (b.x - p.x) / lb, y: (b.y - p.y) / lb };
+    const half = angleAt(v, i) / 2;
+    // Never let the arc use up more than a third of either edge.
+    const r = Math.min(rs[i], (Math.min(la, lb) / 3) * Math.tan(half));
+    if (!(r > 1e-4)) {
+      ends.push({ t1: p, t2: p });
+      arcs.push([p]);
+      continue;
+    }
+    const t = r / Math.tan(half); // corner to tangent point
+    const bis = { x: u1.x + u2.x, y: u1.y + u2.y };
+    const bl = Math.hypot(bis.x, bis.y);
+    const d = r / Math.sin(half); // corner to arc center
+    const c = { x: p.x + (bis.x / bl) * d, y: p.y + (bis.y / bl) * d };
+    const t1 = { x: p.x + u1.x * t, y: p.y + u1.y * t };
+    const t2 = { x: p.x + u2.x * t, y: p.y + u2.y * t };
+    const a1 = Math.atan2(t1.y - c.y, t1.x - c.x);
+    let da = Math.atan2(t2.y - c.y, t2.x - c.x) - a1;
+    while (da > Math.PI) da -= 2 * Math.PI;
+    while (da < -Math.PI) da += 2 * Math.PI;
+    const n = 6;
+    arcs.push(Array.from({ length: n + 1 }, (_, k) => ({ x: c.x + r * Math.cos(a1 + (da * k) / n), y: c.y + r * Math.sin(a1 + (da * k) / n) })));
+    ends.push({ t1, t2 });
+  }
+  for (let i = 0; i < 3; i++) {
+    out.push(...arcs[i]);
+    // The straight edge to the next corner, subdivided.
+    const from = ends[i].t2;
+    const to = ends[(i + 1) % 3].t1;
+    const n = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / STEP));
+    for (let k = 1; k < n; k++) out.push(lerp(from, to, k / n));
+  }
+  return out;
+}
+
+/**
+ * Nudge a point by a smooth, fixed wiggle field (the painted look; it rotates
+ * with the fighter, like paint on a sticker). Fades out near the foot, so the
+ * foot always meets the floor exactly.
+ */
+function wiggled(p: Vec2, foot: Vec2): Vec2 {
+  const k = 2 * Math.PI * 1.3; // about 1.3 waves per meter
+  const near = Math.min(1, Math.hypot(p.x - foot.x, p.y - foot.y) / 0.35);
+  const amp = PAINT.wiggle * near;
+  const dx = 0.6 * Math.sin(k * p.y + 1.7) + 0.4 * Math.sin(k * (1.9 * p.x + 0.7 * p.y) + 0.4);
+  const dy = 0.6 * Math.sin(k * p.x + 4.1) + 0.4 * Math.sin(k * (2.1 * p.y - 0.5 * p.x) + 2.3);
+  return { x: p.x + amp * dx, y: p.y + amp * dy };
 }

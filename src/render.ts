@@ -5,8 +5,8 @@
 import type { CameraView } from "./camera";
 import { colorOf, drawHud, type RenderOptions } from "./hud";
 import { drawChargeMeter } from "./look/marks";
-import { drawPlatform } from "./look/platforms";
-import { drawSticker, moodOf } from "./look/sticker";
+import { drawPlatformBack, drawPlatformFront } from "./look/platforms";
+import { clearStickerSilhouette, drawStickerBack, drawStickerFront, moodOf } from "./look/sticker";
 import { fillTexture, preloadTextures } from "./look/texture";
 import { drawWall } from "./look/wall";
 import type { Stage, Vec2 } from "./sim/geometry";
@@ -69,16 +69,21 @@ export class Renderer {
     this.applyCamera(cam);
 
     drawWall(ctx, cam, this.scale);
-    stage.platforms.forEach((plat, i) => drawPlatform(ctx, plat, i));
 
-    curr.forEach((f, i) => {
-      if (f.eliminated) return; // out of stocks: gone from the stage
+    const fighters = curr.flatMap((f, i) => {
+      if (f.eliminated) return []; // out of stocks: gone from the stage
       let p = prev[i] ?? f;
       // Respawning teleports the body; don't draw a smear between the two spots.
       if (Math.abs(p.x - f.x) + Math.abs(p.y - f.y) > 1) p = f;
-      const verts = f.vertices.map((v, k) => lerpV(p.vertices[k], v, alpha));
-      this.drawFighter(verts, f, colorOf(opts, i), opts.eyes?.[i] ?? 0, opts.debug);
+      return [{ f, i, verts: f.vertices.map((v, k) => lerpV(p.vertices[k], v, alpha)) }];
     });
+    // Two passes (docs/visual-language.md §2): every object's shadow and white
+    // outline first, then every body with its ink line. The ink's outer edge is
+    // the collision edge, so where things touch, ink meets ink.
+    stage.platforms.forEach((plat, i) => drawPlatformBack(ctx, plat, i));
+    for (const { f, verts } of fighters) this.drawFighterBack(verts, f);
+    stage.platforms.forEach((plat, i) => drawPlatformFront(ctx, plat, i));
+    for (const { f, i, verts } of fighters) this.drawFighter(verts, f, colorOf(opts, i), opts.eyes?.[i] ?? 0, opts.debug);
 
     // Paint grain over the whole scene (not the HUD: it must stay crisp).
     fillTexture(ctx, "grain", ctx.getTransform(), 1, "multiply");
@@ -88,27 +93,47 @@ export class Renderer {
     drawHud(ctx, screen, cam, curr, result, opts);
   }
 
+  /** Dead: faded. Ghost (just respawned): blinking. */
+  private fade(f: FighterView): number {
+    const blink = Math.floor(performance.now() / 100) % 2 === 0;
+    return f.ko ? 0.6 : f.ghost ? (blink ? 0.35 : 0.8) : 1;
+  }
+
+  /**
+   * Draw at `alpha` as one piece: drawn layer by layer at partial opacity, a
+   * fighter's own layers would show through each other.
+   */
+  private faded(alpha: number, draw: (ctx: CanvasRenderingContext2D) => void) {
+    const ctx = this.ctx;
+    if (alpha >= 1) return draw(ctx);
+    const layer = this.fadeLayer();
+    layer.setTransform(ctx.getTransform());
+    draw(layer);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(layer.canvas, 0, 0);
+    ctx.restore();
+    layer.setTransform(1, 0, 0, 1, 0, 0);
+    layer.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+  }
+
+  private drawFighterBack(verts: Vec2[], f: FighterView) {
+    // Faded, the back pass leaves a hole where the body goes, so the shadow
+    // doesn't show through it.
+    const alpha = this.fade(f);
+    this.faded(alpha, (ctx) => {
+      drawStickerBack(ctx, verts, f.footIndex);
+      if (alpha < 1) clearStickerSilhouette(ctx, verts, f.footIndex);
+    });
+  }
+
   private drawFighter(verts: Vec2[], f: FighterView, color: string, eyes: number, debug: boolean) {
     const ctx = this.ctx;
     const px = 1 / this.scale; // one screen pixel in meters
-    // Dead: faded. Ghost (just respawned): blinking.
-    const blink = Math.floor(performance.now() / 100) % 2 === 0;
-    const alpha = f.ko ? 0.6 : f.ghost ? (blink ? 0.35 : 0.8) : 1;
+    const alpha = this.fade(f);
     const hopping = !f.grounded && f.vy > 0.5; // rising from a hop: motion arcs
-    if (alpha < 1) {
-      // Fade the fighter as a whole: drawn layer by layer at partial opacity,
-      // its shadow and outline would show through the body.
-      const layer = this.fadeLayer();
-      layer.setTransform(ctx.getTransform());
-      drawSticker(layer, verts, f.footIndex, { color, eyes }, moodOf(f), hopping, f.charge);
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalAlpha = alpha;
-      ctx.drawImage(layer.canvas, 0, 0);
-      ctx.restore();
-      layer.setTransform(1, 0, 0, 1, 0, 0);
-      layer.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-    } else drawSticker(ctx, verts, f.footIndex, { color, eyes }, moodOf(f), hopping, f.charge);
+    this.faded(alpha, (c) => drawStickerFront(c, verts, f.footIndex, { color, eyes }, moodOf(f), hopping, f.charge));
     ctx.globalAlpha = alpha;
 
     if (debug) this.drawFootMarker(verts, f, px);
