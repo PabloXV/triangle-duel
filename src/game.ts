@@ -59,7 +59,7 @@ export interface GameSettings {
   finalKoReplay: boolean;
 }
 
-const KEYS = "←/→ or A/D rotate, ↓ or S charge";
+const KEYS = "←/→ or A/D rotate, ↑ or W hop, ↓ or S charge";
 /** After an online match ends, how long the winner shows before everyone returns to the room. */
 const BACK_TO_ROOM_MS = 3500;
 
@@ -289,7 +289,7 @@ export class Game {
     net.onStart = (setup, you, drive) => {
       const looks = onlineLooks(net, setup.match.players);
       const bot = botMaker(setup.params, this.matchNumber);
-      const sources = new Map<number, InputSource>([[you, this.autopilot ? bot(you, DEFAULT_BOT.reactionTicks) : new KeyboardSource([0, 1], you)]]); // online: arrows or A/D/S
+      const sources = new Map<number, InputSource>([[you, this.autopilot ? bot(you, DEFAULT_BOT.reactionTicks) : new KeyboardSource([0, 1], you)]]); // online: arrows or W/A/S/D
       for (const f of drive) if (f !== you) sources.set(f, bot(f, BOT_REACTION[net.levelOf(f)]));
       this.onlineParams = setup.params;
       const session = new OnlineSession(setup, you, looks.names, sources, net, net.room, () => net.rttMs, inputDelayFor(net.rttMs));
@@ -400,7 +400,7 @@ export class Game {
     const s = this.session;
     // On a touch screen the on-screen buttons are the hint.
     if (this.touchScreen) return s instanceof OnlineSession && s.spectating ? ["spectating"] : [];
-    if (s instanceof OnlineSession) return s.spectating ? ["spectating · Esc to leave"] : [`you (P${s.you + 1}): ←/→ or A/D rotate, ↓ or S charge`];
+    if (s instanceof OnlineSession) return s.spectating ? ["spectating · Esc to leave"] : [`you (P${s.you + 1}): ${KEYS}`];
     const players = Array.from({ length: s.sim.match.players }, (_, i) => i);
     return players.filter((i) => s.isHuman(i)).map((i) => `${this.looks.names[i] ?? `P${i + 1}`}: ${KEYS}`);
   }

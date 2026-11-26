@@ -44,7 +44,7 @@ export interface RoomSettings {
   hops: boolean; // idle hopping on (fighters hop whenever they land) or off (they stand; only charged jumps): Params.idleHop
 }
 
-export const DEFAULT_ROOM_SETTINGS: RoomSettings = { stageId: "wings", stocks: 3, hops: true };
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = { stageId: "wings", stocks: 3, hops: false };
 export const MAX_STOCKS = 5;
 
 /** How quickly a bot reacts (src/lineup.ts BOT_REACTION). Chosen per bot by the host. */

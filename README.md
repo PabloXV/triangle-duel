@@ -31,7 +31,9 @@ room's link or code (Join a room) and the next Start plays online instead.
 A new room is set up like your last match. If the relay can't be reached,
 the room opens offline (`src/net/loopback.ts`: the relay's room logic, run
 in the browser), bots only.
-Controls: `←`/`→` or `A`/`D` rotate, `↓` or `S` charge.
+Controls: `←`/`→` or `A`/`D` rotate, `↑` or `W` hop (a quick tap of charge;
+hold it to keep hopping), `↓` or `S` charge. Idle hopping is off by default
+(the "Hops" match setting).
 `Esc` pauses (bots match) or opens the match menu (online); `R` restarts a bots match.
 `` ` `` (backtick) toggles the debug panel (params, juice, recordings, dev online controls).
 The param panel edits the live match. Values persist in localStorage. Params
@@ -109,8 +111,10 @@ ledge with the top corners hanging off is a KO.
 
 ## Jumping: two modes (`jumpMode`)
 
-- **auto** (default): every landing triggers a small hop (`hopSpeed`) along your
-  "up", so leaning plus hopping is how you move. Holding charge makes the next
+- **auto** (default): with Hops on, every landing triggers a small hop
+  (`hopSpeed`) along your "up", so leaning plus hopping is how you move. With
+  Hops off (the default match setting) you stand still; the hop key (`↑`/`W`)
+  is a tap of charge, a minimum-charge jump. Holding charge makes the next
   landing plant you and charge instead. Release to jump at that charge; reach
   the cap (`jumpChargeTicks`) and you jump at full power automatically. If you
   lose your footing past coyote time while charging, the charge is lost.

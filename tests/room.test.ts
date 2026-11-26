@@ -318,9 +318,9 @@ describe("room: settings and kick", () => {
   it("everyone sees the room's settings; the host changes them", () => {
     const { room } = roomWith(1);
     room.connect("b");
-    expect(ofType(room.receive("b", hello("b")), "roster")[0].settings).toEqual({ stageId: "wings", stocks: 3, hops: true });
+    expect(ofType(room.receive("b", hello("b")), "roster")[0].settings).toEqual({ stageId: "wings", stocks: 3, hops: false });
     expect(ofType(room.receive("a", settings("island", 1)), "roster")[0].settings).toEqual({ stageId: "island", stocks: 1, hops: true });
-    expect(ofType(room.receive("a", settings("island", 1, false)), "roster")[0].settings.hops).toBe(false);
+    expect(ofType(room.receive("a", settings("island", 1, true)), "roster")[0].settings.hops).toBe(true);
   });
 
   it("only the host, only in the lobby, and only sane values", () => {
@@ -363,7 +363,7 @@ describe("room: settings and kick", () => {
     room.receive("a", settings("island", 1));
     room.disconnect("a");
     room.connect("z");
-    expect(ofType(room.receive("z", hello("z")), "roster")[0].settings).toEqual({ stageId: "wings", stocks: 3, hops: true });
+    expect(ofType(room.receive("z", hello("z")), "roster")[0].settings).toEqual({ stageId: "wings", stocks: 3, hops: false });
   });
 });
 
